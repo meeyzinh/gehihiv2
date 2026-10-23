@@ -1314,7 +1314,7 @@ def get_provider_key(provider: str):
     return defaults.get(provider, "")
 
 def decode_opus_frames_to_wav(opus_packets: list) -> bytes:
-    """Giải mã các gói Opus 60ms từ micro robot thành file WAV 16kHz mono trong bộ nhớ"""
+    """Giải mã các gói Opus 60ms từ micro robot thành file WAV 16kHz mono trong bộ nhớ (đã khử DC offset)"""
     frame_size = 960  # 60ms @ 16kHz
     pcm_chunks = []
     try:
@@ -1329,6 +1329,24 @@ def decode_opus_frames_to_wav(opus_packets: list) -> bytes:
     except Exception as e:
         logger.warning(f"Opus decoder error or not available: {e}")
     raw_pcm = b"".join(pcm_chunks)
+    if not raw_pcm:
+        return b""
+
+    # Khử DC Offset và kiểm tra AC RMS thực tế để chặn tạp âm/im lặng trước khi gọi ASR
+    try:
+        sample_count = len(raw_pcm) // 2
+        samples = struct.unpack(f"<{sample_count}h", raw_pcm)
+        if samples:
+            mean = int(sum(samples) / len(samples))
+            centered = [max(-32768, min(32767, s - mean)) for s in samples]
+            ac_rms = math.sqrt(sum(s * s for s in centered) / len(centered))
+            if ac_rms < 75.0:  # Âm thanh quá nhỏ hoặc chỉ là tiếng ồn tĩnh của micro
+                logger.info(f"Audio payload AC RMS too low ({ac_rms:.1f} < 75). Discarding silence.")
+                return b""
+            raw_pcm = struct.pack(f"<{sample_count}h", *centered)
+    except Exception as e:
+        logger.warning(f"DC filter error in decode_opus_frames_to_wav: {e}")
+
     wav_io = io.BytesIO()
     with wave.open(wav_io, "wb") as wf:
         wf.setnchannels(1)
@@ -1387,8 +1405,9 @@ WHISPER_HALLUCINATION_KEYWORDS = [
     "đăng kí kênh", "ủng hộ kênh", "theo dõi kênh", "bấm chuông", "nhấn chuông",
     "không bỏ lỡ những video", "không bỏ lỡ các video", "video hấp dẫn", "video tiếp theo",
     "cảm ơn các bạn đã theo dõi", "cảm ơn các bạn đã xem", "cảm ơn quý vị đã theo dõi",
-    "chúc các bạn xem video", "like và sub", "like & sub", "fap tv", "kênh youtube",
-    "kênh của mình", "chia sẻ video", "đừng quên like"
+    "tất cả các bạn đã theo dõi", "tất cả các bạn", "chúc các bạn xem video", "like và sub",
+    "like & sub", "fap tv", "kênh youtube", "kênh của mình", "chia sẻ video", "đừng quên like",
+    "tôi là robot", "hỏi đáp thông minh", "cô mẹ", "thân thiện"
 ]
 
 def is_whisper_hallucination(text: str) -> bool:
@@ -1408,7 +1427,7 @@ async def transcribe_audio_groq(wav_bytes: bytes, api_key: str = None) -> str:
     if not api_key:
         return ""
     boundary = "GehihiBoundaryASR" + uuid.uuid4().hex[:8]
-    prompt_context = "Tôi là robot Gehihi tiếng Việt, hỏi đáp thông minh thân thiện."
+    prompt_context = "Hội thoại tiếng Việt ngắn gọn tự nhiên."
     body = (
         b"--" + boundary.encode() + b"\r\n"
         b'Content-Disposition: form-data; name="model"\r\n\r\n'
@@ -1789,7 +1808,7 @@ async def ws_handler(websocket):
     silence_frames_count = 0
     noise_floor = 120.0
     processing_ai = False
-    cooldown_until = time.time()
+    cooldown_until = time.time() + 2.0
     last_user_activity = time.time()
     last_bot_reply = ""
     session_active = True
@@ -1883,9 +1902,17 @@ async def ws_handler(websocket):
                 LIVE_DIAGNOSTICS["last_turn_status"] = "Silence/hallucination filtered"
                 return
 
-            # Chống lặp câu trả lời (self-echo loop prevention)
+            # Chống lặp câu trả lời và chống dội tiếng loa vào micro (Acoustic Echo Cancellation)
+            norm_u = re.sub(r"[^\w\s]", "", u_text.lower()).strip()
+            norm_b = re.sub(r"[^\w\s]", "", (last_bot_reply or "").lower()).strip()
+            if norm_b and norm_u:
+                if norm_u == norm_b or (len(norm_u) > 5 and norm_u in norm_b) or (len(norm_b) > 5 and norm_b in norm_u):
+                    logger.info(f"Acoustic echo detected (user='{u_text}', last_bot='{last_bot_reply}'). Discarding echo.")
+                    LIVE_DIAGNOSTICS["last_turn_status"] = "Echo loop prevented"
+                    return
+
             if last_bot_reply and b_text.strip().lower() == last_bot_reply.strip().lower():
-                logger.info(f"Detected repeated bot reply: '{b_text}'. Skipping to break self-conversation loop.")
+                logger.info(f"Detected repeated bot reply: '{b_text}'. Skipping.")
                 LIVE_DIAGNOSTICS["last_turn_status"] = "Echo loop prevented"
                 return
 
@@ -1893,8 +1920,8 @@ async def ws_handler(websocket):
             opus_pkts = await tts_to_opus(b_text)
             await send_dynamic_tts_response(websocket, session_id, u_text, b_text, emotion, opus_pkts)
             LIVE_DIAGNOSTICS["last_turn_status"] = f"Replied: {b_text[:40]}"
-            # Khóa chống dội âm tiếng loa vào micro trong 1.5 giây sau khi phát xong
-            cooldown_until = time.time() + 0.7
+            # Khóa chống dội âm tiếng loa vào micro trong 1.2 giây sau khi phát xong
+            cooldown_until = time.time() + 1.2
             last_user_activity = cooldown_until
             mic_audio_buffer.clear()
             pre_speech_ring.clear()
@@ -2003,22 +2030,24 @@ async def ws_handler(websocket):
                 if processing_ai or time.time() < cooldown_until:
                     continue
 
-                # Tính toán RMS năng lượng âm thanh
-                rms = 100.0
+                # Tính toán AC RMS (loại bỏ hoàn toàn DC Offset do micro phần cứng)
+                rms = 10.0
                 if opus_decoder:
                     try:
                         pcm = opus_decoder.decode(message, 960)
                         samples = struct.unpack(f"<{len(pcm)//2}h", pcm)
-                        rms = math.sqrt(sum(s*s for s in samples) / len(samples))
+                        mean = sum(samples) / len(samples)
+                        variance = sum((s - mean) ** 2 for s in samples) / len(samples)
+                        rms = math.sqrt(variance)
                         LIVE_DIAGNOSTICS["opus_decoder_ok"] = True
                     except Exception as e:
                         LIVE_DIAGNOSTICS["opus_decoder_ok"] = False
                         LIVE_DIAGNOSTICS["opus_decoder_err"] = str(e)
-                        rms = 120.0
+                        rms = 10.0
                 else:
                     LIVE_DIAGNOSTICS["opus_decoder_ok"] = False
                     LIVE_DIAGNOSTICS["opus_decoder_err"] = "opus_decoder is None"
-                    rms = 120.0
+                    rms = 10.0
 
                 LIVE_DIAGNOSTICS["device_connected"] = True
                 LIVE_DIAGNOSTICS["last_packet_time"] = time.time()
@@ -2026,13 +2055,13 @@ async def ws_handler(websocket):
                 LIVE_DIAGNOSTICS["recent_rms"].append(round(rms, 1))
 
                 if not speech_active:
-                    # Cập nhật mức ồn nền khi đang yên tĩnh
-                    noise_floor = noise_floor * 0.90 + min(rms, 300.0) * 0.10
-                    # Ngưỡng bắt đầu nói nhạy bén với giọng con người (160+ RMS) vượt trên nền phòng (30-80 RMS)
-                    is_voice = (rms > max(160.0, noise_floor * 1.55))
+                    # Cập nhật mức ồn nền phòng khi đang yên tĩnh
+                    noise_floor = noise_floor * 0.95 + min(rms, 200.0) * 0.05
+                    # Ngưỡng bắt đầu nói: giọng người (140+ AC RMS) vượt trên mức ồn phòng
+                    is_voice = (rms > max(140.0, noise_floor * 2.2))
                 else:
                     # Ngưỡng duy trì nói
-                    is_voice = (rms > max(110.0, noise_floor * 1.25))
+                    is_voice = (rms > max(85.0, noise_floor * 1.35))
 
                 LIVE_DIAGNOSTICS["noise_floor"] = round(noise_floor, 1)
                 LIVE_DIAGNOSTICS["speech_active"] = speech_active
@@ -2048,14 +2077,13 @@ async def ws_handler(websocket):
                         mic_audio_buffer = list(pre_speech_ring)
                     speech_frames_count += 1
                     last_user_activity = time.time()
-                    # Giảm dần silence counter thay vì reset về 0 ngay lập tức nếu bị nhiễu 1 frame
                     if silence_frames_count > 0:
                         silence_frames_count = max(0, silence_frames_count - 1)
                     mic_audio_buffer.append(message)
 
-                    # Giới hạn nói liên tục tối đa ~4.5s (75 frames * 60ms) để phản hồi nhanh
-                    if len(mic_audio_buffer) >= 45:
-                        if speech_frames_count >= 5 and not processing_ai:
+                    # Giới hạn nói liên tục tối đa ~5.0s (85 frames * 60ms) để phản hồi nhanh
+                    if len(mic_audio_buffer) >= 85:
+                        if speech_frames_count >= 8 and not processing_ai:
                             pkts = list(mic_audio_buffer)
                             mic_audio_buffer.clear()
                             speech_active = False
@@ -2073,9 +2101,9 @@ async def ws_handler(websocket):
                     else:
                         mic_audio_buffer.append(message)
                         silence_frames_count += 1
-                        # Phát hiện kết thúc câu: 8 frames im lặng (~480ms) sau khi nói ít nhất 6 frames (~360ms)
-                        if silence_frames_count >= 5:
-                            if speech_frames_count >= 4 and not processing_ai:
+                        # Phát hiện kết thúc câu: 7 frames im lặng (~420ms) sau khi nói ít nhất 6 frames (~360ms)
+                        if silence_frames_count >= 7:
+                            if speech_frames_count >= 6 and not processing_ai:
                                 pkts = list(mic_audio_buffer)
                                 mic_audio_buffer.clear()
                                 speech_active = False
