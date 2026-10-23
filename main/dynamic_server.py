@@ -2055,13 +2055,13 @@ async def ws_handler(websocket):
                 LIVE_DIAGNOSTICS["recent_rms"].append(round(rms, 1))
 
                 if not speech_active:
-                    # Cập nhật mức ồn nền phòng khi đang yên tĩnh
-                    noise_floor = noise_floor * 0.95 + min(rms, 200.0) * 0.05
-                    # Ngưỡng bắt đầu nói: giọng người (140+ AC RMS) vượt trên mức ồn phòng
-                    is_voice = (rms > max(140.0, noise_floor * 2.2))
+                    # Cập nhật mức ồn nền phòng khi đang yên tĩnh (thích ứng tốt hơn với phòng có quạt/điều hòa)
+                    noise_floor = noise_floor * 0.90 + min(rms, 1000.0) * 0.10
+                    # Ngưỡng bắt đầu nói: giọng người (150+ AC RMS) vượt trên mức ồn phòng
+                    is_voice = (rms > max(150.0, noise_floor * 1.8))
                 else:
                     # Ngưỡng duy trì nói
-                    is_voice = (rms > max(85.0, noise_floor * 1.35))
+                    is_voice = (rms > max(95.0, noise_floor * 1.3))
 
                 LIVE_DIAGNOSTICS["noise_floor"] = round(noise_floor, 1)
                 LIVE_DIAGNOSTICS["speech_active"] = speech_active
@@ -2089,12 +2089,14 @@ async def ws_handler(websocket):
                             speech_active = False
                             speech_frames_count = 0
                             silence_frames_count = 0
+                            noise_floor = max(noise_floor, min(rms * 0.75, 800.0))
                             asyncio.create_task(execute_ai_turn(pkts))
                         else:
                             mic_audio_buffer.clear()
                             speech_active = False
                             speech_frames_count = 0
                             silence_frames_count = 0
+                            noise_floor = max(noise_floor, min(rms * 0.75, 800.0))
                 else:
                     if not speech_active:
                         pre_speech_ring.append(message)
