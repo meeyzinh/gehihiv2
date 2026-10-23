@@ -46,6 +46,9 @@ COPY --from=web-builder /app/dist /usr/share/nginx/html
 # Sao chép Dynamic Backend (OTA + WebSocket + Fallback Dashboard API)
 COPY main/dynamic_server.py /app/dynamic_server.py
 
+# Sao chép Firmware nhị phân phục vụ tải về và cập nhật OTA
+COPY firmware /app/firmware
+
 # Sao chép và cấp quyền script khởi động
 COPY docs/docker/start.sh /start.sh
 RUN chmod +x /start.sh

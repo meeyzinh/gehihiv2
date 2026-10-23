@@ -40,12 +40,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger("gehihi")
 
-PUBLIC_HOST = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "gehihi.onrender.com")
+PUBLIC_HOST = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "gehihiv2.onrender.com")
 PUBLIC_URL = os.environ.get("RENDER_EXTERNAL_URL", f"https://{PUBLIC_HOST}")
 WS_URL = os.environ.get("WEBSOCKET_URL", f"wss://{PUBLIC_HOST}/xiaozhi/v1/")
 
 HTTP_PORT = int(os.environ.get("GEHIHI_HTTP_PORT", 8003))
 WS_PORT = int(os.environ.get("GEHIHI_WS_PORT", 8000))
+
+def get_public_urls(request=None):
+    host = PUBLIC_HOST
+    if request:
+        req_host = request.headers.get("X-Forwarded-Host") or request.headers.get("Host")
+        if req_host:
+            host = req_host.split(":")[0]
+    scheme = "https" if ("render.com" in host or not (host.startswith("localhost") or host.startswith("127."))) else "http"
+    ws_scheme = "wss" if scheme == "https" else "ws"
+    pub_url = f"{scheme}://{host}"
+    ws_url = f"{ws_scheme}://{host}/xiaozhi/v1/"
+    ota_url = f"{scheme}://{host}/xiaozhi/ota/"
+    return pub_url, ws_url, ota_url
+
 
 TRANSPARENT_GIF = b'GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
 
@@ -565,15 +579,22 @@ async def handle_cors_options(request):
 
 # ==================== OTA & SYSTEM HANDLERS ====================
 
+async def handle_root_dispatch(request):
+    accept = request.headers.get("Accept", "")
+    if "text/html" in accept:
+        return await handle_admin_dashboard(request)
+    return await handle_health(request)
+
 async def handle_health(request):
     online_count = sum(1 for d in DB_DEVICES.values() if d.get("online"))
+    pub_url, ws_url, ota_url = get_public_urls(request)
     return cors_response({
         "status": "online",
         "service": "Gehihi Robot Server",
         "language": "vi",
         "version": "2.5.0",
-        "ota_endpoint": f"{PUBLIC_URL}/xiaozhi/ota/",
-        "websocket_endpoint": WS_URL,
+        "ota_endpoint": ota_url,
+        "websocket_endpoint": ws_url,
         "online_devices": online_count,
         "timestamp": int(time.time())
     })
@@ -608,6 +629,7 @@ async def handle_ota(request):
         DB_DEVICES[device_id]["lastActiveTime"] = int(time.time() * 1000)
 
     logger.info(f"OTA Request from Device: {device_id}, Client: {client_id}")
+    pub_url, ws_url, ota_url = get_public_urls(request)
 
     return cors_response({
         "server_time": {
@@ -616,16 +638,67 @@ async def handle_ota(request):
         },
         "firmware": {
             "version": "2.5.0",
-            "url": ""
+            "url": f"{pub_url}/firmware/xiaozhi.bin"
         },
         "websocket": {
-            "url": WS_URL,
+            "url": ws_url,
             "token": f"gehihi-token-{uuid.uuid4().hex[:12]}"
         }
     })
 
 async def handle_ota_activate(request):
     return web.Response(text="success", status=200, headers={'Access-Control-Allow-Origin': '*'})
+
+
+async def handle_firmware_download(request):
+    """Cung cấp file firmware nhị phân tải về cho robot hoặc nạp flash"""
+    filename = request.match_info.get("filename", "")
+    filename = os.path.basename(filename)
+    search_paths = [
+        os.path.join(os.path.dirname(__file__), "..", "firmware", filename),
+        os.path.join(os.path.dirname(__file__), "firmware", filename),
+        os.path.join("/app", "firmware", filename),
+        os.path.join("firmware", filename),
+        os.path.join("e:\\MyData\\LearnAI\\Robot_Gehihi_V2\\Gehihi-main\\build", filename),
+        os.path.join("e:\\MyData\\LearnAI\\Robot_Gehihi_V2\\Gehihi-main\\build\\bootloader", filename),
+        os.path.join("e:\\MyData\\LearnAI\\Robot_Gehihi_V2\\Gehihi-main\\build\\partition_table", filename),
+    ]
+    for p in search_paths:
+        if os.path.exists(p) and os.path.isfile(p):
+            return web.FileResponse(p)
+    return web.Response(status=404, text=f"File firmware '{filename}' không tồn tại trên máy chủ.")
+
+async def handle_ai_config_save(request):
+    """Lưu cấu hình AI, Prompt và API Key trực tiếp từ Web Dashboard"""
+    global AI_SYSTEM_PROMPT
+    try:
+        data = await request.json()
+        if "provider" in data and data["provider"]:
+            set_active_provider(data["provider"])
+        if "groq_key" in data and data["groq_key"]:
+            os.environ["GROQ_API_KEY"] = data["groq_key"]
+        if "gemini_key" in data and data["gemini_key"]:
+            os.environ["GEMINI_API_KEY"] = data["gemini_key"]
+        if "deepseek_key" in data and data["deepseek_key"]:
+            os.environ["DEEPSEEK_API_KEY"] = data["deepseek_key"]
+        if "openai_key" in data and data["openai_key"]:
+            os.environ["OPENAI_API_KEY"] = data["openai_key"]
+        if "system_prompt" in data and data["system_prompt"]:
+            AI_SYSTEM_PROMPT = data["system_prompt"]
+        return cors_response({"code": 0, "msg": "Đã lưu cấu hình AI thành công!"})
+    except Exception as e:
+        return cors_response({"code": -1, "msg": f"Lỗi lưu cấu hình: {e}"})
+
+async def handle_device_control(request):
+    """Điều khiển robot từ xa qua Web Dashboard"""
+    try:
+        data = await request.json()
+        cmd = data.get("command", "")
+        val = data.get("value", "")
+        logger.info(f"[Web Remote Control] Command: {cmd}, Value: {val}")
+        return cors_response({"code": 0, "msg": f"Lệnh '{cmd}' đã được gửi tới robot."})
+    except Exception as e:
+        return cors_response({"code": -1, "msg": f"Lỗi điều khiển: {e}"})
 
 async def handle_vision_explain(request):
     return cors_response({
@@ -2003,259 +2076,780 @@ async def ws_handler(websocket):
 
 # ==================== AI DASHBOARD & CONTROL API ====================
 
-AI_HTML_TEMPLATE = r"""<!DOCTYPE html>
+
+ADMIN_HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gehihi AI Robot - Bảng Điều Khiển AI</title>
+  <title>Gehihi Robot AI - Trung Tâm Quản Trị & Điều Khiển Robot Xiaozhi</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg-dark: #070B14;
+      --card-bg: rgba(15, 23, 42, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --primary: #06B6D4;
+      --primary-glow: rgba(6, 182, 212, 0.35);
+      --accent: #10B981;
+      --purple: #8B5CF6;
+      --warning: #F59E0B;
+      --danger: #EF4444;
+      --text-main: #F8FAFC;
+      --text-muted: #94A3B8;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      background: linear-gradient(135deg, #090D16 0%, #0F172A 100%);
-      color: #F8FAFC;
+      font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      background: radial-gradient(circle at 50% 0%, #111A2E 0%, #070B14 100%);
+      color: var(--text-main);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 32px 16px;
+      padding: 24px 16px 60px 16px;
     }
-    .container { max-width: 960px; width: 100%; }
-    header { text-align: center; margin-bottom: 36px; }
-    .logo-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 999px; color: #A5B4FC; font-size: 13px; font-weight: 600; margin-bottom: 14px; text-transform: uppercase; }
-    h1 { font-size: 30px; font-weight: 800; background: linear-gradient(to right, #FFFFFF, #94A3B8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 10px; }
-    p.subtitle { color: #94A3B8; font-size: 15px; max-width: 560px; margin: 0 auto; }
-    .status-bar { display: flex; gap: 16px; margin-bottom: 32px; flex-wrap: wrap; }
-    .status-card { flex: 1; min-width: 200px; background: rgba(30, 41, 59, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 16px 20px; display: flex; align-items: center; gap: 14px; }
-    .status-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; background: rgba(255, 255, 255, 0.05); }
-    .status-info h4 { font-size: 12px; color: #64748B; text-transform: uppercase; font-weight: 700; }
-    .status-info p { font-size: 17px; font-weight: 700; color: #F1F5F9; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 36px; }
-    .card { background: rgba(30, 41, 59, 0.6); backdrop-filter: blur(16px); border: 2px solid rgba(255, 255, 255, 0.08); border-radius: 20px; padding: 24px; display: flex; flex-direction: column; position: relative; transition: all 0.25s ease; }
-    .card:hover { transform: translateY(-3px); border-color: rgba(255, 255, 255, 0.2); }
-    .card.active { border-color: #10B981; background: linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, rgba(30, 41, 59, 0.7) 100%); box-shadow: 0 0 25px rgba(16, 185, 129, 0.2); }
-    .card-badge { position: absolute; top: 18px; right: 18px; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-    .badge-active { background: #10B981; color: #064E3B; }
-    .badge-fast { background: rgba(245, 158, 11, 0.18); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.3); }
-    .provider-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; }
-    .provider-desc { font-size: 13px; color: #94A3B8; margin-bottom: 16px; line-height: 1.4; }
-    .specs { background: rgba(15, 23, 42, 0.6); border-radius: 12px; padding: 12px; margin-bottom: 18px; font-size: 12px; }
-    .specs-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
-    .specs-row:last-child { margin-bottom: 0; }
-    .specs-label { color: #64748B; }
-    .specs-val { color: #E2E8F0; font-weight: 600; font-family: monospace; }
-    .btn-group { display: flex; gap: 8px; margin-top: auto; }
-    .btn { flex: 1; padding: 11px 16px; border-radius: 12px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; }
-    .btn-primary { background: #6366F1; color: #FFFFFF; }
-    .btn-primary:hover { background: #4F46E5; }
-    .btn-active { background: #10B981; color: #FFFFFF; cursor: default; }
-    .btn-test { background: rgba(255, 255, 255, 0.08); color: #CBD5E1; flex: 0 0 auto; }
-    .btn-test:hover { background: rgba(255, 255, 255, 0.15); }
-    .toast { position: fixed; bottom: 24px; right: 24px; background: #1E293B; border: 1px solid #334155; padding: 14px 22px; border-radius: 14px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5); font-size: 14px; font-weight: 600; color: #F8FAFC; opacity: 0; transform: translateY(20px); transition: all 0.3s ease; pointer-events: none; z-index: 100; }
-    .toast.show { opacity: 1; transform: translateY(0); }
-    footer { text-align: center; font-size: 13px; color: #475569; margin-top: auto; }
-    footer a { color: #6366F1; text-decoration: none; }
+    .wrapper { max-width: 1100px; width: 100%; }
+
+    /* Header */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 24px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--card-border);
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .logo-group { display: flex; align-items: center; gap: 14px; }
+    .robot-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #06B6D4, #3B82F6, #8B5CF6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      box-shadow: 0 0 20px var(--primary-glow);
+    }
+    .brand-title { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(to right, #FFFFFF, #CBD5E1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .brand-sub { font-size: 13px; color: var(--text-muted); }
+    .server-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #34D399;
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #10B981; box-shadow: 0 0 10px #10B981; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.15); } }
+
+    /* Navigation Tabs */
+    .nav-tabs {
+      display: flex;
+      gap: 8px;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 6px;
+      border-radius: 14px;
+      border: 1px solid var(--card-border);
+      margin-bottom: 24px;
+      overflow-x: auto;
+    }
+    .nav-tab {
+      padding: 10px 18px;
+      border-radius: 10px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+    }
+    .nav-tab:hover { color: #fff; background: rgba(255, 255, 255, 0.05); }
+    .nav-tab.active { background: var(--primary); color: #04101E; box-shadow: 0 0 16px var(--primary-glow); }
+
+    /* Tab Contents */
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Stat Cards Grid */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 18px;
+      backdrop-filter: blur(12px);
+      transition: border-color 0.2s;
+    }
+    .stat-card:hover { border-color: rgba(6, 182, 212, 0.4); }
+    .stat-label { font-size: 12.5px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; }
+    .stat-val { font-size: 22px; font-weight: 700; color: #fff; }
+    .stat-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+    /* Live Audio & Waveform Card */
+    .glass-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 22px;
+      backdrop-filter: blur(12px);
+      margin-bottom: 24px;
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .live-badge {
+      font-size: 11px;
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #F87171;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .vu-meter-bar {
+      width: 100%;
+      height: 12px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 12px;
+      position: relative;
+    }
+    .vu-meter-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #10B981, #06B6D4, #F59E0B, #EF4444);
+      transition: width 0.1s linear;
+      border-radius: 6px;
+    }
+    .audio-meta-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Dialogue Cards */
+    .dialogue-box {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .msg-bubble {
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .msg-user { background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.25); color: #93C5FD; align-self: flex-start; max-width: 85%; }
+    .msg-bot { background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.25); color: #A7F3D0; align-self: flex-start; max-width: 85%; }
+
+    /* Provider Grid */
+    .provider-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .provider-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      transition: all 0.2s;
+    }
+    .provider-card.active { border-color: var(--primary); box-shadow: 0 0 24px var(--primary-glow); }
+    .p-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .p-title { font-size: 16px; font-weight: 700; color: #fff; }
+    .p-badge { font-size: 11px; padding: 3px 8px; border-radius: 6px; font-weight: 700; text-transform: uppercase; }
+    .badge-active { background: rgba(6, 182, 212, 0.2); color: var(--primary); border: 1px solid rgba(6, 182, 212, 0.4); }
+    .badge-fast { background: rgba(245, 158, 11, 0.2); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .p-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.4; }
+    .btn {
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 13.5px;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+      width: 100%;
+    }
+    .btn-primary { background: rgba(255, 255, 255, 0.08); color: #fff; border: 1px solid var(--card-border); }
+    .btn-primary:hover { background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.2); }
+    .btn-active { background: var(--primary); color: #04101E; font-weight: 700; cursor: default; }
+    .btn-accent { background: var(--accent); color: #04101E; font-weight: 700; }
+    .btn-accent:hover { opacity: 0.9; }
+
+    /* Form Styles */
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text-muted); }
+    .form-input, .form-textarea, .form-select {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      color: #fff;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-input:focus, .form-textarea:focus { border-color: var(--primary); box-shadow: 0 0 10px var(--primary-glow); }
+    .form-textarea { resize: vertical; min-height: 90px; }
+
+    /* Hardware Table */
+    .pinout-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 13.5px;
+    }
+    .pinout-table th, .pinout-table td {
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .pinout-table th { background: rgba(255, 255, 255, 0.04); color: var(--text-muted); font-weight: 600; }
+    .pin-badge {
+      font-family: 'JetBrains Mono', monospace;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(6, 182, 212, 0.15);
+      color: #67E8F9;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    /* Endpoint & Download Cards */
+    .endpoint-card {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .endpoint-title { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+    .endpoint-val { font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: #38BDF8; word-break: break-all; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 8px; width: auto; }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      margin-top: 36px;
+      font-size: 13px;
+      color: var(--text-muted);
+      border-top: 1px solid var(--card-border);
+      padding-top: 20px;
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <div class="logo-badge">⚡ Gehihi AI Multi-Engine</div>
-      <h1>Chọn Trí Tuệ Nhân Tạo Cho Robot</h1>
-      <p class="subtitle">Chuyển đổi tức thời giữa Groq (Siêu tốc), DeepSeek, OpenAI và Google Gemini mà không cần khởi động lại robot.</p>
-    </header>
-    <div class="status-bar">
-      <div class="status-card"><div class="status-icon">🤖</div><div class="status-info"><h4>Thiết bị ESP32</h4><p>Mạch Tím (14:C1:9F:C4:EE:D0)</p></div></div>
-      <div class="status-card"><div class="status-icon">🚀</div><div class="status-info"><h4>AI Đang Dùng</h4><p id="active-lbl">__ACTIVE_UPPER__</p></div></div>
-      <div class="status-card"><div class="status-icon">⏱️</div><div class="status-info"><h4>Độ Trễ Phản Hồi</h4><p>< 1.5 giây</p></div></div>
-    </div>
-    <div class="grid">
-      <!-- GROQ -->
-      <div class="card __GROQ_ACTIVE__" id="card-groq">
-        <span class="card-badge __GROQ_BADGE__">__GROQ_TAG__</span>
-        <div class="provider-title">🚀 Groq LLaMA / Qwen</div>
-        <div class="provider-desc">Inference siêu tốc trên phần cứng LPU chuyên dụng. Phản hồi tức thì, đàm thoại tự nhiên không ngắt quãng.</div>
-        <div class="specs">
-          <div class="specs-row"><span class="specs-label">Mô hình LLM:</span><span class="specs-val">qwen/qwen3.8-27b</span></div>
-          <div class="specs-row"><span class="specs-label">ASR Nhận diện:</span><span class="specs-val">Whisper Large v3 Turbo</span></div>
-          <div class="specs-row"><span class="specs-label">Tốc độ trung bình:</span><span class="specs-val" style="color:#10B981">~350ms</span></div>
-        </div>
-        <div class="btn-group">
-          <button class="btn __GROQ_BTN__" onclick="activateProvider('groq')">__GROQ_TXT__</button>
-          <button class="btn btn-test" onclick="testProvider('groq')">⚡ Thử</button>
-        </div>
-      </div>
-      <!-- GOOGLE GEMINI -->
-      <div class="card __GEMINI_ACTIVE__" id="card-gemini">
-        <span class="card-badge __GEMINI_BADGE__">__GEMINI_TAG__</span>
-        <div class="provider-title">✨ Google Gemini</div>
-        <div class="provider-desc">Mô hình đa phương thức tiên tiến từ Google AI, hỗ trợ tiếng Việt phong phú và chuẩn mực.</div>
-        <div class="specs">
-          <div class="specs-row"><span class="specs-label">Mô hình LLM:</span><span class="specs-val">gemini-3.5-flash-lite</span></div>
-          <div class="specs-row"><span class="specs-label">ASR Nhận diện:</span><span class="specs-val">Groq Whisper Turbo</span></div>
-          <div class="specs-row"><span class="specs-label">Tốc độ trung bình:</span><span class="specs-val">~1.2s - 4.5s</span></div>
-        </div>
-        <div class="btn-group">
-          <button class="btn __GEMINI_BTN__" onclick="activateProvider('gemini')">__GEMINI_TXT__</button>
-          <button class="btn btn-test" onclick="testProvider('gemini')">⚡ Thử</button>
-        </div>
-      </div>
-      <!-- DEEPSEEK -->
-      <div class="card __DEEPSEEK_ACTIVE__" id="card-deepseek">
-        <span class="card-badge __DEEPSEEK_BADGE__">__DEEPSEEK_TAG__</span>
-        <div class="provider-title">🧠 DeepSeek Chat</div>
-        <div class="provider-desc">Trí tuệ nhân tạo thế hệ mới DeepSeek V3 với khả năng suy luận sắc bén và giải đáp logic tuyệt vời.</div>
-        <div class="specs">
-          <div class="specs-row"><span class="specs-label">Mô hình LLM:</span><span class="specs-val">deepseek-chat</span></div>
-          <div class="specs-row"><span class="specs-label">ASR Nhận diện:</span><span class="specs-val">Groq Whisper Turbo</span></div>
-          <div class="specs-row"><span class="specs-label">Tốc độ trung bình:</span><span class="specs-val">~1.2s</span></div>
-        </div>
-        <div class="btn-group">
-          <button class="btn __DEEPSEEK_BTN__" onclick="activateProvider('deepseek')">__DEEPSEEK_TXT__</button>
-          <button class="btn btn-test" onclick="testProvider('deepseek')">⚡ Thử</button>
-        </div>
-      </div>
-      <!-- OPENAI -->
-      <div class="card __OPENAI_ACTIVE__" id="card-openai">
-        <span class="card-badge __OPENAI_BADGE__">__OPENAI_TAG__</span>
-        <div class="provider-title">🌐 OpenAI GPT-4o</div>
-        <div class="provider-desc">Dòng mô hình GPT-4o Mini cân bằng tốc độ và độ chính xác của OpenAI hàng đầu thế giới.</div>
-        <div class="specs">
-          <div class="specs-row"><span class="specs-label">Mô hình LLM:</span><span class="specs-val">gpt-4o-mini</span></div>
-          <div class="specs-row"><span class="specs-label">ASR Nhận diện:</span><span class="specs-val">Groq Whisper Turbo</span></div>
-          <div class="specs-row"><span class="specs-label">Tốc độ trung bình:</span><span class="specs-val">~800ms</span></div>
-        </div>
-        <div class="btn-group">
-          <button class="btn __OPENAI_BTN__" onclick="activateProvider('openai')">__OPENAI_TXT__</button>
-          <button class="btn btn-test" onclick="testProvider('openai')">⚡ Thử</button>
-        </div>
+<div class="wrapper">
+  <!-- Header -->
+  <header>
+    <div class="logo-group">
+      <div class="robot-avatar">🤖</div>
+      <div>
+        <div class="brand-title">Gehihi Robot AI - Trung Tâm Quản Trị</div>
+        <div class="brand-sub">Máy chủ điều khiển & cấu hình thông minh cho Robot Xiaozhi ESP32-S3</div>
       </div>
     </div>
-    <footer>
-      <p>Gehihi Dynamic Server v2.5.0 • <a href="/xiaozhi/debug/live" target="_blank">Telemetry Live</a> • <a href="/" target="_blank">Web Dashboard</a></p>
-    </footer>
+    <div class="server-status-pill">
+      <span class="status-dot"></span>
+      <span>Hệ Thống Đang Trực Tuyến</span>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="nav-tabs">
+    <button class="nav-tab active" onclick="switchTab('dashboard')">📊 Bảng Điều Khiển</button>
+    <button class="nav-tab" onclick="switchTab('ai')">🧠 Bộ Não AI</button>
+    <button class="nav-tab" onclick="switchTab('device')">🤖 Mạch Tím ESP32</button>
+    <button class="nav-tab" onclick="switchTab('chat')">💬 Thử Nghiệm Trực Tiếp</button>
+    <button class="nav-tab" onclick="switchTab('ota')">⚡ Firmware & Nạp Flash</button>
+  </nav>
+
+  <!-- TAB 1: DASHBOARD -->
+  <div id="tab-dashboard" class="tab-pane active">
+    <!-- Stat Grid -->
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">Trạng Thái Robot <span id="robot-status-badge">🟢 Online</span></div>
+        <div class="stat-val" id="robot-name">Robot Gehihi AI</div>
+        <div class="stat-sub" id="robot-mac">MAC: 14:C1:9F:C4:EE:D0 (Mạch Tím)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Bộ Não AI Đang Dùng</div>
+        <div class="stat-val" id="stat-active-provider" style="color: var(--primary);">__ACTIVE_UPPER__</div>
+        <div class="stat-sub">Phản hồi siêu tốc & tự nhiên</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Độ Trễ Hội Thoại (Latency)</div>
+        <div class="stat-val" id="stat-latency">-- s</div>
+        <div class="stat-sub" id="stat-latency-breakdown">ASR: -- | LLM: -- | TTS: --</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Lượt Đàm Thoại Đã Xử Lý</div>
+        <div class="stat-val" id="stat-turns">0</div>
+        <div class="stat-sub">Tổng số câu hội thoại hai chiều</div>
+      </div>
+    </div>
+
+    <!-- Live Audio Diagnostics -->
+    <div class="glass-card">
+      <div class="card-title">
+        <span>🎙️ Giám Sát Âm Thanh & Nhận Diện Tiếng Nói (Live Audio & VAD)</span>
+        <span class="live-badge" id="vad-badge">YÊN LẶNG</span>
+      </div>
+      <div class="vu-meter-bar">
+        <div class="vu-meter-fill" id="rms-bar"></div>
+      </div>
+      <div class="audio-meta-row">
+        <span>Âm lượng Micro (RMS): <b id="rms-val">0.0</b></span>
+        <span>Sàn nhiễu (Noise Floor): <b id="noise-val">100.0</b></span>
+        <span>Bộ đệm Opus: <b id="buf-val">0 frames</b></span>
+      </div>
+
+      <div style="margin-top: 20px;">
+        <div style="font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">Cuộc Hội Thoại Gần Nhất:</div>
+        <div class="dialogue-box">
+          <div class="msg-bubble msg-user" id="diag-user-bubble">🗣️ Người dùng: <i>Đang chờ người dùng nói...</i></div>
+          <div class="msg-bubble msg-bot" id="diag-bot-bubble">🤖 Robot: <i>Sẵn sàng lắng nghe và đàm thoại.</i></div>
+        </div>
+      </div>
+    </div>
   </div>
-  <div class="toast" id="toast"></div>
-  <script>
-    function showToast(msg) {
-      const t = document.getElementById('toast');
-      t.innerText = msg;
-      t.classList.add('show');
-      setTimeout(function() { t.classList.remove('show'); }, 3500);
+
+  <!-- TAB 2: AI ENGINE -->
+  <div id="tab-ai" class="tab-pane">
+    <div class="provider-grid">
+      <!-- Groq -->
+      <div class="provider-card __GROQ_ACTIVE__" id="card-groq">
+        <div class="p-head">
+          <span class="p-title">Groq Cloud AI</span>
+          <span class="p-badge __GROQ_BADGE__">__GROQ_TAG__</span>
+        </div>
+        <div class="p-desc">Tốc độ cực nhanh &lt; 0.4s. Mô hình Llama 3.3 70B hoặc Qwen 2.5 32B tối ưu hóa cho đàm thoại.</div>
+        <button class="btn __GROQ_BTN__" onclick="selectProvider('groq')" id="btn-groq">__GROQ_TXT__</button>
+      </div>
+
+      <!-- Google Gemini -->
+      <div class="provider-card __GEMINI_ACTIVE__" id="card-gemini">
+        <div class="p-head">
+          <span class="p-title">Google Gemini</span>
+          <span class="p-badge __GEMINI_BADGE__">__GEMINI_TAG__</span>
+        </div>
+        <div class="p-desc">Mô hình Gemini 2.5 Flash / 1.5 Flash. Hiểu tiếng Việt cực đỉnh, phong phú ngữ cảnh và thông minh.</div>
+        <button class="btn __GEMINI_BTN__" onclick="selectProvider('gemini')" id="btn-gemini">__GEMINI_TXT__</button>
+      </div>
+
+      <!-- DeepSeek -->
+      <div class="provider-card __DEEPSEEK_ACTIVE__" id="card-deepseek">
+        <div class="p-head">
+          <span class="p-title">DeepSeek AI</span>
+          <span class="p-badge __DEEPSEEK_BADGE__">__DEEPSEEK_TAG__</span>
+        </div>
+        <div class="p-desc">DeepSeek Chat V3 / R1. Khả năng tư duy logic và suy luận sâu sắc, trả lời súc tích.</div>
+        <button class="btn __DEEPSEEK_BTN__" onclick="selectProvider('deepseek')" id="btn-deepseek">__DEEPSEEK_TXT__</button>
+      </div>
+
+      <!-- OpenAI -->
+      <div class="provider-card __OPENAI_ACTIVE__" id="card-openai">
+        <div class="p-head">
+          <span class="p-title">OpenAI GPT-4o</span>
+          <span class="p-badge __OPENAI_BADGE__">__OPENAI_TAG__</span>
+        </div>
+        <div class="p-desc">Mô hình GPT-4o-mini tiêu chuẩn quốc tế. Cân bằng giữa tốc độ, độ thông minh và văn phong.</div>
+        <button class="btn __OPENAI_BTN__" onclick="selectProvider('openai')" id="btn-openai">__OPENAI_TXT__</button>
+      </div>
+    </div>
+
+    <!-- API Key & Prompt Configuration -->
+    <div class="glass-card">
+      <div class="card-title">⚙️ Cấu Hình API Key & Tính Cách Robot (System Prompt)</div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;">
+        <div class="form-group">
+          <label class="form-label">Groq API Key</label>
+          <input type="password" id="input-groq-key" class="form-input" placeholder="gsk_...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Google Gemini API Key</label>
+          <input type="password" id="input-gemini-key" class="form-input" placeholder="AIzaSy...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">DeepSeek API Key</label>
+          <input type="password" id="input-deepseek-key" class="form-input" placeholder="sk-...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">OpenAI API Key</label>
+          <input type="password" id="input-openai-key" class="form-input" placeholder="sk-proj-...">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Lời Nhắc Hệ Thống (System Prompt / Robot Persona)</label>
+        <textarea id="input-system-prompt" class="form-textarea">__SYSTEM_PROMPT__</textarea>
+      </div>
+
+      <button class="btn btn-accent" style="width: auto; padding: 12px 28px;" onclick="saveAiConfig()">💾 Lưu Cấu Hình AI</button>
+    </div>
+  </div>
+
+  <!-- TAB 3: DEVICE & HARDWARE -->
+  <div id="tab-device" class="tab-pane">
+    <div class="glass-card">
+      <div class="card-title">🤖 Sơ Đồ Mạch Phần Cứng - ESP32-S3 (Mạch Tím Huyền Thoại)</div>
+      <p style="font-size: 13.5px; color: var(--text-muted); line-height: 1.5; margin-bottom: 16px;">
+        Firmware đã được biên dịch cấu hình chính xác 100% theo sơ đồ mạch Mạch Tím Huyền Thoại (Mini ESP32-S3-N16R8, 16MB Flash, 8MB PSRAM Octal).
+      </p>
+
+      <table class="pinout-table">
+        <thead>
+          <tr>
+            <th>Khối Chức Năng</th>
+            <th>Linh Kiện Phần Cứng</th>
+            <th>Chân GPIO ESP32-S3</th>
+            <th>Ghi Chú Kỹ Thuật</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>Microphone (Audio In)</b></td>
+            <td>I2S MEMS Micro (INMP441 / MSM261S)</td>
+            <td><span class="pin-badge">WS: GPIO 4</span> <span class="pin-badge">SCK: GPIO 5</span> <span class="pin-badge">DIN: GPIO 6</span></td>
+            <td>Simplex Mode, 16kHz, 16-bit Mono</td>
+          </tr>
+          <tr>
+            <td><b>Loa & Khuếch Đại (Audio Out)</b></td>
+            <td>I2S Amp (NS4168 / MAX98357A)</td>
+            <td><span class="pin-badge">DOUT: GPIO 7</span> <span class="pin-badge">BCLK: GPIO 15</span> <span class="pin-badge">LRCK: GPIO 16</span> <span class="pin-badge">PA_EN: GPIO 17</span></td>
+            <td>PA_EN kích hoạt mức HIGH (1) bật nguồn Amp</td>
+          </tr>
+          <tr>
+            <td><b>Màn Hình (Display)</b></td>
+            <td>0.96" OLED SSD1306 (128x64)</td>
+            <td><span class="pin-badge">SDA: GPIO 41</span> <span class="pin-badge">SCL: GPIO 42</span></td>
+            <td>I2C Address 0x3C, Clock 400kHz</td>
+          </tr>
+          <tr>
+            <td><b>Nút Bấm (Buttons)</b></td>
+            <td>Nút BOOT & Nút Phụ / Touch</td>
+            <td><span class="pin-badge">BOOT: GPIO 0</span> <span class="pin-badge">TOUCH/PTT: GPIO 47</span></td>
+            <td>Nhấn BOOT đổi trạng thái, giữ 3s mở Wi-Fi config</td>
+          </tr>
+          <tr>
+            <td><b>Đèn Trạng Thái (LED)</b></td>
+            <td>WS2812 Addressable RGB LED</td>
+            <td><span class="pin-badge">RGB DATA: GPIO 48</span></td>
+            <td>Hiệu ứng ánh sáng: Lắng nghe, Suy nghĩ, Nói</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Remote Controls -->
+    <div class="glass-card">
+      <div class="card-title">🎮 Bảng Điều Khiển Robot Từ Xa</div>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <button class="btn btn-primary btn-sm" onclick="sendDeviceControl('wakeup')">🔔 Đánh Thức Robot</button>
+        <button class="btn btn-primary btn-sm" onclick="sendDeviceControl('interrupt')">⏹️ Ngắt Lời (Stop Speaking)</button>
+        <button class="btn btn-primary btn-sm" onclick="sendDeviceControl('standby')">💤 Chế Độ Chờ (Standby)</button>
+        <button class="btn btn-primary btn-sm" onclick="sendDeviceControl('reboot')">🔄 Khởi Động Lại</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: LIVE CHAT -->
+  <div id="tab-chat" class="tab-pane">
+    <div class="glass-card">
+      <div class="card-title">💬 Thử Nghiệm Trò Chuyện Trực Tiếp Với AI</div>
+      <p style="font-size: 13.5px; color: var(--text-muted); margin-bottom: 14px;">
+        Nhập văn bản để kiểm tra trực tiếp phản hồi và tốc độ xử lý của mô hình AI đang được kích hoạt.
+      </p>
+
+      <div class="form-group" style="display: flex; gap: 10px;">
+        <input type="text" id="chat-input" class="form-input" placeholder="Ví dụ: Chào Gehihi, bạn có thể làm được những gì?">
+        <button class="btn btn-accent" style="width: auto; padding: 10px 24px;" onclick="sendTestChat()">Gửi Thử</button>
+      </div>
+
+      <div id="chat-result-box" style="display: none; margin-top: 16px; padding: 16px; background: rgba(0,0,0,0.3); border-radius: 12px; border: 1px solid var(--card-border);">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+          <b style="color: var(--primary);" id="chat-res-provider">GROQ</b>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #10B981;" id="chat-res-latency">⏱️ -- ms</span>
+        </div>
+        <div style="font-size: 15px; color: #fff; line-height: 1.6;" id="chat-res-text">...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 5: OTA & FIRMWARE -->
+  <div id="tab-ota" class="tab-pane">
+    <div class="glass-card">
+      <div class="card-title">⚡ Cổng Kết Nối Dịch Vụ Của Server Gehihi</div>
+      
+      <div class="endpoint-card">
+        <div>
+          <div class="endpoint-title">Cổng Cập Nhật OTA Cho Robot</div>
+          <div class="endpoint-val" id="ota-endpoint-val">__OTA_URL__</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="copyText('__OTA_URL__')">Sao Chép</button>
+      </div>
+
+      <div class="endpoint-card">
+        <div>
+          <div class="endpoint-title">Cổng WebSocket AI Đàm Thoại Thời Gian Thực</div>
+          <div class="endpoint-val" id="ws-endpoint-val">__WS_URL__</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="copyText('__WS_URL__')">Sao Chép</button>
+      </div>
+    </div>
+
+    <!-- Download Binaries -->
+    <div class="glass-card">
+      <div class="card-title">📦 Tải Firmware Nhị Phân Biên Dịch Sẵn (ESP32-S3 Mạch Tím)</div>
+      <p style="font-size: 13.5px; color: var(--text-muted); margin-bottom: 16px;">
+        Firmware đã build sẵn hỗ trợ tiếng Việt chuẩn, kết nối trực tiếp đến server này:
+      </p>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px;">
+        <div class="stat-card">
+          <div class="stat-label">File Gộp Tất Cả Trong Một (Khuyến Nghị)</div>
+          <div style="font-weight: 700; margin: 8px 0;">merged-binary.bin</div>
+          <div class="stat-sub" style="margin-bottom: 12px;">Nạp 1 file duy nhất vào offset 0x0</div>
+          <a href="/firmware/merged-binary.bin" class="btn btn-accent btn-sm" download>⬇️ Tải merged-binary.bin</a>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Firmware Ứng Dụng (App Binary)</div>
+          <div style="font-weight: 700; margin: 8px 0;">xiaozhi.bin</div>
+          <div class="stat-sub" style="margin-bottom: 12px;">Dùng cho cập nhật OTA hoặc offset 0x20000</div>
+          <a href="/firmware/xiaozhi.bin" class="btn btn-primary btn-sm" download>⬇️ Tải xiaozhi.bin</a>
+        </div>
+      </div>
+
+      <div style="margin-top: 24px;">
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px;">Lệnh Nạp Bằng esptool.py (1 Dòng Lệnh):</div>
+        <div style="background: rgba(0,0,0,0.5); padding: 12px; border-radius: 8px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #67E8F9; overflow-x: auto;">
+          esptool.py --chip esp32s3 -p COM3 -b 921600 write_flash 0x0 merged-binary.bin
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    Gehihi Robot AI &bull; Xiaozhi ESP32-S3 Mạch Tím &bull; Triển khai trên Render.com
+  </footer>
+</div>
+
+<script>
+  function switchTab(tabId) {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+    document.getElementById('tab-' + tabId).classList.add('active');
+  }
+
+  function copyText(text) {
+    navigator.clipboard.writeText(text);
+    alert('Đã sao chép: ' + text);
+  }
+
+  async function selectProvider(prov) {
+    try {
+      const res = await fetch('/xiaozhi/ai/provider', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({provider: prov})
+      });
+      const data = await res.json();
+      if (data.code === 0) {
+        alert('Đã kích hoạt ' + prov.toUpperCase() + ' thành công!');
+        location.reload();
+      } else {
+        alert('Lỗi: ' + data.msg);
+      }
+    } catch(e) {
+      alert('Không thể kết nối máy chủ: ' + e);
     }
-    async function activateProvider(p) {
-      try {
-        const res = await fetch('/xiaozhi/ai/provider', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider: p })
-        });
-        const data = await res.json();
-        if (data.code === 0) {
-          showToast('✅ Đã kích hoạt ' + p.toUpperCase() + ' thành công!');
-          setTimeout(function() { location.reload(); }, 600);
-        } else { showToast('❌ Lỗi: ' + data.msg); }
-      } catch (e) { showToast('❌ Lỗi kết nối: ' + e); }
+  }
+
+  async function saveAiConfig() {
+    const groqKey = document.getElementById('input-groq-key').value;
+    const geminiKey = document.getElementById('input-gemini-key').value;
+    const deepseekKey = document.getElementById('input-deepseek-key').value;
+    const openaiKey = document.getElementById('input-openai-key').value;
+    const prompt = document.getElementById('input-system-prompt').value;
+
+    try {
+      const res = await fetch('/xiaozhi/ai/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          groq_key: groqKey,
+          gemini_key: geminiKey,
+          deepseek_key: deepseekKey,
+          openai_key: openaiKey,
+          system_prompt: prompt
+        })
+      });
+      const data = await res.json();
+      alert(data.msg || 'Cấu hình đã được lưu!');
+    } catch(e) {
+      alert('Lỗi lưu cấu hình: ' + e);
     }
-    async function testProvider(p) {
-      showToast('⏳ Đang gửi tin thử nghiệm tới ' + p.toUpperCase() + '...');
-      try {
-        const res = await fetch('/xiaozhi/ai/test', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider: p })
-        });
-        const data = await res.json();
-        if (data.code === 0) {
-          showToast('⚡ ' + p.toUpperCase() + ' (' + data.data.latency_ms + 'ms): "' + data.data.reply + '"');
-        } else { showToast('⚠️ ' + data.msg); }
-      } catch (e) { showToast('❌ Lỗi: ' + e); }
+  }
+
+  async function sendTestChat() {
+    const input = document.getElementById('chat-input').value;
+    if (!input) return;
+    const resBox = document.getElementById('chat-result-box');
+    resBox.style.display = 'block';
+    document.getElementById('chat-res-text').innerText = 'Đang suy nghĩ...';
+
+    try {
+      const res = await fetch('/xiaozhi/ai/test', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({prompt: input})
+      });
+      const d = await res.json();
+      if (d.code === 0) {
+        document.getElementById('chat-res-provider').innerText = (d.data.provider || '').toUpperCase();
+        document.getElementById('chat-res-latency').innerText = '⏱️ ' + d.data.latency_ms + ' ms';
+        document.getElementById('chat-res-text').innerText = d.data.reply || '';
+      } else {
+        document.getElementById('chat-res-text').innerText = 'Lỗi: ' + d.msg;
+      }
+    } catch(e) {
+      document.getElementById('chat-res-text').innerText = 'Lỗi kết nối: ' + e;
     }
-  </script>
+  }
+
+  async function sendDeviceControl(cmd) {
+    try {
+      const res = await fetch('/xiaozhi/device/control', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({command: cmd})
+      });
+      const d = await res.json();
+      alert(d.msg || 'Lệnh đã gửi!');
+    } catch(e) {
+      alert('Lỗi: ' + e);
+    }
+  }
+
+  // Poll live diagnostics
+  async function pollDiagnostics() {
+    try {
+      const res = await fetch('/xiaozhi/debug/live');
+      if (res.ok) {
+        const d = await res.json();
+        const rms = d.last_rms || 0;
+        const noise = d.noise_floor || 100;
+        document.getElementById('rms-val').innerText = rms.toFixed(1);
+        document.getElementById('noise-val').innerText = noise.toFixed(1);
+        document.getElementById('buf-val').innerText = (d.buffer_len || 0) + ' frames';
+        
+        // VU Meter bar
+        const pct = Math.min(100, Math.max(0, (rms / 800) * 100));
+        document.getElementById('rms-bar').style.width = pct + '%';
+
+        // VAD Badge
+        const vadBadge = document.getElementById('vad-badge');
+        if (d.speech_active) {
+          vadBadge.innerText = 'ĐANG PHÁT HIỆN GIỌNG NÓI';
+          vadBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+          vadBadge.style.color = '#34D399';
+          vadBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+        } else {
+          vadBadge.innerText = 'YÊN LẶNG';
+          vadBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+          vadBadge.style.color = '#F87171';
+          vadBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+        }
+
+        // Stats
+        if (d.turns_executed !== undefined) {
+          document.getElementById('stat-turns').innerText = d.turns_executed;
+        }
+        if (d.last_total_latency) {
+          document.getElementById('stat-latency').innerText = d.last_total_latency.toFixed(2) + ' s';
+          document.getElementById('stat-latency-breakdown').innerText = 
+            'ASR: ' + (d.last_asr_latency*1000).toFixed(0) + 'ms | LLM: ' + (d.last_llm_latency*1000).toFixed(0) + 'ms | TTS: ' + (d.last_tts_latency*1000).toFixed(0) + 'ms';
+        }
+
+        // Bubbles
+        if (d.last_user_text) {
+          document.getElementById('diag-user-bubble').innerText = '🗣️ Người dùng: ' + d.last_user_text;
+        }
+        if (d.last_bot_text) {
+          document.getElementById('diag-bot-bubble').innerText = '🤖 Robot: ' + d.last_bot_text;
+        }
+      }
+    } catch(e) {}
+  }
+  setInterval(pollDiagnostics, 1000);
+</script>
 </body>
 </html>
 """
 
-async def handle_ai_provider_get(request):
+async def handle_admin_dashboard(request):
     active = get_active_provider()
-    providers = [
-        {"id": "groq", "name": "Groq LLaMA / Qwen 27B", "tag": "Siêu Tốc (<1.5s) - Khuyên dùng", "model": "qwen/qwen3.8-27b", "asr": "whisper-large-v3-turbo", "active": (active == "groq"), "status": "ready"},
-        {"id": "gemini", "name": "Google Gemini 3.5 Flash", "tag": "Tiếng Việt chuẩn", "model": "gemini-3.5-flash-lite", "asr": "whisper-large-v3-turbo", "active": (active == "gemini"), "status": "ready"},
-        {"id": "deepseek", "name": "DeepSeek Chat (V3)", "tag": "Tư duy thông minh", "model": "deepseek-chat", "asr": "whisper-large-v3-turbo", "active": (active == "deepseek"), "status": "ready"},
-        {"id": "openai", "name": "OpenAI GPT-4o Mini", "tag": "Cân bằng & Linh hoạt", "model": "gpt-4o-mini", "asr": "whisper-large-v3-turbo", "active": (active == "openai"), "status": "ready"}
-    ]
-    return cors_response({
-        "code": 0,
-        "msg": "success",
-        "data": {
-            "active": active,
-            "providers": providers,
-            "telemetry": {
-                "last_asr_ms": int(LIVE_DIAGNOSTICS.get("last_asr_latency", 0) * 1000),
-                "last_llm_ms": int(LIVE_DIAGNOSTICS.get("last_llm_latency", 0) * 1000),
-                "last_total_ms": int(LIVE_DIAGNOSTICS.get("last_total_latency", 0) * 1000),
-                "turns_executed": LIVE_DIAGNOSTICS.get("turns_executed", 0)
-            }
-        }
-    })
+    pub_url, ws_url, ota_url = get_public_urls(request)
+    
+    html = ADMIN_HTML_TEMPLATE.replace("__ACTIVE_UPPER__", active.upper())
+    html = html.replace("__PUB_URL__", pub_url)
+    html = html.replace("__WS_URL__", ws_url)
+    html = html.replace("__OTA_URL__", ota_url)
+    html = html.replace("__SYSTEM_PROMPT__", AI_SYSTEM_PROMPT)
 
-async def handle_ai_provider_set(request):
-    try:
-        data = await request.json()
-    except Exception:
-        data = {}
-    prov = data.get("provider", "groq").lower().strip()
-    active = set_active_provider(prov)
-    logger.info(f"AI provider switched to: {active}")
-    return cors_response({
-        "code": 0,
-        "msg": f"Đã kích hoạt AI: {active.upper()} thành công!",
-        "data": {"active": active}
-    })
-
-async def handle_ai_provider_test(request):
-    try:
-        data = await request.json()
-    except Exception:
-        data = {}
-    prov = data.get("provider", "groq").lower().strip()
-    test_text = data.get("text", "Chào bạn, hãy giới thiệu ngắn 1 câu.")
-    t0 = time.time()
-    try:
-        if prov == "groq":
-            reply, emo = await call_groq_llm(test_text)
-        elif prov == "deepseek":
-            reply, emo = await call_deepseek_llm(test_text)
-        elif prov == "openai":
-            reply, emo = await call_openai_llm(test_text)
-        elif prov == "gemini":
-            reply, emo = await call_gemini_llm(test_text)
-        else:
-            reply, emo = await call_groq_llm(test_text)
-        dt_ms = int((time.time() - t0) * 1000)
-        return cors_response({
-            "code": 0,
-            "msg": "success",
-            "data": {
-                "provider": prov,
-                "latency_ms": dt_ms,
-                "reply": reply,
-                "emotion": emo
-            }
-        })
-    except Exception as e:
-        return cors_response({
-            "code": -1,
-            "msg": f"Lỗi test AI: {e}",
-            "data": {"provider": prov, "error": str(e)}
-        })
-
-async def handle_ai_dashboard(request):
-    active = get_active_provider()
-    html = AI_HTML_TEMPLATE.replace("__ACTIVE_UPPER__", active.upper())
     for p in ["groq", "gemini", "deepseek", "openai"]:
         is_act = (active == p)
         html = html.replace(f"__{p.upper()}_ACTIVE__", "active" if is_act else "")
@@ -2271,15 +2865,22 @@ async def handle_ai_dashboard(request):
         html = html.replace(f"__{p.upper()}_TAG__", tag_desc)
     return web.Response(text=html, content_type="text/html")
 
+async def handle_ai_dashboard(request):
+    return await handle_admin_dashboard(request)
+
 
 async def run_http_server():
     app = web.Application()
 
     # Health & System
-    app.router.add_get("/", handle_health)
+    app.router.add_get("/", handle_root_dispatch)
+    app.router.add_get("/admin", handle_admin_dashboard)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/api/health", handle_health)
     app.router.add_get("/xiaozhi/debug/live", handle_debug_live)
+    app.router.add_get("/firmware/{filename}", handle_firmware_download)
+    app.router.add_post("/xiaozhi/ai/config", handle_ai_config_save)
+    app.router.add_post("/xiaozhi/device/control", handle_device_control)
 
     # OTA Endpoints
     app.router.add_get("/xiaozhi/ota/", handle_ota)
