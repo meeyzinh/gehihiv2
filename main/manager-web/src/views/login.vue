@@ -207,11 +207,11 @@ export default {
     return {
       activeName: "username",
       form: {
-        username: "",
-        password: "",
+        username: "admin",
+        password: "lumia1020",
         captcha: "",
         captchaId: "",
-        areaCode: "+86",
+        areaCode: "+84",
         mobile: "",
       },
       captchaUuid: "",

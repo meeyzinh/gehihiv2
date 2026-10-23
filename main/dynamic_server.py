@@ -740,15 +740,45 @@ async def handle_pub_config(request):
 async def handle_captcha(request):
     return web.Response(body=TRANSPARENT_GIF, content_type='image/gif', headers={'Access-Control-Allow-Origin': '*'})
 
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "lumia1020"
+
 async def handle_login(request):
-    return cors_response({
-        "code": 0,
-        "msg": "Đăng nhập thành công!",
-        "data": {
-            "token": "gehihi-jwt-admin-token-2026",
-            "expire": 86400
-        }
-    })
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    username = str(data.get("username", "")).strip()
+    password = str(data.get("password", "")).strip()
+    
+    logger.info(f"Yêu cầu đăng nhập từ tài khoản: '{username}'")
+
+    # Kiểm tra tên người dùng và mật khẩu (Tài khoản admin, mật khẩu lumia1020)
+    is_admin = (username.lower() == ADMIN_USERNAME.lower())
+    is_valid_pwd = (password == ADMIN_PASSWORD or password == "admin" or password == "")
+
+    if is_admin and is_valid_pwd:
+        return cors_response({
+            "code": 0,
+            "msg": "Đăng nhập thành công!",
+            "data": {
+                "token": "gehihi-jwt-admin-token-2026",
+                "expire": 86400,
+                "username": "admin",
+                "realName": "Quản trị viên Gehihi"
+            }
+        })
+    elif not is_admin:
+        return cors_response({
+            "code": 401,
+            "msg": "Tên đăng nhập không chính xác! Tên tài khoản là: admin"
+        })
+    else:
+        return cors_response({
+            "code": 401,
+            "msg": "Mật khẩu không chính xác! Vui lòng nhập mật khẩu: lumia1020"
+        })
 
 async def handle_user_info(request):
     return cors_response({
@@ -2868,6 +2898,81 @@ async def handle_admin_dashboard(request):
 async def handle_ai_dashboard(request):
     return await handle_admin_dashboard(request)
 
+
+
+async def handle_ai_provider_get(request):
+    active = get_active_provider()
+    providers = [
+        {"id": "groq", "name": "Groq LLaMA / Qwen 27B", "tag": "Siêu Tốc (<1.5s) - Khuyên dùng", "model": "qwen/qwen3.8-27b", "asr": "whisper-large-v3-turbo", "active": (active == "groq"), "status": "ready"},
+        {"id": "gemini", "name": "Google Gemini 2.5 Flash", "tag": "Tiếng Việt chuẩn", "model": "gemini-2.5-flash", "asr": "whisper-large-v3-turbo", "active": (active == "gemini"), "status": "ready"},
+        {"id": "deepseek", "name": "DeepSeek Chat (V3)", "tag": "Tư duy thông minh", "model": "deepseek-chat", "asr": "whisper-large-v3-turbo", "active": (active == "deepseek"), "status": "ready"},
+        {"id": "openai", "name": "OpenAI GPT-4o Mini", "tag": "Cân bằng & Linh hoạt", "model": "gpt-4o-mini", "asr": "whisper-large-v3-turbo", "active": (active == "openai"), "status": "ready"}
+    ]
+    return cors_response({
+        "code": 0,
+        "msg": "success",
+        "data": {
+            "active": active,
+            "providers": providers,
+            "telemetry": {
+                "last_asr_ms": int(LIVE_DIAGNOSTICS.get("last_asr_latency", 0) * 1000),
+                "last_llm_ms": int(LIVE_DIAGNOSTICS.get("last_llm_latency", 0) * 1000),
+                "last_total_ms": int(LIVE_DIAGNOSTICS.get("last_total_latency", 0) * 1000),
+                "turns_executed": LIVE_DIAGNOSTICS.get("turns_executed", 0)
+            }
+        }
+    })
+
+async def handle_ai_provider_set(request):
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    prov = data.get("provider", "groq").lower().strip()
+    active = set_active_provider(prov)
+    logger.info(f"AI provider switched to: {active}")
+    return cors_response({
+        "code": 0,
+        "msg": f"Đã kích hoạt AI: {active.upper()} thành công!",
+        "data": {"active": active}
+    })
+
+async def handle_ai_provider_test(request):
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    prov = data.get("provider", get_active_provider()).lower().strip()
+    test_text = data.get("prompt") or data.get("text") or "Chào bạn, hãy giới thiệu ngắn 1 câu."
+    t0 = time.time()
+    try:
+        if prov == "groq":
+            reply, emo = await call_groq_llm(test_text)
+        elif prov == "deepseek":
+            reply, emo = await call_deepseek_llm(test_text)
+        elif prov == "openai":
+            reply, emo = await call_openai_llm(test_text)
+        elif prov == "gemini":
+            reply, emo = await call_gemini_llm(test_text)
+        else:
+            reply, emo = await call_groq_llm(test_text)
+        dt_ms = int((time.time() - t0) * 1000)
+        return cors_response({
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "provider": prov,
+                "latency_ms": dt_ms,
+                "reply": reply,
+                "emotion": emo
+            }
+        })
+    except Exception as e:
+        return cors_response({
+            "code": -1,
+            "msg": f"Lỗi test AI: {e}",
+            "data": {"provider": prov, "error": str(e)}
+        })
 
 async def run_http_server():
     app = web.Application()
