@@ -1,0 +1,2641 @@
+<!DOCTYPE html><html lang="vi"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GMBOT English - Gia sư tiếng Anh</title>
+    <link rel="stylesheet" href="/english-tutor.css?v=20260719-4">
+    <script src="/english-tutor-starter-roadmap.js?v=20260719-4" defer=""></script>
+    <script src="/english-tutor.js?v=20260719-4" defer=""></script>
+
+  <link rel="stylesheet" href="/english-tutor-parent-report.css?v=20260718-2">
+
+</head>
+<body>
+    <div id="pageLoading" class="page-loading" hidden="">
+        <div class="loading-spinner"></div>
+        <div>Đang tải dữ liệu học tiếng Anh...</div>
+    </div>
+
+    <div id="app" class="app-shell">
+        <header class="topbar">
+            <div class="brand-wrap">
+                <button class="icon-button" type="button" onclick="goBackToDashboard()" aria-label="Quay lại trung tâm quản lý">←</button>
+                <div>
+                    <div class="brand">GMBOT English</div>
+                    <div class="brand-subtitle">Gia sư tiếng Anh cá nhân hóa</div>
+                </div>
+            </div>
+
+            <div class="topbar-actions">
+                <div class="device-picker-wrap">
+                    <label for="deviceSelect">Thiết bị</label>
+                    <select id="deviceSelect" onchange="onDeviceChange()" disabled="">
+        <option value="endpoint-1788747076580-giosy">330730</option>
+    </select>
+                </div>
+                <div class="user-chip">
+                    <span class="user-avatar">👤</span>
+                    <span id="currentUsername">330730</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-layout">
+            <aside class="side-nav">
+                <button class="nav-item active" data-section="today" onclick="showEnglishSection('today', this)">
+                    <span>🏠</span><span>Hôm nay</span>
+                </button>
+                <button class="nav-item" data-section="roadmap" onclick="showEnglishSection('roadmap', this)">
+                    <span>🗺️</span><span>Lộ trình</span>
+                </button>
+                <button class="nav-item" data-section="library" onclick="showEnglishSection('library', this)">
+                    <span>📚</span><span>Giáo trình</span>
+                </button>
+                <button class="nav-item" data-section="create" onclick="showEnglishSection('create', this)">
+                    <span>✍️</span><span>Tự tạo bài</span>
+                </button>
+                <button class="nav-item" data-section="report" onclick="showEnglishSection('report', this)">
+                    <span>📊</span><span>Báo cáo</span>
+                </button>
+                <button class="nav-item nav-back" onclick="goBackToDashboard()">
+                    <span>←</span><span>Về GMBOT</span>
+                </button>
+            </aside>
+
+            <section class="content-area">
+                <section id="section-today" class="page-section active">
+                    <div class="hero-card">
+                        <div class="hero-copy">
+                            <div class="eyebrow">BÀI HỌC HÔM NAY</div>
+                            <h1 id="welcomeTitle">Xin chào 330730 👋</h1>
+                            <p id="welcomeSubtitle">Trình độ hiện tại: STARTER. Hãy dành một buổi học ngắn để duy trì thói quen mỗi ngày. Sau khi học xong hãy nói "học xong rồi" để hệ thống đánh giá và lưu lại báo cáo học tập.</p>
+                            <div class="hero-actions">
+                                <button id="recommendedStartButton" class="button primary large" type="button" onclick="startRecommendedLesson()">▶ Bắt đầu bài đề xuất</button>
+                                <button id="quickReviewButton" class="button secondary large" type="button" onclick="startQuickReview()" disabled="" title="Bé hiện chưa có từ hoặc câu yếu cần ôn.">✓ Chưa có nội dung cần ôn</button>
+                            </div>
+                        </div>
+                        <div class="hero-visual">
+                            <div class="mascot">🤖</div>
+                            <div class="speech-bubble" id="heroSpeech">Ready to learn something new?</div>
+                        </div>
+                    </div>
+
+                    <div class="stats-grid">
+                        <article class="stat-card">
+                            <div class="stat-icon">🔥</div>
+                            <div class="stat-label">Chuỗi học</div>
+                            <div class="stat-value"><span id="statStreak">0</span> ngày</div>
+                        </article>
+                        <article class="stat-card">
+                            <div class="stat-icon">📚</div>
+                            <div class="stat-label">Tổng buổi học</div>
+                            <div class="stat-value" id="statSessions">0</div>
+                        </article>
+                        <article class="stat-card">
+                            <div class="stat-icon">⏱️</div>
+                            <div class="stat-label">Thời gian học</div>
+                            <div class="stat-value"><span id="statMinutes">0</span> phút</div>
+                        </article>
+                        <article class="stat-card">
+                            <div class="stat-icon">⭐</div>
+                            <div class="stat-label">Điểm trung bình</div>
+                            <div class="stat-value"><span id="statAverage">0</span>/100</div>
+                        </article>
+                    </div>
+
+                    <div class="two-column-grid">
+                        <article class="panel-card">
+                            <div class="panel-header">
+                                <div>
+                                    <div class="eyebrow">ĐỀ XUẤT CHO BẠN</div>
+                                    <h2 id="recommendationTitle">Greeting - Bài 1: Hello</h2>
+                                </div>
+                                <span id="recommendationBadge" class="pill">STARTER</span>
+                            </div>
+                            <p id="recommendationDescription" class="muted">Bài phù hợp trình độ STARTER hiện tại.</p>
+                            <div id="recommendationMeta" class="meta-row"><span class="meta-chip">🎯 Greeting</span><span class="meta-chip">📘 Bài học mới</span><span class="meta-chip">🔤 3 từ</span><span class="meta-chip">💬 3 câu</span><span class="meta-chip">⏱ 10 phút</span></div>
+                            <div class="progress-wrap">
+                                <div class="progress-head">
+                                    <span>Tiến độ học</span>
+                                    <span id="overallProgressLabel">0%</span>
+                                </div>
+                                <div class="progress-track">
+                                    <div id="overallProgressBar" class="progress-bar" style="width:0%"></div>
+                                </div>
+                            </div>
+                        </article>
+
+                        <article class="panel-card">
+                            <div class="panel-header">
+                                <div>
+                                    <div class="eyebrow">BÀI ĐANG ÁP DỤNG</div>
+                                    <h2 id="activeLessonTitle">Chưa có bài đang học</h2>
+                                </div>
+                                <span id="activeLessonStatus" class="pill neutral">Chưa bật</span>
+                            </div>
+                            <div id="activeLessonContent" class="active-content muted">Chọn một bài học hoặc tạo bài riêng để bắt đầu.</div>
+                            <div class="panel-actions">
+                                <button class="button secondary" type="button" onclick="refreshAllData()">↻ Tải lại</button>
+                                <button id="stopLessonButton" class="button danger" type="button" onclick="stopActiveLesson()" disabled="">■ Tắt bài đang học</button>
+                            </div>
+                        </article>
+                    </div>
+
+                    <article class="panel-card">
+                        <div class="panel-header">
+                            <div>
+                                <div class="eyebrow">CẦN ÔN LẠI</div>
+                                <h2>Từ và câu còn yếu</h2>
+                            </div>
+                            <button class="text-button" type="button" onclick="showEnglishSection('report')">Xem báo cáo →</button>
+                        </div>
+                        <div id="weakItems" class="tag-list"><span class="empty-text">Chưa có dữ liệu điểm yếu. Hãy hoàn thành ít nhất một buổi học để hệ thống bắt đầu theo dõi.</span></div>
+                    </article>
+                </section>
+
+
+                <section id="section-roadmap" class="page-section">
+                    <div class="section-heading roadmap-page-heading">
+                        <div>
+                            <div class="eyebrow">LỘ TRÌNH STARTER ĐẦY ĐỦ</div>
+                            <h1>10 chương · 50 bài học nền tảng</h1>
+                            <p>Học tuần tự từ chào hỏi đến kể một ngày đơn giản. Mỗi chương gồm bốn bài chính và một bài ôn tập.</p>
+                        </div>
+                    </div>
+
+                    <article class="roadmap-overview-card">
+                        <div class="roadmap-overview-main">
+                            <div class="roadmap-overview-badge">STARTER ROADMAP</div>
+                            <h2 id="roadmapNextTitle">Starter 1.1 - Hello and Hi</h2>
+                            <p id="roadmapNextDescription">👋 Chương 1: Chào hỏi · khoảng 8 phút</p>
+
+                            <div class="roadmap-overall-progress">
+                                <div class="progress-head">
+                                    <span>Tiến độ toàn lộ trình</span>
+                                    <strong id="roadmapProgressPercent">0%</strong>
+                                </div>
+                                <div class="progress-track roadmap-overall-track">
+                                    <div id="roadmapOverallProgressBar" class="progress-bar" style="width:0%"></div>
+                                </div>
+                            </div>
+
+                            <button id="roadmapContinueButton" class="button primary large" type="button" onclick="continueStarterRoadmap()" data-lesson-id="starter-1-1">▶ Bắt đầu bài tiếp theo</button>
+                        </div>
+
+                        <div class="roadmap-summary-grid">
+                            <div class="roadmap-summary-item">
+                                <span>Đã hoàn thành</span>
+                                <strong><span id="roadmapCompletedCount">0</span> bài</strong>
+                            </div>
+                            <div class="roadmap-summary-item">
+                                <span>Tổng lộ trình</span>
+                                <strong><span id="roadmapTotalCount">50</span> bài</strong>
+                            </div>
+                            <div class="roadmap-summary-item">
+                                <span>Số chương</span>
+                                <strong>10 chương</strong>
+                            </div>
+                            <div class="roadmap-summary-item">
+                                <span>Trình độ</span>
+                                <strong>Starter</strong>
+                            </div>
+                        </div>
+                    </article>
+
+                    <div id="roadmapChapterList" class="roadmap-chapter-list">
+            <article class="roadmap-chapter-card open  has-next">
+                <button class="roadmap-chapter-header" type="button" onclick="toggleRoadmapChapter('starter-chapter-1')" aria-expanded="true">
+                    <span class="roadmap-chapter-icon">👋</span>
+
+                    <span class="roadmap-chapter-heading">
+                        <span class="roadmap-chapter-eyebrow">
+                            CHƯƠNG 1 · Greetings
+                        </span>
+                        <strong>Chào hỏi</strong>
+                        <small>Chào hỏi, giới thiệu tên, hỏi thăm và tạm biệt trong những cuộc hội thoại đầu tiên.</small>
+                    </span>
+
+                    <span class="roadmap-chapter-progress-wrap">
+                        <span class="roadmap-chapter-count">
+                            0/5 bài
+                        </span>
+                        <span class="roadmap-mini-progress">
+                            <span style="width:0%"></span>
+                        </span>
+                        <span class="roadmap-chapter-toggle">−</span>
+                    </span>
+                </button>
+
+                <div class="roadmap-lesson-list">
+                    
+                <article class="roadmap-lesson-card status-next">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ★
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 1.1</span>
+                            <span class="roadmap-status-badge status-next">
+                                Bài tiếp theo
+                            </span>
+                        </div>
+
+                        <h3>Hello and Hi</h3>
+                        <p>Biết chọn lời chào phù hợp với từng thời điểm trong ngày.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 8 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button primary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-1-1')">
+                        ▶ Bắt đầu bài tiếp theo
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 1.2</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>My name is...</h3>
+                        <p>Biết giới thiệu tên và hỏi tên người đối diện.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-1-2')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 1.3</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>How are you?</h3>
+                        <p>Biết hỏi thăm và trả lời ngắn về trạng thái của mình.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-1-3')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 1.4</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Goodbye and See you</h3>
+                        <p>Biết kết thúc cuộc trò chuyện bằng lời tạm biệt tự nhiên.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 8 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-1-4')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ↻
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 1.5</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Greeting Review</h3>
+                        <p>Ôn tập toàn bộ mẫu câu chào hỏi bằng hội thoại ngắn.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 12 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            <span>🔁 Ôn chương</span>
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-1-5')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                </div>
+            </article>
+        
+            <article class="roadmap-chapter-card   ">
+                <button class="roadmap-chapter-header" type="button" onclick="toggleRoadmapChapter('starter-chapter-2')" aria-expanded="false">
+                    <span class="roadmap-chapter-icon">🎨</span>
+
+                    <span class="roadmap-chapter-heading">
+                        <span class="roadmap-chapter-eyebrow">
+                            CHƯƠNG 2 · Colors
+                        </span>
+                        <strong>Màu sắc</strong>
+                        <small>Nhận biết màu cơ bản, mô tả màu của đồ vật và nói về màu yêu thích.</small>
+                    </span>
+
+                    <span class="roadmap-chapter-progress-wrap">
+                        <span class="roadmap-chapter-count">
+                            0/5 bài
+                        </span>
+                        <span class="roadmap-mini-progress">
+                            <span style="width:0%"></span>
+                        </span>
+                        <span class="roadmap-chapter-toggle">+</span>
+                    </span>
+                </button>
+
+                <div class="roadmap-lesson-list" hidden="">
+                    
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 2.1</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Basic Colors</h3>
+                        <p>Nhận biết và gọi tên năm màu cơ bản.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 8 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-2-1')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 2.2</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>More Colors</h3>
+                        <p>Mở rộng thêm năm màu thường gặp.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 8 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-2-2')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 2.3</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Colors Around Me</h3>
+                        <p>Dùng màu để mô tả những đồ vật quen thuộc.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 10 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-2-3')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 2.4</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>My Favorite Color</h3>
+                        <p>Biết hỏi và nói về màu yêu thích.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-2-4')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ↻
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 2.5</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Colors Review</h3>
+                        <p>Ôn tập màu sắc bằng trò chơi đoán màu và mô tả đồ vật.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 12 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            <span>🔁 Ôn chương</span>
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-2-5')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                </div>
+            </article>
+        
+            <article class="roadmap-chapter-card   ">
+                <button class="roadmap-chapter-header" type="button" onclick="toggleRoadmapChapter('starter-chapter-3')" aria-expanded="false">
+                    <span class="roadmap-chapter-icon">🔢</span>
+
+                    <span class="roadmap-chapter-heading">
+                        <span class="roadmap-chapter-eyebrow">
+                            CHƯƠNG 3 · Numbers
+                        </span>
+                        <strong>Số đếm</strong>
+                        <small>Đếm từ 1 đến 10, hỏi số lượng và nói tuổi bằng câu tiếng Anh ngắn.</small>
+                    </span>
+
+                    <span class="roadmap-chapter-progress-wrap">
+                        <span class="roadmap-chapter-count">
+                            0/5 bài
+                        </span>
+                        <span class="roadmap-mini-progress">
+                            <span style="width:0%"></span>
+                        </span>
+                        <span class="roadmap-chapter-toggle">+</span>
+                    </span>
+                </button>
+
+                <div class="roadmap-lesson-list" hidden="">
+                    
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 3.1</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Numbers 1 to 5</h3>
+                        <p>Đọc và nhận biết các số từ một đến năm.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 8 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-3-1')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 3.2</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Numbers 6 to 10</h3>
+                        <p>Đọc và nhận biết các số từ sáu đến mười.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 8 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-3-2')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 3.3</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>How Many?</h3>
+                        <p>Biết hỏi và trả lời về số lượng từ một đến mười.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 10 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-3-3')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 3.4</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>How Old Are You?</h3>
+                        <p>Biết hỏi tuổi và trả lời bằng một câu đầy đủ.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-3-4')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ↻
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 3.5</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Numbers Review</h3>
+                        <p>Ôn tập số đếm bằng đếm đồ vật, hỏi số lượng và hỏi tuổi.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 12 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            <span>🔁 Ôn chương</span>
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-3-5')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                </div>
+            </article>
+        
+            <article class="roadmap-chapter-card   ">
+                <button class="roadmap-chapter-header" type="button" onclick="toggleRoadmapChapter('starter-chapter-4')" aria-expanded="false">
+                    <span class="roadmap-chapter-icon">🐾</span>
+
+                    <span class="roadmap-chapter-heading">
+                        <span class="roadmap-chapter-eyebrow">
+                            CHƯƠNG 4 · Animals
+                        </span>
+                        <strong>Con vật</strong>
+                        <small>Gọi tên vật nuôi, vật nuôi ở trang trại, động vật hoang dã và hành động của chúng.</small>
+                    </span>
+
+                    <span class="roadmap-chapter-progress-wrap">
+                        <span class="roadmap-chapter-count">
+                            0/5 bài
+                        </span>
+                        <span class="roadmap-mini-progress">
+                            <span style="width:0%"></span>
+                        </span>
+                        <span class="roadmap-chapter-toggle">+</span>
+                    </span>
+                </button>
+
+                <div class="roadmap-lesson-list" hidden="">
+                    
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 4.1</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Pets</h3>
+                        <p>Nhận biết và nói tên các vật nuôi quen thuộc.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 8 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-4-1')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 4.2</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Farm Animals</h3>
+                        <p>Nhận biết các con vật thường gặp ở trang trại.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-4-2')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 4.3</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Wild Animals</h3>
+                        <p>Nhận biết và mô tả đơn giản động vật hoang dã.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-4-3')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 4.4</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Animal Actions</h3>
+                        <p>Dùng can để nói một con vật có thể làm gì.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 10 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-4-4')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ↻
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 4.5</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Animals Review</h3>
+                        <p>Ôn tập con vật bằng câu đố, mô tả và hành động.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 12 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            <span>🔁 Ôn chương</span>
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-4-5')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                </div>
+            </article>
+        
+            <article class="roadmap-chapter-card   ">
+                <button class="roadmap-chapter-header" type="button" onclick="toggleRoadmapChapter('starter-chapter-5')" aria-expanded="false">
+                    <span class="roadmap-chapter-icon">👨‍👩‍👧‍👦</span>
+
+                    <span class="roadmap-chapter-heading">
+                        <span class="roadmap-chapter-eyebrow">
+                            CHƯƠNG 5 · Family
+                        </span>
+                        <strong>Gia đình</strong>
+                        <small>Giới thiệu thành viên trong gia đình và nói về những hoạt động gia đình quen thuộc.</small>
+                    </span>
+
+                    <span class="roadmap-chapter-progress-wrap">
+                        <span class="roadmap-chapter-count">
+                            0/5 bài
+                        </span>
+                        <span class="roadmap-mini-progress">
+                            <span style="width:0%"></span>
+                        </span>
+                        <span class="roadmap-chapter-toggle">+</span>
+                    </span>
+                </button>
+
+                <div class="roadmap-lesson-list" hidden="">
+                    
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 5.1</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>My Family</h3>
+                        <p>Gọi tên và giới thiệu các thành viên gần gũi trong gia đình.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 8 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-5-1')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 5.2</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Grandparents and Relatives</h3>
+                        <p>Mở rộng từ vựng về ông bà và họ hàng.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-5-2')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 5.3</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Who Is This?</h3>
+                        <p>Biết hỏi và trả lời người trong ảnh hoặc trong gia đình là ai.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-5-3')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 5.4</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Family Time</h3>
+                        <p>Nói về các hoạt động đơn giản cùng gia đình.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 10 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-5-4')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ↻
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 5.5</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Family Review</h3>
+                        <p>Ôn tập thành viên gia đình bằng giới thiệu và hỏi đáp.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 12 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            <span>🔁 Ôn chương</span>
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-5-5')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                </div>
+            </article>
+        
+            <article class="roadmap-chapter-card   ">
+                <button class="roadmap-chapter-header" type="button" onclick="toggleRoadmapChapter('starter-chapter-6')" aria-expanded="false">
+                    <span class="roadmap-chapter-icon">🍎</span>
+
+                    <span class="roadmap-chapter-heading">
+                        <span class="roadmap-chapter-eyebrow">
+                            CHƯƠNG 6 · Food and Drinks
+                        </span>
+                        <strong>Đồ ăn</strong>
+                        <small>Gọi tên trái cây, đồ uống, món ăn và diễn đạt thích, muốn, đói hoặc khát.</small>
+                    </span>
+
+                    <span class="roadmap-chapter-progress-wrap">
+                        <span class="roadmap-chapter-count">
+                            0/5 bài
+                        </span>
+                        <span class="roadmap-mini-progress">
+                            <span style="width:0%"></span>
+                        </span>
+                        <span class="roadmap-chapter-toggle">+</span>
+                    </span>
+                </button>
+
+                <div class="roadmap-lesson-list" hidden="">
+                    
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 6.1</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Fruits</h3>
+                        <p>Nhận biết và nói tên các loại trái cây quen thuộc.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 8 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-6-1')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 6.2</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Drinks</h3>
+                        <p>Nhận biết và gọi tên những đồ uống thường gặp.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 8 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-6-2')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 6.3</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Meals</h3>
+                        <p>Gọi tên một số món ăn cơ bản trong bữa ăn.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-6-3')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 6.4</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>I Like Food</h3>
+                        <p>Biết nói mình đói, khát, thích hoặc muốn món gì.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 10 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-6-4')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ↻
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 6.5</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Food Review</h3>
+                        <p>Ôn tập đồ ăn và đồ uống bằng hội thoại gọi món rất ngắn.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 12 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            <span>🔁 Ôn chương</span>
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-6-5')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                </div>
+            </article>
+        
+            <article class="roadmap-chapter-card   ">
+                <button class="roadmap-chapter-header" type="button" onclick="toggleRoadmapChapter('starter-chapter-7')" aria-expanded="false">
+                    <span class="roadmap-chapter-icon">🧸</span>
+
+                    <span class="roadmap-chapter-heading">
+                        <span class="roadmap-chapter-eyebrow">
+                            CHƯƠNG 7 · Toys
+                        </span>
+                        <strong>Đồ chơi</strong>
+                        <small>Gọi tên đồ chơi, nói về cách chơi, sở hữu và chia sẻ đồ chơi với bạn.</small>
+                    </span>
+
+                    <span class="roadmap-chapter-progress-wrap">
+                        <span class="roadmap-chapter-count">
+                            0/5 bài
+                        </span>
+                        <span class="roadmap-mini-progress">
+                            <span style="width:0%"></span>
+                        </span>
+                        <span class="roadmap-chapter-toggle">+</span>
+                    </span>
+                </button>
+
+                <div class="roadmap-lesson-list" hidden="">
+                    
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 7.1</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>My Toys</h3>
+                        <p>Nhận biết và giới thiệu các đồ chơi quen thuộc.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 8 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-7-1')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 7.2</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Play Actions</h3>
+                        <p>Dùng động từ đơn giản để nói cách chơi.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-7-2')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 7.3</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>My and Your Toys</h3>
+                        <p>Biết nói đồ chơi của mình và hỏi đồ chơi của bạn.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-7-3')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 7.4</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Sharing Toys</h3>
+                        <p>Thực hành lời nói lịch sự khi chơi và chia sẻ đồ chơi.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 10 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-7-4')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ↻
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 7.5</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Toys Review</h3>
+                        <p>Ôn tập đồ chơi bằng tình huống chơi cùng một người bạn.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 12 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            <span>🔁 Ôn chương</span>
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-7-5')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                </div>
+            </article>
+        
+            <article class="roadmap-chapter-card   ">
+                <button class="roadmap-chapter-header" type="button" onclick="toggleRoadmapChapter('starter-chapter-8')" aria-expanded="false">
+                    <span class="roadmap-chapter-icon">😊</span>
+
+                    <span class="roadmap-chapter-heading">
+                        <span class="roadmap-chapter-eyebrow">
+                            CHƯƠNG 8 · Feelings
+                        </span>
+                        <strong>Cảm xúc</strong>
+                        <small>Nhận biết cảm xúc, hỏi người khác cảm thấy thế nào và nói cách bình tĩnh hoặc tìm trợ giúp.</small>
+                    </span>
+
+                    <span class="roadmap-chapter-progress-wrap">
+                        <span class="roadmap-chapter-count">
+                            0/5 bài
+                        </span>
+                        <span class="roadmap-mini-progress">
+                            <span style="width:0%"></span>
+                        </span>
+                        <span class="roadmap-chapter-toggle">+</span>
+                    </span>
+                </button>
+
+                <div class="roadmap-lesson-list" hidden="">
+                    
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 8.1</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Basic Feelings</h3>
+                        <p>Nhận biết và nói năm cảm xúc cơ bản.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 8 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-8-1')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 8.2</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>More Feelings</h3>
+                        <p>Mở rộng từ vựng về trạng thái và cảm xúc.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-8-2')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 8.3</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>How Do You Feel?</h3>
+                        <p>Biết hỏi cảm xúc và trả lời ngắn có lý do đơn giản.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-8-3')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 8.4</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Feel Better</h3>
+                        <p>Biết một số cách đơn giản để bình tĩnh và nhờ trợ giúp.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 10 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-8-4')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ↻
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 8.5</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Feelings Review</h3>
+                        <p>Ôn tập cảm xúc bằng nhận diện tình huống và trả lời ngắn.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 12 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            <span>🔁 Ôn chương</span>
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-8-5')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                </div>
+            </article>
+        
+            <article class="roadmap-chapter-card   ">
+                <button class="roadmap-chapter-header" type="button" onclick="toggleRoadmapChapter('starter-chapter-9')" aria-expanded="false">
+                    <span class="roadmap-chapter-icon">🧍</span>
+
+                    <span class="roadmap-chapter-heading">
+                        <span class="roadmap-chapter-eyebrow">
+                            CHƯƠNG 9 · My Body
+                        </span>
+                        <strong>Cơ thể</strong>
+                        <small>Gọi tên các bộ phận cơ thể, thực hiện chỉ dẫn vận động và diễn đạt đau hoặc không khỏe.</small>
+                    </span>
+
+                    <span class="roadmap-chapter-progress-wrap">
+                        <span class="roadmap-chapter-count">
+                            0/5 bài
+                        </span>
+                        <span class="roadmap-mini-progress">
+                            <span style="width:0%"></span>
+                        </span>
+                        <span class="roadmap-chapter-toggle">+</span>
+                    </span>
+                </button>
+
+                <div class="roadmap-lesson-list" hidden="">
+                    
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 9.1</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>My Face</h3>
+                        <p>Nhận biết các bộ phận chính trên đầu và khuôn mặt.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 8 phút</span>
+                            <span>🔤 6 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-9-1')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 9.2</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Arms and Legs</h3>
+                        <p>Nhận biết tay, chân và các bộ phận liên quan.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 8 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-9-2')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 9.3</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Move Your Body</h3>
+                        <p>Nghe hiểu và thực hiện các chỉ dẫn vận động đơn giản.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-9-3')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 9.4</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>I Do Not Feel Well</h3>
+                        <p>Biết diễn đạt đau hoặc không khỏe bằng câu rất ngắn.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 10 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-9-4')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ↻
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 9.5</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>Body Review</h3>
+                        <p>Ôn tập cơ thể qua trò chơi làm theo chỉ dẫn và hội thoại sức khỏe.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 12 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            <span>🔁 Ôn chương</span>
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-9-5')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                </div>
+            </article>
+        
+            <article class="roadmap-chapter-card   ">
+                <button class="roadmap-chapter-header" type="button" onclick="toggleRoadmapChapter('starter-chapter-10')" aria-expanded="false">
+                    <span class="roadmap-chapter-icon">🌞</span>
+
+                    <span class="roadmap-chapter-heading">
+                        <span class="roadmap-chapter-eyebrow">
+                            CHƯƠNG 10 · Daily Actions
+                        </span>
+                        <strong>Hoạt động hằng ngày</strong>
+                        <small>Nói về các hoạt động buổi sáng, ở trường, sau giờ học và buổi tối.</small>
+                    </span>
+
+                    <span class="roadmap-chapter-progress-wrap">
+                        <span class="roadmap-chapter-count">
+                            0/5 bài
+                        </span>
+                        <span class="roadmap-mini-progress">
+                            <span style="width:0%"></span>
+                        </span>
+                        <span class="roadmap-chapter-toggle">+</span>
+                    </span>
+                </button>
+
+                <div class="roadmap-lesson-list" hidden="">
+                    
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 10.1</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>My Morning</h3>
+                        <p>Nói theo thứ tự một số hoạt động buổi sáng.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-10-1')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 10.2</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>At School</h3>
+                        <p>Nói về những hoạt động cơ bản ở trường.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 4 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-10-2')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 10.3</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>After School</h3>
+                        <p>Nói về các hoạt động sau giờ học.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-10-3')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ○
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 10.4</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>My Evening</h3>
+                        <p>Nói về những hoạt động vào buổi tối trước khi ngủ.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 9 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-10-4')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                <article class="roadmap-lesson-card status-pending">
+                    <div class="roadmap-lesson-status-icon" aria-hidden="true">
+                        ↻
+                    </div>
+
+                    <div class="roadmap-lesson-main">
+                        <div class="roadmap-lesson-topline">
+                            <span class="roadmap-lesson-code">Starter 10.5</span>
+                            <span class="roadmap-status-badge status-pending">
+                                Chưa học
+                            </span>
+                        </div>
+
+                        <h3>My Day - Final Review</h3>
+                        <p>Ôn tập cuối lộ trình bằng cách kể một ngày đơn giản theo trình tự.</p>
+
+                        <div class="roadmap-lesson-meta">
+                            <span>⏱ 15 phút</span>
+                            <span>🔤 5 từ</span>
+                            <span>💬 5 câu</span>
+                            <span>🔁 Ôn chương</span>
+                        </div>
+                    </div>
+
+                    <button class="button secondary roadmap-lesson-button" type="button" onclick="startRoadmapLesson('starter-10-5')">
+                        Bắt đầu bài
+                    </button>
+                </article>
+            
+                </div>
+            </article>
+        </div>
+                </section>
+
+                <section id="section-library" class="page-section">
+                    <div class="section-heading">
+                        <div>
+                            <div class="eyebrow">THƯ VIỆN HỌC TẬP</div>
+                            <h1>Chọn giáo trình hoặc tình huống nhập vai</h1>
+                            <p>Chọn bài phù hợp rồi bấm áp dụng. Sau đó gọi Sophia hoặc nói Xin chào để bắt đầu trên robot.</p>
+                        </div>
+                    </div>
+
+                    <div class="filter-bar">
+                        <div class="segmented-control">
+                            <button id="modeLessonButton" class="segment active" type="button" onclick="setLibraryMode('lesson')">📘 Bài học</button>
+                            <button id="modeRoleplayButton" class="segment" type="button" onclick="setLibraryMode('roleplay')">🎭 Nhập vai</button>
+                        </div>
+                        <select id="libraryLevelFilter" onchange="renderTemplateLibrary()">
+                            <option value="">Tất cả trình độ</option>
+                            <option value="starter">Starter - mới bắt đầu</option>
+                            <option value="a1">A1 - cơ bản</option>
+                            <option value="a2">A2 - sơ cấp</option>
+                            <option value="b1">B1 - trung cấp</option>
+                            <option value="b2">B2 - trung cấp cao</option>
+                        </select>
+                        <input id="librarySearch" type="search" placeholder="Tìm theo tên hoặc chủ đề..." oninput="renderTemplateLibrary()">
+                    </div>
+
+                    <div class="library-layout">
+                        <div id="templateGrid" class="template-grid">
+            <button type="button" class="template-card " onclick="selectTemplate('31618393-f19b-47d9-8966-043ad408cec6')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">A1</span>
+                </div>
+                <h3>Daily Routine - Bài 1: My day</h3>
+                <p>Dạy theo hoạt động hằng ngày. Câu phải ngắn, dễ nói, có ngữ cảnh.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Daily Routine</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('f670edd2-79a8-4af6-a4e4-a79adbecffaa')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">A1</span>
+                </div>
+                <h3>School - Bài 2: In class</h3>
+                <p>Nói chậm, rõ. Không giải thích ngữ pháp dài.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 School</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('1cbde992-0230-4e0c-9213-6b59a633ca5a')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">A1</span>
+                </div>
+                <h3>Toys - Bài 2: Favorite toy</h3>
+                <p>Có thể liên hệ robot GMbot để bé hứng thú.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Toys</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('8aeb6548-02d6-4306-9bcf-e57b5af5dda8')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Animals - Bài 1</h3>
+                <p>Không yêu cầu bé nói từ đơn lẻ cat/dog/bird. Luôn yêu cầu bé nói cả câu: I see a cat, I see a dog.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Animals</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('0046b27a-a0a1-481e-85ef-42cc3b12830b')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Animals - Bài 1: Pets</h3>
+                <p>Không yêu cầu bé nói riêng cat, dog, bird. Hãy yêu cầu bé nói cả câu: I see a cat.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Animals</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('3fe442e0-e90d-48de-9531-581be7a87cf8')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Animals - Bài 2: Farm animals</h3>
+                <p>Dạy vui vẻ, có thể giả tiếng con vật. Luôn luyện bằng câu đầy đủ.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Animals</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('2ac509c8-718e-4353-9926-5de19cfe72b9')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Body - Bài 1: Body parts</h3>
+                <p>Có thể hướng dẫn bé chạm vào bộ phận cơ thể khi nói câu.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Body</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('81385fcc-b4f9-4038-8965-6b2feea77e73')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Colors - Bài 1: Basic colors</h3>
+                <p>Không yêu cầu bé nói riêng red, blue, yellow. Luôn yêu cầu bé nói câu It is...</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Colors</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('5a3c272b-b573-4047-b190-053c501c1408')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Colors - Bài 1</h3>
+                <p>Không yêu cầu bé nói riêng red/blue/yellow. Luôn yêu cầu bé nói cả câu: It is red.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Colors</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('f953b2d1-bc62-467a-a946-39fbce315082')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Colors - Bài 2: More colors</h3>
+                <p>Dạy màu sắc bằng câu ngắn có ngữ cảnh. Có thể hỏi: What color is it?</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Colors</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('6ac23a23-2254-4ebd-8ea2-22411a53062b')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Family - Bài 1: My family</h3>
+                <p>Không hỏi từ đơn. Hãy luyện câu This is my...</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Family</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('28a9e8bf-d40e-40f6-8f31-b5e67b7a42b9')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Family - Bài 2: Brother and sister</h3>
+                <p>Dạy nhẹ nhàng, gần gũi với gia đình của bé.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Family</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('5423c574-0a8d-4f3d-8c62-2befa5a10101')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Feelings - Bài 1: I am happy</h3>
+                <p>Hỏi cảm xúc bằng câu ngắn. Nếu bé trả lời tiếng Việt, gợi ý 2 câu tiếng Anh.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Feelings</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('e5939b93-06b8-4cc1-985d-7dac8c486658')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Food - Bài 1</h3>
+                <p>Không yêu cầu bé nói riêng milk/rice/chicken. Luôn yêu cầu bé nói cả câu: I want milk hoặc I want chicken.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Food</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 4</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('1ac1800b-f6f3-41c2-bc5c-ae8af5c2ae00')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Food - Bài 1: Basic food</h3>
+                <p>Không yêu cầu bé nói riêng milk, rice, chicken. Hãy yêu cầu bé nói cả câu: I want milk.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Food</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('b88d48b4-27f7-4870-a9c5-570a9ee823b8')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Food - Bài 2: Fruits</h3>
+                <p>Luyện câu I want... Nếu bé chỉ nói apple, hãy sửa nhẹ thành I want an apple.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Food</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('cfe0da39-4b23-43c0-887e-e3a5098b14c3')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Greeting - Bài 1: Hello</h3>
+                <p>Không yêu cầu bé nói riêng hello, hi, bye. Hãy yêu cầu bé nói cả câu ngắn như Hello, Sophia. Mỗi lượt chỉ hỏi 1 câu.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Greeting</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('a18f6e77-7a6d-4c60-8f7a-6cd7712adfd7')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Greeting - Bài 1</h3>
+                <p>Không yêu cầu bé nói riêng hi hoặc bye. Hãy yêu cầu bé nói: Hello Sophia hoặc Hi Sophia.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Greeting</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 4</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('2fe4202d-e2f9-4ab9-a7c4-fff7544b76ca')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Greeting - Bài 2: How are you</h3>
+                <p>Luyện chào hỏi đơn giản. Nếu bé bí, gợi ý: I am fine hoặc I am happy.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Greeting</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('e479177a-ca63-449c-b3a4-74d891dd5714')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Greeting - Bài 2</h3>
+                <p>Không yêu cầu bé nói riêng hi hoặc bye. Hãy yêu cầu bé nói: Hello Sophia hoặc Hi Sophia.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Greeting</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 4</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('3ed5b784-f3d6-4af6-9cfa-10ee269f2dab')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Numbers - Bài 1: One to five</h3>
+                <p>Không bắt bé nói số đơn lẻ quá nhiều. Hãy dùng câu I see one, I see two.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Numbers</span>
+                    <span class="meta-chip">🔤 5</span>
+                    <span class="meta-chip">💬 5</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('a64d5829-2d3e-4333-9330-eaf17c196d62')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Numbers - Bài 2: Six to ten</h3>
+                <p>Luyện số bằng câu ngắn. Mỗi lượt chỉ hỏi 1 câu.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Numbers</span>
+                    <span class="meta-chip">🔤 5</span>
+                    <span class="meta-chip">💬 5</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('44376f2c-81a9-472f-80f4-e9b89a39407c')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>School - Bài 1: School things</h3>
+                <p>Luyện đồ dùng học tập bằng câu This is my...</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 School</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('5b6defd6-01c5-4fd0-86e7-ea6c279410d6')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Toys - Bài 1: My toys</h3>
+                <p>Luyện câu I like the... Không bắt bé nói từ đơn.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Toys</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        
+            <button type="button" class="template-card " onclick="selectTemplate('d30dc541-abbe-4173-82e8-e03a864aa870')">
+                <div class="template-card-top">
+                    <div class="template-card-icon">📘</div>
+                    <span class="pill">STARTER</span>
+                </div>
+                <h3>Weather - Bài 1: Weather words</h3>
+                <p>Luyện câu It is... Không yêu cầu bé nói riêng sunny/rainy/windy.</p>
+                <div class="meta-row">
+                    <span class="meta-chip">🎯 Weather</span>
+                    <span class="meta-chip">🔤 3</span>
+                    <span class="meta-chip">💬 3</span>
+                </div>
+            </button>
+        </div>
+                        <aside id="templateDetail" class="detail-card">
+            <div class="empty-detail">
+                <div class="empty-icon">📚</div>
+                <h3>Chọn một giáo trình</h3>
+                <p>Thông tin chi tiết sẽ hiển thị tại đây.</p>
+            </div>
+        </aside>
+                    </div>
+                </section>
+
+                <section id="section-create" class="page-section">
+                    <div class="section-heading">
+                        <div>
+                            <div class="eyebrow">TẠO GIÁO TRÌNH RIÊNG</div>
+                            <h1>Tạo bài học phù hợp với người học</h1>
+                            <p>Nhập nội dung mục tiêu. Hệ thống sẽ đưa bài này vào robot ngay sau khi lưu.</p>
+                        </div>
+                    </div>
+
+                    <div class="form-card">
+                        <div class="form-grid two-cols">
+                            <div class="form-group">
+                                <label for="customTitle">Tiêu đề bài học</label>
+                                <input id="customTitle" maxlength="100" placeholder="Ví dụ: Food - Bài 1">
+                            </div>
+                            <div class="form-group">
+                                <label for="customLevel">Trình độ</label>
+                                <select id="customLevel" onchange="renderTopicOptions()">
+                                    <option value="starter">Starter - mới bắt đầu</option>
+                                    <option value="a1">A1 - cơ bản</option>
+                                    <option value="a2">A2 - sơ cấp</option>
+                                    <option value="b1">B1 - trung cấp</option>
+                                    <option value="b2">B2 - trung cấp cao</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="customTopic">Chủ đề</label>
+                            <select id="customTopic"><option value="Greeting">Greeting - Chào hỏi</option><option value="Colors">Colors - Màu sắc</option><option value="Numbers">Numbers - Số đếm</option><option value="Animals">Animals - Con vật</option><option value="Food">Food - Đồ ăn</option><option value="Family">Family - Gia đình</option><option value="Toys">Toys - Đồ chơi</option><option value="Feelings">Feelings - Cảm xúc</option></select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="customWords">Từ mục tiêu, cách nhau bằng dấu phẩy</label>
+                            <input id="customWords" placeholder="Ví dụ: apple, banana, milk">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="customPhrases">Câu mẫu, mỗi dòng một câu</label>
+                            <textarea id="customPhrases" rows="7" placeholder="I like apples.
+I want milk.
+Thank you."></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="customNote">Ghi chú cho AI gia sư</label>
+                            <textarea id="customNote" rows="5" placeholder="Ví dụ: Bé thích khủng long, hãy dùng ví dụ vui nhộn. Bé mới học nên nói chậm và hỏi từng câu."></textarea>
+                        </div>
+
+                        <div class="form-actions">
+                            <button class="button primary large" type="button" onclick="activateCustomLesson()">🚀 Tạo và áp dụng bài học</button>
+                            <button class="button secondary large" type="button" onclick="fillExampleLesson()">✨ Điền bài mẫu</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="section-report" class="page-section">
+                    <div class="section-heading report-heading">
+                        <div>
+                            <div class="eyebrow">BÁO CÁO PHỤ HUYNH</div>
+                            <h1>Tiến độ học tiếng Anh</h1>
+                            <p>Theo dõi số buổi học, điểm số, thời lượng và những nội dung cần ôn lại.</p>
+                        </div>
+                        <button class="button secondary" type="button" onclick="loadEnglishReport(true)">↻ Tải báo cáo mới</button>
+                    </div>
+
+                    <div class="stats-grid report-stats">
+                        <article class="stat-card accent-green">
+                            <div class="stat-label">Đã hoàn thành</div>
+                            <div class="stat-value" id="reportCompleted">0</div>
+                            <div class="stat-foot">buổi học</div>
+                        </article>
+                        <article class="stat-card accent-yellow">
+                            <div class="stat-label">Đang học dở</div>
+                            <div class="stat-value" id="reportStarted">0</div>
+                            <div class="stat-foot">buổi học</div>
+                        </article>
+                        <article class="stat-card accent-red">
+                            <div class="stat-label">Bỏ dở</div>
+                            <div class="stat-value" id="reportAbandoned">0</div>
+                            <div class="stat-foot">buổi học</div>
+                        </article>
+                        <article class="stat-card accent-blue">
+                            <div class="stat-label">Điểm trung bình</div>
+                            <div class="stat-value"><span id="reportAverage">0</span>/100</div>
+                            <div class="stat-foot">các buổi đã chấm</div>
+                        </article>
+                    </div>
+
+                    <div class="two-column-grid report-grid">
+                        <article class="panel-card">
+                            <div class="panel-header">
+                                <div>
+                                    <div class="eyebrow">VỐN TỪ</div>
+                                    <h2>Từ đã biết</h2>
+                                </div>
+                                <span id="knownWordCount" class="pill">0 từ</span>
+                            </div>
+                            <div id="knownWordList" class="tag-list"><span class="empty-text">Chưa có từ nào được ghi nhận là đã biết.</span></div>
+                        </article>
+
+                        <article class="panel-card">
+                            <div class="panel-header">
+                                <div>
+                                    <div class="eyebrow">CẦN LUYỆN THÊM</div>
+                                    <h2>Từ và câu yếu</h2>
+                                </div>
+                                <span id="weakWordCount" class="pill warning">0 mục</span>
+                            </div>
+                            <div id="reportWeakList" class="tag-list"><span class="empty-text">Chưa có nội dung cần ôn thêm.</span></div>
+                        </article>
+                    </div>
+
+                    <article class="panel-card">
+                        <div class="panel-header">
+                            <div>
+                                <div class="eyebrow">LỊCH SỬ GẦN ĐÂY</div>
+                                <h2>Các buổi học mới nhất</h2>
+                            </div>
+                        </div>
+                        <div id="sessionList" class="session-list"><div class="empty-state">Chưa có lịch sử học tiếng Anh.</div></div>
+
+                        <div id="sessionPagination" class="session-pagination" hidden="">
+                            <button id="sessionPrevButton" class="button secondary session-page-button" type="button" onclick="changeSessionPage(-1)">
+                                ← 3 buổi mới hơn
+                            </button>
+
+                            <span id="sessionPageInfo" class="session-page-info">
+                                Đang xem 1-3
+                            </span>
+
+                            <button id="sessionNextButton" class="button secondary session-page-button" type="button" onclick="changeSessionPage(1)">
+                                3 buổi cũ hơn →
+                            </button>
+                        </div>
+                    </article>
+                
+
+                    <section id="parent-report-section" class="tutor-panel parent-report-section">
+                      <div class="parent-report-header">
+                        <div>
+                          <h2>Báo cáo học tập dành cho phụ huynh</h2>
+
+                          <p class="parent-report-description">
+                            Tổng hợp tiến độ, điểm số, thời gian học,
+                            nội dung đã nắm được và nội dung cần ôn.
+                          </p>
+                        </div>
+
+                        <div class="parent-report-header-actions">
+                          <button id="parent-report-refresh" class="parent-report-refresh" type="button">
+                            Làm mới báo cáo
+                          </button>
+
+                          <span id="parent-report-status" class="parent-report-status">Đã cập nhật lúc 17:09</span>
+                        </div>
+                      </div>
+
+                      <div class="parent-report-stat-grid">
+                        <article class="parent-report-stat-card">
+                          <span class="parent-report-stat-label">
+                            Tổng số buổi
+                          </span>
+
+                          <strong id="parent-report-total-sessions" class="parent-report-stat-value">0</strong>
+                        </article>
+
+                        <article class="parent-report-stat-card">
+                          <span class="parent-report-stat-label">
+                            Tổng số phút
+                          </span>
+
+                          <strong id="parent-report-total-minutes" class="parent-report-stat-value">0</strong>
+                        </article>
+
+                        <article class="parent-report-stat-card">
+                          <span class="parent-report-stat-label">
+                            Điểm trung bình
+                          </span>
+
+                          <strong id="parent-report-average-score" class="parent-report-stat-value">Chưa có</strong>
+                        </article>
+
+                        <article class="parent-report-stat-card">
+                          <span class="parent-report-stat-label">
+                            Chuỗi ngày học
+                          </span>
+
+                          <strong id="parent-report-streak" class="parent-report-stat-value">0 ngày</strong>
+                        </article>
+
+                        <article class="parent-report-stat-card">
+                          <span class="parent-report-stat-label">
+                            Từ và câu đã biết
+                          </span>
+
+                          <strong id="parent-report-known-count" class="parent-report-stat-value">0</strong>
+                        </article>
+
+                        <article class="parent-report-stat-card">
+                          <span class="parent-report-stat-label">
+                            Từ và câu cần ôn
+                          </span>
+
+                          <strong id="parent-report-weak-count" class="parent-report-stat-value">0</strong>
+                        </article>
+                      </div>
+
+                      <div class="parent-report-two-columns">
+                        <article class="parent-report-card">
+                          <h3>Điểm 10 buổi gần nhất</h3>
+
+                          <p class="parent-report-card-description">
+                            Điểm được quy đổi về thang điểm 10.
+                          </p>
+
+                          <div id="parent-report-score-chart" class="parent-report-chart"><div class="parent-report-empty">Chưa có dữ liệu điểm.</div></div>
+                        </article>
+
+                        <article class="parent-report-card">
+                          <h3>Thời gian học 10 buổi gần nhất</h3>
+
+                          <p class="parent-report-card-description">
+                            Thời lượng được hiển thị theo số phút.
+                          </p>
+
+                          <div id="parent-report-time-chart" class="parent-report-chart"><div class="parent-report-empty">Chưa có dữ liệu thời gian học.</div></div>
+                        </article>
+                      </div>
+
+                      <div class="parent-report-two-columns">
+                        <article class="parent-report-card">
+                          <h3>Nội dung cần ôn</h3>
+
+                          <p class="parent-report-card-description">
+                            Danh sách lấy từ weak_words và weak_phrases.
+                          </p>
+
+                          <div id="parent-report-weak-items" class="parent-report-weak-items"><div class="parent-report-empty">Hiện chưa có từ hoặc câu cần ôn.</div></div>
+                        </article>
+
+                        <article class="parent-report-card">
+                          <h3>Nhận xét dành cho phụ huynh</h3>
+
+                          <p class="parent-report-card-description">
+                            Nhận xét được tạo tự động từ kết quả học tập.
+                          </p>
+
+                          <div id="parent-report-comment" class="parent-report-comment">Chưa có đủ dữ liệu để nhận xét. Hãy hoàn thành ít nhất một buổi học để hệ thống bắt đầu theo dõi tiến bộ.</div>
+                        </article>
+                      </div>
+
+                      <article class="parent-report-card">
+                        <h3>Lịch sử các buổi học</h3>
+
+                        <p class="parent-report-card-description">
+                          Hiển thị tối đa 20 buổi gần nhất.
+                        </p>
+
+                        <div class="parent-report-table-wrapper">
+                          <table class="parent-report-table">
+                            <thead>
+                              <tr>
+                                <th>Thời gian</th>
+                                <th>Bài học</th>
+                                <th>Chế độ</th>
+                                <th>Điểm</th>
+                                <th>Thời lượng</th>
+                              </tr>
+                            </thead>
+
+                            <tbody id="parent-report-history-body">
+        <tr>
+          <td colspan="5" class="parent-report-empty">
+            Chưa có lịch sử buổi học.
+          </td>
+        </tr>
+      </tbody>
+                          </table>
+                        </div>
+                      </article>
+                    </section>
+                </section>
+            </section>
+        
+
+
+</main>
+
+        <nav class="mobile-nav">
+            <button class="mobile-nav-item active" data-section="today" onclick="showEnglishSection('today', this)">🏠<span>Hôm nay</span></button>
+            <button class="mobile-nav-item" data-section="roadmap" onclick="showEnglishSection('roadmap', this)">🗺️<span>Lộ trình</span></button>
+            <button class="mobile-nav-item" data-section="library" onclick="showEnglishSection('library', this)">📚<span>Giáo trình</span></button>
+            <button class="mobile-nav-item" data-section="create" onclick="showEnglishSection('create', this)">✍️<span>Tạo bài</span></button>
+            <button class="mobile-nav-item" data-section="report" onclick="showEnglishSection('report', this)">📊<span>Báo cáo</span></button>
+        </nav>
+    </div>
+
+    <div id="toast" class="toast show success" role="status" aria-live="polite">Đã tải dữ liệu mới nhất.</div>
+
+    <div id="confirmModal" class="modal-overlay" hidden="">
+        <div class="modal-card">
+            <div class="modal-icon">⚠️</div>
+            <h3 id="confirmTitle">Xác nhận</h3>
+            <p id="confirmMessage">Bạn có chắc chắn muốn thực hiện thao tác này?</p>
+            <div class="modal-actions">
+                <button class="button secondary" type="button" onclick="closeConfirmModal(false)">Hủy</button>
+                <button id="confirmActionButton" class="button danger" type="button" onclick="closeConfirmModal(true)">Xác nhận</button>
+            </div>
+        </div>
+    </div>
+
+  <script src="/english-tutor-parent-report.js?v=20260718-2" defer=""></script>
+
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495" integrity="sha512-iIg7k2xntmwu6/uSb5tpc/hySgZc4eoL31yB29W6tJFo2akwjPWcEqnCEdJvGexCL0KEQwVYv5BlowfhVz26hg==" data-cf-beacon="{&quot;version&quot;:&quot;2024.11.0&quot;,&quot;token&quot;:&quot;99b40095bfdc474d964efd0124cdc7c9&quot;,&quot;r&quot;:1,&quot;spa&quot;:2}" crossorigin="anonymous"></script>
+
+
+</body></html>

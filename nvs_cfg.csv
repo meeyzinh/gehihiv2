@@ -1,0 +1,7 @@
+key,type,encoding,value
+board,namespace,,
+uuid,data,string,0a12eb51-46c3-48a6-a2a2-539bf63e1669
+wifi,namespace,,
+ssid,data,string,CMCCS - USER
+password,data,string,CMC@1234!@#$
+ota_url,data,string,https://excerpt-fundamental-fairly-mason.trycloudflare.com/xiaozhi/ota/

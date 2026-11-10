@@ -15,11 +15,3 @@ services:
         value: https://gehihiv2.onrender.com
       - key: WEBSOCKET_URL
         value: wss://gehihiv2.onrender.com/xiaozhi/v1/
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: GROQ_API_KEY
-        sync: false
-      - key: DEEPSEEK_API_KEY
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false

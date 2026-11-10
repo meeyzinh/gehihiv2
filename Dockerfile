@@ -1,59 +1,34 @@
 # ===================================================
-# Gehihi Server - Dockerfile cho Render.com & Production
-# Tích hợp Web Dashboard (Tiếng Việt) + Dynamic Engine (OTA & WebSocket)
+# Gehihiv2 Server - Dockerfile cho Render.com (Free Tier 512MB RAM)
+# Tích hợp FastAPI + WebSocket + Jinja2 Web Dashboard + YouTube Music (FFmpeg & Opus)
 # ===================================================
 
-# Giai đoạn 1: Build Vue Web Dashboard (dùng node:18 Debian glibc tiêu chuẩn)
-FROM node:18 AS web-builder
-WORKDIR /app
-ENV NODE_OPTIONS="--max-old-space-size=2048"
-
-COPY main/manager-web/package*.json ./
-RUN npm install
-
-COPY main/manager-web .
-RUN npm run build
-
-# Giai đoạn 2: Runtime Container (Debian Bookworm với Python 3.11, Nginx, FFmpeg, Libopus đầy đủ)
 FROM python:3.11-slim-bookworm
 
-# Cài đặt Nginx, FFmpeg, Libopus
+# Cài đặt curl, FFmpeg và Libopus cho stream nhạc YouTube
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        nginx \
-        bash \
         curl \
         ffmpeg \
         libopus0 \
         libopus-dev \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /run/nginx /var/log/nginx /var/tmp/nginx /etc/nginx/conf.d /app
+    && mkdir -p /app
 
-# Cài đặt dependencies cho Dynamic Engine (Hỗ trợ AI Gemini, Groq, DeepSeek, OpenAI, EdgeTTS, Opus)
-RUN pip install --no-cache-dir \
-    aiohttp \
-    websockets \
-    pyjwt \
-    "edge-tts>=7.3.1" \
-    opuslib-next \
-    requests
+WORKDIR /app
 
-# Cấu hình Nginx
-COPY docs/docker/nginx.conf /etc/nginx/nginx.conf
+# Cài đặt Python dependencies
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Sao chép Frontend Web Dashboard đã build
-COPY --from=web-builder /app/dist /usr/share/nginx/html
+# Sao chép toàn bộ mã nguồn
+COPY . /app/
 
-# Sao chép Dynamic Backend (OTA + WebSocket + Fallback Dashboard API)
-COPY main/dynamic_server.py /app/dynamic_server.py
+# Biến môi trường mặc định (Render tự truyền PORT động)
+ENV PORT=10000
+ENV HOST=0.0.0.0
+ENV PYTHONUNBUFFERED=1
 
-# Sao chép Firmware nhị phân phục vụ tải về và cập nhật OTA
-COPY firmware /app/firmware
+EXPOSE 10000
 
-# Sao chép và cấp quyền script khởi động
-COPY docs/docker/start.sh /start.sh
-RUN chmod +x /start.sh
-
-# Cổng mặc định (Render sẽ inject $PORT động)
-EXPOSE 8002
-
-CMD ["/start.sh"]
+# Khởi chạy server
+CMD ["python", "server.py"]

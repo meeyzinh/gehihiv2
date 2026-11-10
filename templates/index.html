@@ -1,0 +1,2972 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TRUNG TÂM QUẢN LÝ GMBOT AI - Điều khiển Robot ESP32 Xiaozhi</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #0b1f3d;
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+    }
+
+    /* SCROLLBAR TỐI ƯU */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2563eb; border-radius: 10px; }
+
+    /* SIDEBAR BÊN TRÁI */
+    .sidebar {
+      width: 250px;
+      background: #0b1220;
+      position: fixed;
+      top: 0; bottom: 0; left: 0;
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .user-box {
+      padding: 18px 16px;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .user-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .user-device {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 3px;
+    }
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      margin-top: 6px;
+      color: #4ade80;
+    }
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #16a34a;
+      box-shadow: 0 0 8px #22c55e;
+      display: inline-block;
+    }
+    .vip-pill {
+      display: inline-block;
+      background: #fbbf24;
+      color: #0f172a;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 20px;
+      margin-top: 6px;
+      box-shadow: 0 0 10px rgba(251, 191, 36, 0.4);
+    }
+
+    /* MENU TABS */
+    .menu {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 8px;
+    }
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 14px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      color: #94a3b8;
+      cursor: pointer;
+      margin-bottom: 4px;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+    .menu-item:hover {
+      background: rgba(255, 255, 255, 0.06);
+      color: #ffffff;
+    }
+    .menu-item.active {
+      background: #13294b;
+      color: #60a5fa;
+      font-weight: 700;
+      border-left: 3px solid #3b82f6;
+    }
+
+    .menu.bottom {
+      flex: none;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 10px 8px;
+      font-size: 12px;
+    }
+    .menu.bottom .menu-item {
+      padding: 8px 12px;
+      font-size: 12.5px;
+    }
+    .menu-item.logout {
+      color: #f87171;
+    }
+    .menu-item.logout:hover {
+      background: rgba(239, 68, 68, 0.15);
+      color: #fca5a5;
+    }
+
+    /* MAIN CONTENT BÊN PHẢI */
+    .main-content {
+      margin-left: 250px;
+      flex: 1;
+      padding: 20px 28px;
+      box-sizing: border-box;
+      max-width: 1400px;
+    }
+
+    /* TOPBAR */
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12.5px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+    .badge.connected { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+    .badge.offline { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+
+    /* CARD CHÍNH */
+    .card {
+      background: #13294b;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+    }
+    .card-title {
+      margin: 0 0 16px 0;
+      font-size: 19px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #ffffff;
+    }
+
+    /* VOICE HINT */
+    .voice-hint {
+      padding: 14px 16px;
+      border-radius: 10px;
+      background: rgba(59, 130, 246, 0.10);
+      border: 1px solid rgba(96, 165, 250, 0.22);
+      color: #dbeafe;
+      font-size: 13.5px;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    .voice-keyword {
+      color: #4ade80;
+      font-weight: 700;
+    }
+
+    /* FORMS */
+    .form-group {
+      margin-bottom: 18px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 13.5px;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 11px 14px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #0f2140;
+      color: #ffffff;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      font-family: inherit;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+    }
+    textarea {
+      resize: vertical;
+      line-height: 1.5;
+    }
+
+    /* BUTTONS */
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13.5px;
+      transition: all 0.2s;
+    }
+    button.primary {
+      background: #2563eb;
+      color: #ffffff;
+    }
+    button.primary:hover {
+      background: #1d4ed8;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+    button.secondary {
+      background: #334155;
+      color: #e2e8f0;
+    }
+    button.secondary:hover {
+      background: #475569;
+    }
+    button.danger {
+      background: #ef4444;
+      color: #ffffff;
+    }
+    button.danger:hover {
+      background: #dc2626;
+    }
+    button.success {
+      background: #16a34a;
+      color: #ffffff;
+    }
+    button.success:hover {
+      background: #15803d;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .action-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .full-width {
+      width: 100%;
+    }
+
+    /* SUB TABS TRONG CẤU HÌNH GMBOT */
+    .xiaozhi-config-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      background: #0f2140;
+      padding: 4px;
+      border-radius: 10px;
+    }
+    .xiaozhi-config-tab-btn {
+      flex: 1;
+      padding: 9px;
+      border-radius: 8px;
+      background: transparent;
+      color: #94a3b8;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .xiaozhi-config-tab-btn.active {
+      background: #2563eb;
+      color: #ffffff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+    .xiaozhi-config-tab-content {
+      display: none;
+    }
+    .xiaozhi-config-tab-content.active {
+      display: block;
+    }
+
+    /* AUDIO TEST */
+    .audio-test-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    /* LAYOUT BÀI HỌC & ROLES (2 CỘT) */
+    .curriculum-layout {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 20px;
+      margin-top: 16px;
+    }
+    .curriculum-left {
+      background: #0f2140;
+      border-radius: 10px;
+      padding: 12px;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+    .curriculum-item {
+      padding: 12px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .curriculum-item:hover {
+      background: rgba(37, 99, 235, 0.15);
+      border-color: #3b82f6;
+    }
+    .curriculum-item.active {
+      background: #2563eb;
+      border-color: #60a5fa;
+      color: #ffffff;
+    }
+    .curriculum-item-title {
+      font-weight: 700;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .curriculum-item-desc {
+      font-size: 12px;
+      opacity: 0.8;
+      margin-top: 4px;
+    }
+    .curriculum-right {
+      background: #0f2140;
+      border-radius: 10px;
+      padding: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    /* PRESETS VAI TRÒ GRID */
+    .roles-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .role-card {
+      background: #0f2140;
+      border-radius: 12px;
+      padding: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      cursor: pointer;
+      transition: all 0.25s ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .role-card:hover {
+      transform: translateY(-3px);
+      border-color: #3b82f6;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+    }
+    .role-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .role-icon {
+      font-size: 28px;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+    }
+    .role-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    .role-desc {
+      font-size: 13px;
+      color: #94a3b8;
+      line-height: 1.5;
+      margin-bottom: 16px;
+      flex: 1;
+    }
+
+    /* BỘ NHỚ MEMORY */
+    .memory-item {
+      background: #0f2140;
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .memory-badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: 700;
+    }
+    .memory-short { background: #3b82f6; color: white; }
+    .memory-long { background: #8b5cf6; color: white; }
+
+    /* TOAST THÔNG BÁO */
+    #toastMessage {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 14px 22px;
+      border-radius: 10px;
+      background: #1e293b;
+      color: #ffffff;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      z-index: 1000;
+      font-size: 14px;
+      display: none;
+      border-left: 5px solid #2563eb;
+      animation: fadeIn 0.3s;
+    }
+    #toastMessage.success { border-color: #22c55e; }
+    #toastMessage.error { border-color: #ef4444; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 900px) {
+      .curriculum-layout { grid-template-columns: 1fr; }
+      .sidebar { width: 70px; }
+      .sidebar .user-box, .sidebar .menu-item span, .sidebar .menu.bottom { display: none; }
+      .main-content { margin-left: 70px; padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TOAST THÔNG BÁO -->
+  <div id="toastMessage"></div>
+
+  <!-- 1. SIDEBAR BÊN TRÁI -->
+  <aside class="sidebar">
+    <div class="user-box">
+      <div class="user-name" id="sidebarUserName">Xin chào, 330730</div>
+      <div class="user-device" id="sidebarDeviceName">Mã: 330730 (Sophia)</div>
+      <div class="status-badge">
+        <span class="status-dot"></span>
+        <span id="sidebarStatusText">connected</span>
+      </div>
+      <div>
+        <span class="vip-pill">👑 VIP</span>
+      </div>
+    </div>
+
+    <!-- CÁC TAB MENU CHÍNH -->
+    <nav class="menu">
+      <div class="menu-item active" onclick="switchMainTab('xiaozhiConfig', this)">
+        <span>⚙️</span> <span>Cấu hình GMbot AI</span>
+      </div>
+      <div class="menu-item" onclick="switchMainTab('remoteControl', this)">
+        <span>🎮</span> <span>Điều khiển D-Pad</span>
+      </div>
+      <div class="menu-item" onclick="switchMainTab('youtubeMusic', this)">
+        <span>🎵</span> <span>Phát nhạc YouTube</span>
+      </div>
+      <div class="menu-item" onclick="switchMainTab('englishTutor', this)">
+        <span>📚</span> <span>HỌC TIẾNG ANH</span>
+      </div>
+      <div class="menu-item" onclick="switchMainTab('curriculums', this)">
+        <span>📖</span> <span>Chọn Bài học</span>
+      </div>
+      <div class="menu-item" onclick="switchMainTab('aiRoleSelect', this)">
+        <span>🎭</span> <span>Chọn vai trò GMbot</span>
+      </div>
+      <div class="menu-item" onclick="switchMainTab('memory', this)">
+        <span>🧠</span> <span>Bộ nhớ</span>
+      </div>
+      <div class="menu-item" onclick="switchMainTab('tasksMcp', this)">
+        <span>📝</span> <span>Tạo nhiệm vụ & MCP</span>
+      </div>
+      <div class="menu-item" onclick="switchMainTab('devicesManager', this)">
+        <span>🔑</span> <span>Quản lý Thiết bị</span>
+      </div>
+    </nav>
+
+    <!-- MENU ĐÁY -->
+    <div class="menu bottom">
+      <div class="menu-item" onclick="testMcpQuick()">
+        <span>⚡</span> <span>Kiểm tra MCP PC</span>
+      </div>
+      <div class="menu-item" onclick="window.open('/huong-dan', '_blank')">
+        <span>📖</span> <span>Hướng dẫn sử dụng ↗</span>
+      </div>
+      <div class="menu-item" onclick="window.open('/ha-mcp-guide', '_blank')">
+        <span>🏠</span> <span>Kết nối Home Assistant ↗</span>
+      </div>
+      <div class="menu-item" onclick="switchUserModal()">
+        <span>👤</span> <span>Đổi Tài khoản</span>
+      </div>
+      <div class="menu-item logout" onclick="handleLogout()">
+        <span>🚪</span> <span>Đăng xuất</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 2. MAIN CONTENT BÊN PHẢI -->
+  <main class="main-content">
+    
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <h2 style="font-size: 20px; font-weight: 700; color: #ffffff;">TRUNG TÂM QUẢN TRỊ GMBOT AI</h2>
+        <span class="badge connected" id="topbarLocalStatus">● Localhost: 8000</span>
+      </div>
+      <div class="topbar-right">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <label style="color:#94a3b8;">Chọn Robot:</label>
+          <select id="topDeviceSelect" style="width: auto; padding: 6px 12px; font-size: 13px;" onchange="onActiveDeviceChange(this.value)"></select>
+        </div>
+        <span class="badge offline" id="topbarUpstreamStatus">☁️ Chế độ Lưu Cục Bộ</span>
+      </div>
+    </div>
+
+    <!-- ============================================================= -->
+    <!-- TAB 1: CẤU HÌNH GMBOT AI -->
+    <!-- ============================================================= -->
+    <section id="tabXiaozhiConfig" class="tab-section">
+      <div class="card">
+        <h3 class="card-title">⚙️ Cấu hình cho GMbot AI</h3>
+
+        <div class="voice-hint">
+          💡 <strong>Cách dùng:</strong><br>
+          Mục này dùng để Thay đổi tên GMbot, ngôn ngữ, giọng nói Nam-Nữ, vai trò tính cách, mô hình ngôn ngữ cho robot AI. Bạn chỉ cần bấm
+          <span class="voice-keyword">"Tải cấu hình hiện tại"</span>,
+          chỉnh sửa thông tin rồi bấm
+          <span class="voice-keyword">"Lưu cấu hình"</span>. Sau đó khởi động lại robot AI để nạp cấu hình mới.
+        </div>
+
+        <div class="xiaozhi-config-tabs">
+          <button type="button" class="xiaozhi-config-tab-btn active" id="subtabConfigBtn" onclick="switchConfigSubtab('config')">⚙️ Cấu hình GMbot</button>
+          <button type="button" class="xiaozhi-config-tab-btn" id="subtabSpeakerBtn" onclick="switchConfigSubtab('speaker')">👤 Nhận dạng người nói</button>
+        </div>
+
+        <!-- CẤU HÌNH CHÍNH -->
+        <div id="subtabConfigContent" class="xiaozhi-config-tab-content active">
+          <div style="margin-bottom: 16px;">
+            <button class="secondary full-width" onclick="loadConfigFromBackend(true)">🔄 Tải cấu hình hiện tại</button>
+          </div>
+
+          <div class="form-group">
+            <label>Tên của robot - mặc định là Sophia - có thể đổi thành tên bất kỳ:</label>
+            <input type="text" id="cfgAssistantName" placeholder="Ví dụ: Sophia">
+          </div>
+
+          <div class="form-group">
+            <label>Chọn model AI phù hợp với nhu cầu của bạn:</label>
+            <select id="cfgLlmModel"></select>
+          </div>
+
+          <div class="form-group">
+            <label>Chọn ngôn ngữ nói của GMbot:</label>
+            <select id="cfgLanguage" onchange="onLanguageChange()"></select>
+          </div>
+
+          <div class="form-group">
+            <label>Chọn Giọng nói của GMbot:</label>
+            <div style="display: flex; gap: 10px;">
+              <select id="cfgTtsVoice" style="flex: 1;" onchange="updateVoiceDemoBtn()"></select>
+              <button type="button" class="secondary" id="btnPreviewVoice" onclick="previewCurrentVoice()" style="white-space: nowrap;">
+                🔊 Nghe thử
+              </button>
+            </div>
+            <!-- Audio Player ẩn -->
+            <audio id="audioPreviewPlayer" style="display:none;"></audio>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+              <label>Tốc độ nói:</label>
+              <select id="cfgTtsSpeed">
+                <option value="slow">Chậm</option>
+                <option value="normal" selected>Bình thường</option>
+                <option value="fast">Nhanh</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Cao độ giọng nói (-12 đến +12):</label>
+              <input type="number" id="cfgTtsPitch" min="-12" max="12" value="0">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label style="margin: 0;">Mô tả Vai trò - tính cách của GMbot AI (Bắt buộc giữ dòng <code>[VAI TRÒ VÀ TÍNH CÁCH]</code>):</label>
+              <span id="cfgCharCounter" style="font-size: 12px; color: #94a3b8;">0 / 7305 ký tự</span>
+            </div>
+            <textarea id="cfgCharacter" rows="8" oninput="updateCharCounter()"></textarea>
+          </div>
+
+          <!-- KỊCH BẢN QUẢN TRỊ ẨN (CHỈ DÀNH CHO ADMIN) -->
+          <div class="form-group" id="hiddenPromptGroup" style="display:none; background: rgba(15,23,42,0.6); padding: 14px; border-radius: 8px; border: 1px dashed #475569;">
+            <label style="color: #fbbf24; font-weight: 700;">👑 Kịch bản Quản trị ẩn (Admin Hidden Prompt - Tự động nối vào kịch bản khách hàng):</label>
+            <textarea id="cfgHiddenPrompt" rows="3" placeholder="Nhập các quy tắc ẩn, bảo vệ thương hiệu hoặc lệnh hệ thống bí mật..."></textarea>
+          </div>
+
+          <div class="action-row">
+            <button class="primary" style="flex: 1;" onclick="saveConfigToBackend()">💾 Lưu cấu hình</button>
+            <button class="secondary" style="flex: 1;" onclick="resetDefaultConfigPrompt()">↩️ Quay trở lại cấu hình AI mặc định</button>
+          </div>
+          <div id="cfgStatusMsg" style="margin-top: 12px; font-size: 13.5px;"></div>
+        </div>
+
+        <!-- NHẬN DẠNG NGƯỜI NÓI -->
+        <div id="subtabSpeakerContent" class="xiaozhi-config-tab-content">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div>
+              <h4 style="font-size: 15px; color: #ffffff;">Nhận dạng người nói qua giọng âm thanh</h4>
+              <p style="font-size: 12.5px; color: #94a3b8; margin-top: 4px;">Robot sẽ nhận diện giọng của từng thành viên trong gia đình để xưng hô chuẩn xác.</p>
+            </div>
+            <button class="primary" onclick="addSpeakerPrompt()">+ Thêm người nói</button>
+          </div>
+          <div id="speakerListContainer" style="background: #0f2140; border-radius: 8px; padding: 24px; text-align: center; color: #94a3b8; font-size: 14px;">
+            Chưa có người nói nào được lưu. Bấm "+ Thêm người nói" để thêm mẫu giọng cho Bố, Mẹ hoặc Bé.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+        <!-- ============================================================= -->
+    
+    <!-- ============================================================= -->
+    <!-- TAB MỚI: ĐIỀU KHIỂN ROBOT TỪ XA (LIVE D-PAD & OLED) -->
+    <!-- ============================================================= -->
+    <section id="tabRemoteControl" class="tab-section" style="display:none;">
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+          <div>
+            <h3 class="card-title" style="margin: 0; font-size: 19px;">🎮 Bảng điều khiển Robot từ xa & Giám sát Phần cứng COM8</h3>
+            <div style="font-size: 12.5px; color: #94a3b8; margin-top: 3px;">
+              Quản lý phần cứng chip ESP32, kiểm tra màn hình OLED, động cơ MX1616 và xem log thời gian thực qua Serial USB
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span id="wsRobotStatusBadge" class="badge connected" style="background: #059669; font-weight: bold; transition: all 0.3s ease;">● Robot Online (1 máy kết nối)</span>
+            <span id="activeControlDeviceBadge" style="font-size: 12px; background: #1e3a8a; color: #93c5fd; padding: 4px 12px; border-radius: 20px; font-weight: bold; border: 1px solid #3b82f6;">
+              Robot: 330730 (Sophia)
+            </span>
+          </div>
+        </div>
+
+        <!-- THANH TRẠNG THÁI PHẦN CỨNG & CỔNG COM8 -->
+        <div style="margin-bottom: 20px; padding: 18px 20px; border-radius: 12px; background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.85) 100%); border: 1px solid rgba(59, 130, 246, 0.35); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 24px;">🔌</span>
+              <div>
+                <div style="font-size: 14.5px; font-weight: bold; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                  <span>Kết nối Phần cứng Robot ESP32:</span>
+                  <span id="serialPortNameBadge" style="background: #1e3a8a; color: #60a5fa; padding: 2px 8px; border-radius: 6px; font-family: monospace; font-size: 13px;">COM8 (115200 bps)</span>
+                </div>
+                <div id="serialStatusSubtitle" style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
+                  Chip ESP32-S3 (v0.2) • MAC: 14:C1:9F:C4:EE:D0 • Wi-Fi IP: 10.26.1.50
+                </div>
+              </div>
+            </div>
+
+            <!-- Nút điều khiển Serial Phần cứng -->
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <span id="serialStatusBadge" style="font-size: 12px; background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.35); padding: 5px 12px; border-radius: 20px; font-weight: bold; display: flex; align-items: center; gap: 6px;">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: #4ade80; display: inline-block;"></span>
+                <span id="serialStatusBadgeText">COM8 Đã kết nối</span>
+              </span>
+              <button type="button" id="btnResetEsp32" onclick="resetEsp32Hardware()" style="padding: 7px 14px; border-radius: 8px; background: #dc2626; color: white; border: none; font-weight: bold; cursor: pointer; font-size: 12.5px; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);" title="Gửi xung DTR/RTS qua cổng COM8 để khởi động lại robot ngay lập tức">
+                <span>🔄</span> <span>Reset Robot (DTR/RTS)</span>
+              </button>
+              <button type="button" onclick="reconnectSerialPort()" style="padding: 7px 12px; border-radius: 8px; background: #1e293b; color: #cbd5e1; border: 1px solid rgba(255,255,255,0.15); font-size: 12px; cursor: pointer;">
+                🔌 Kết nối lại
+              </button>
+              <button type="button" onclick="clearSerialTerminal()" style="padding: 7px 12px; border-radius: 8px; background: #1e293b; color: #cbd5e1; border: 1px solid rgba(255,255,255,0.15); font-size: 12px; cursor: pointer;">
+                🗑️ Xóa log
+              </button>
+            </div>
+          </div>
+
+          <!-- Thông số kỹ thuật chi tiết của Mạch -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; background: rgba(0,0,0,0.25); padding: 10px 14px; border-radius: 8px; font-size: 12px;">
+            <div><span style="color: #64748b;">Mạch (SKU):</span> <strong id="hwSkuText" style="color: #cbd5e1;">bread-compact-wifi-128x64</strong></div>
+            <div><span style="color: #64748b;">Màn hình:</span> <strong id="hwDisplayText" style="color: #cbd5e1;">SSD1306 (OLED 128x64)</strong></div>
+            <div><span style="color: #64748b;">Âm thanh:</span> <strong style="color: #cbd5e1;">Mic INMP441 + Loa I2S</strong></div>
+            <div><span style="color: #64748b;">Động cơ:</span> <strong style="color: #f59e0b;">Chưa gắn IC MX1616 (Bản Audio)</strong></div>
+          </div>
+
+          <!-- Alert giải thích phần cứng -->
+          <div style="margin-top: 10px; padding: 10px 14px; border-radius: 6px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #fbbf24; font-size: 12px; display: flex; align-items: flex-start; gap: 8px; line-height: 1.5;">
+            <span style="font-size: 16px;">ℹ️</span>
+            <div>
+              <strong>Lưu ý Phần cứng & Cổng COM8:</strong> Robot đang cắm ở COM8 là bản Compact Breadboard (chỉ có Mic + Loa + OLED). Mạch <strong>chưa gắn module động cơ MX1616</strong> nên phím mũi tên D-Pad sẽ không làm quay bánh xe vật lý.
+              <br>Cổng USB COM8 trên firmware Xiaozhi được dùng để <strong>xuất log gỡ lỗi (TX 115200 bps)</strong> và nhận tín hiệu Reset. Để test robot, bạn hãy xem <strong>Terminal Console bên dưới</strong>, dùng <strong>Test Màn hình OLED</strong> hoặc <strong>Nói chuyện qua MCP Server</strong>!
+            </div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; align-items: center; padding: 10px 0;">
+          
+          <!-- CỤM D-PAD -->
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; background: #07152b; padding: 26px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.08);">
+            <button type="button" onclick="sendRobotCommand('forward')" style="width: 76px; height: 62px; border-radius: 12px; font-size: 24px; font-weight: bold; background: #2563eb; color: white; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(37,99,235,0.4); transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'" title="Tiến lên (Phím Mũi tên lên)">
+              ⬆️
+            </button>
+            <div style="display: flex; gap: 14px;">
+              <button type="button" onclick="sendRobotCommand('turn_left')" style="width: 76px; height: 62px; border-radius: 12px; font-size: 24px; font-weight: bold; background: #2563eb; color: white; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(37,99,235,0.4); transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'" title="Rẽ trái (Phím Mũi tên trái)">
+                ⬅️
+              </button>
+              <button type="button" onclick="sendRobotCommand('stop')" style="width: 76px; height: 62px; border-radius: 12px; font-size: 22px; font-weight: bold; background: #ef4444; color: white; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(239,68,68,0.4); transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'" title="Dừng lại (Phím Space)">
+                ⏹️
+              </button>
+              <button type="button" onclick="sendRobotCommand('turn_right')" style="width: 76px; height: 62px; border-radius: 12px; font-size: 24px; font-weight: bold; background: #2563eb; color: white; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(37,99,235,0.4); transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'" title="Rẽ phải (Phím Mũi tên phải)">
+                ➡️
+              </button>
+            </div>
+            <button type="button" onclick="sendRobotCommand('backward')" style="width: 76px; height: 62px; border-radius: 12px; font-size: 24px; font-weight: bold; background: #2563eb; color: white; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(37,99,235,0.4); transition: transform 0.1s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'" title="Lùi lại (Phím Mũi tên xuống)">
+              ⬇️
+            </button>
+            <div style="font-size: 11.5px; color: #94a3b8; margin-top: 6px;">(Có thể dùng các phím Mũi tên & Phím cách trên bàn phím)</div>
+          </div>
+
+          <!-- CỤM HÀNH ĐỘNG NHANH -->
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="font-size: 13.5px; font-weight: bold; color: #60a5fa; margin-bottom: 2px;">⚡ Kỹ năng & Hành động nhanh:</div>
+            
+            <button type="button" onclick="sendRobotCommand('wiggle')" style="padding: 14px 18px; border-radius: 10px; background: #07152b; color: #f1f5f9; border: 1px solid rgba(255,255,255,0.12); font-weight: 600; font-size: 13.5px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: all 0.2s;" onmouseover="this.style.borderColor='#38bdf8'" onmouseout="this.style.borderColor='rgba(255,255,255,0.12)'">
+              <span style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 20px;">💃</span>
+                <span>Lắc lư thân mình (Wiggle)</span>
+              </span>
+              <span style="color: #60a5fa; font-size: 12px;">Gửi lệnh ➔</span>
+            </button>
+
+            <button type="button" onclick="sendRobotCommand('dance')" style="padding: 14px 18px; border-radius: 10px; background: #07152b; color: #f1f5f9; border: 1px solid rgba(255,255,255,0.12); font-weight: 600; font-size: 13.5px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: all 0.2s;" onmouseover="this.style.borderColor='#38bdf8'" onmouseout="this.style.borderColor='rgba(255,255,255,0.12)'">
+              <span style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 20px;">🕺</span>
+                <span>Nhảy múa theo nhạc (Dance)</span>
+              </span>
+              <span style="color: #60a5fa; font-size: 12px;">Gửi lệnh ➔</span>
+            </button>
+
+            <button type="button" onclick="sendRobotCommand('toggle_led')" style="padding: 14px 18px; border-radius: 10px; background: #07152b; color: #f1f5f9; border: 1px solid rgba(255,255,255,0.12); font-weight: 600; font-size: 13.5px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: all 0.2s;" onmouseover="this.style.borderColor='#38bdf8'" onmouseout="this.style.borderColor='rgba(255,255,255,0.12)'">
+              <span style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 20px;">💡</span>
+                <span>Bật / Tắt Đèn LED (Lamp GPIO 21)</span>
+              </span>
+              <span style="color: #facc15; font-size: 12px;">Gửi lệnh ➔</span>
+            </button>
+          </div>
+
+        </div>
+
+        <!-- TEST MÀN HÌNH OLED & BIỂU CẢM KHÔNG CẦN ĐỘNG CƠ -->
+        <div style="margin-top: 24px; padding: 20px; border-radius: 14px; background: #07152b; border: 1px solid rgba(59, 130, 246, 0.3);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+            <div>
+              <h4 style="margin: 0; font-size: 16px; color: #60a5fa; display: flex; align-items: center; gap: 8px;">
+                <span>🖥️</span>
+                <span>Test Màn hình OLED & Biểu cảm (Dành cho mạch chưa gắn động cơ)</span>
+              </h4>
+              <div style="font-size: 12px; color: #94a3b8; margin-top: 3px;">
+                Đổi biểu cảm mắt/khuôn mặt hoặc gửi dòng chữ hiển thị trực tiếp lên màn hình OLED 128x64 của robot
+              </div>
+            </div>
+            <span style="font-size: 11px; background: rgba(34, 197, 94, 0.15); color: #4ade80; padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(34, 197, 94, 0.3); font-weight: bold;">
+              ● OLED Sẵn sàng
+            </span>
+          </div>
+
+          <!-- Các nút biểu cảm nhanh -->
+          <div style="margin-bottom: 16px;">
+            <div style="font-size: 12.5px; color: #cbd5e1; font-weight: 600; margin-bottom: 8px;">1. Bấm để đổi Biểu cảm mắt / mặt tức thì trên OLED:</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              <button type="button" onclick="sendOledDisplay('happy')" style="padding: 8px 14px; border-radius: 8px; background: #1e293b; color: #f8fafc; border: 1px solid rgba(255,255,255,0.12); cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                <span>😃</span> <span>Vui vẻ (happy)</span>
+              </button>
+              <button type="button" onclick="sendOledDisplay('laughing')" style="padding: 8px 14px; border-radius: 8px; background: #1e293b; color: #f8fafc; border: 1px solid rgba(255,255,255,0.12); cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                <span>😄</span> <span>Cười lớn (laughing)</span>
+              </button>
+              <button type="button" onclick="sendOledDisplay('thinking')" style="padding: 8px 14px; border-radius: 8px; background: #1e293b; color: #f8fafc; border: 1px solid rgba(255,255,255,0.12); cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                <span>🤔</span> <span>Suy nghĩ (thinking)</span>
+              </button>
+              <button type="button" onclick="sendOledDisplay('loving')" style="padding: 8px 14px; border-radius: 8px; background: #1e293b; color: #f8fafc; border: 1px solid rgba(255,255,255,0.12); cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                <span>💖</span> <span>Yêu thương (loving)</span>
+              </button>
+              <button type="button" onclick="sendOledDisplay('wink')" style="padding: 8px 14px; border-radius: 8px; background: #1e293b; color: #f8fafc; border: 1px solid rgba(255,255,255,0.12); cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                <span>😉</span> <span>Nháy mắt (wink)</span>
+              </button>
+              <button type="button" onclick="sendOledDisplay('shocked')" style="padding: 8px 14px; border-radius: 8px; background: #1e293b; color: #f8fafc; border: 1px solid rgba(255,255,255,0.12); cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                <span>😲</span> <span>Ngạc nhiên (shocked)</span>
+              </button>
+              <button type="button" onclick="sendOledDisplay('cool')" style="padding: 8px 14px; border-radius: 8px; background: #1e293b; color: #f8fafc; border: 1px solid rgba(255,255,255,0.12); cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                <span>😎</span> <span>Ngầu (cool)</span>
+              </button>
+              <button type="button" onclick="sendOledDisplay('neutral')" style="padding: 8px 14px; border-radius: 8px; background: #1e293b; color: #f8fafc; border: 1px solid rgba(255,255,255,0.12); cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                <span>😐</span> <span>Bình thường (neutral)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Gửi chữ hiển thị phụ đề lên màn hình -->
+          <div>
+            <div style="font-size: 12.5px; color: #cbd5e1; font-weight: 600; margin-bottom: 8px;">2. Gửi dòng chữ bất kỳ hiển thị lên màn hình OLED:</div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <input type="text" id="oledCustomTextInput" value="Xin chào! Robot GMbot online." placeholder="Nhập câu chữ muốn hiển thị trên OLED..." style="flex: 1; min-width: 260px; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.14); background: #0f172a; color: white; font-size: 13.5px;">
+              <button type="button" onclick="sendCustomTextToOled()" style="padding: 10px 18px; border-radius: 8px; background: #0284c7; color: white; border: none; font-weight: bold; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                <span>📄</span> <span>Gửi chữ lên OLED</span>
+              </button>
+              <button type="button" onclick="sendSpeakAndDisplay()" style="padding: 10px 18px; border-radius: 8px; background: #059669; color: white; border: none; font-weight: bold; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                <span>🎤</span> <span>Vừa nói vừa hiện chữ</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phản hồi trạng thái điều khiển -->
+        <div id="controlFeedbackBox" style="margin-top: 18px; padding: 12px 16px; border-radius: 8px; background: #07152b; border: 1px solid rgba(255,255,255,0.08); font-size: 12.5px; color: #94a3b8; font-family: monospace; display: flex; align-items: center; gap: 8px;">
+          <span>📡</span>
+          <span id="controlStatusText">Trạng thái: Sẵn sàng nhận lệnh điều khiển.</span>
+        </div>
+
+        <!-- LIVE SERIAL TERMINAL CONSOLE (COM8) -->
+        <div style="margin-top: 20px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(16, 185, 129, 0.35); background: #030712; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background: #0b1329; border-bottom: 1px solid rgba(255,255,255,0.08); flex-wrap: wrap; gap: 8px;">
+            <div style="font-size: 13px; font-weight: bold; color: #10b981; display: flex; align-items: center; gap: 8px; font-family: monospace;">
+              <span>📟</span>
+              <span>LIVE SERIAL TERMINAL (COM8 - 115200 bps) - Giám sát Realtime Robot ESP32</span>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <span id="serialLogCounter" style="font-size: 11px; color: #64748b; font-family: monospace;">0 dòng log</span>
+              <label style="font-size: 11.5px; color: #94a3b8; display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none;">
+                <input type="checkbox" id="serialAutoScroll" checked> Tự cuộn
+              </label>
+            </div>
+          </div>
+          <div id="serialConsoleOutput" style="height: 250px; overflow-y: auto; padding: 12px 16px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 12px; color: #10b981; line-height: 1.5; white-space: pre-wrap; word-break: break-all; background: #020617;">
+[HỆ THỐNG] Đang kết nối và lắng nghe dữ liệu từ cổng COM8 (115200 bps)...
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- TAB 2.5: PHÁT NHẠC YOUTUBE ONLINE TRÊN ROBOT -->
+    <!-- ============================================================= -->
+    <section id="tabYoutubeMusic" class="tab-section" style="display:none;">
+      <div class="card" id="youtubeMusicCard">
+        <!-- HEADER -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 14px;">
+          <div>
+            <h3 style="margin: 0; font-size: 20px; color: #f8fafc; display: flex; align-items: center; gap: 10px;">
+              <span>🎵</span> <span>Phát Nhạc YouTube Online Trên Robot</span>
+            </h3>
+            <div style="font-size: 13px; color: #94a3b8; margin-top: 4px;">
+              Tìm kiếm bài hát trên YouTube và stream trực tiếp xuống loa robot ESP32 qua WebSocket (Opus 24kHz)
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button class="secondary" onclick="checkMusicStatus()" style="padding: 8px 14px; font-size: 12px; font-weight: bold; border-radius: 8px; background: #1e293b; color: #e2e8f0; border: 1px solid #475569; cursor: pointer;">
+              🔄 Cập nhật
+            </button>
+            <button class="danger" onclick="stopYoutubeMusic()" style="padding: 8px 16px; font-size: 12px; font-weight: bold; border-radius: 8px; background: #dc2626; color: white; border: none; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(220,38,38,0.3);">
+              ⏹ Dừng phát nhạc
+            </button>
+          </div>
+        </div>
+
+        <!-- BANNER BÀI HÁT ĐANG PHÁT (NOW PLAYING) -->
+        <div id="nowPlayingBanner" style="background: linear-gradient(135deg, #07172e 0%, #0d2142 100%); border: 1px solid rgba(59,130,246,0.3); border-radius: 14px; padding: 16px 20px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+          <div style="display: flex; align-items: center; gap: 16px; min-width: 260px;">
+            <div style="position: relative; width: 68px; height: 68px; border-radius: 10px; overflow: hidden; background: #0b1527; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.1);">
+              <img id="nowPlayingThumb" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150" alt="Thumbnail" style="width: 100%; height: 100%; object-fit: cover;">
+              <div id="nowPlayingDiscBadge" style="position: absolute; inset: 0; background: rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 24px;">
+                🎵
+              </div>
+            </div>
+            <div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                <span id="nowPlayingBadge" style="background: rgba(148,163,184,0.15); color: #94a3b8; font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(148,163,184,0.3);">
+                  ⏹ Đang chờ bài hát
+                </span>
+                <span id="nowPlayingDuration" style="font-size: 12px; color: #94a3b8; font-family: monospace;">--:--</span>
+              </div>
+              <div id="nowPlayingTitle" style="font-size: 16px; font-weight: 700; color: #f8fafc; max-width: 480px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                Chưa có bài hát nào đang phát
+              </div>
+              <div id="nowPlayingUploader" style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
+                Hãy tìm kiếm phía dưới hoặc ra lệnh bằng giọng nói cho robot!
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button id="nowPlayingStopBtn" onclick="stopYoutubeMusic()" style="padding: 10px 18px; border-radius: 8px; background: rgba(239,68,68,0.2); border: 1px solid #ef4444; color: #fca5a5; font-size: 13px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+              <span>⏹ Dừng phát</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- AUDIO PLAYER PHỤ PHỤC VỤ NGHE TRÊN TRÌNH DUYỆT WEB (NẾU MUỐN) -->
+        <div id="webAudioBox" style="display: none; background: #07152b; border: 1px solid rgba(59,130,246,0.25); border-radius: 10px; padding: 12px 16px; margin-bottom: 20px;">
+          <div style="font-size: 12px; color: #60a5fa; margin-bottom: 6px; font-weight: bold; display: flex; align-items: center; gap: 6px;">
+            <span>🎧</span> <span id="webAudioTitle">Đang nghe trước trên trình duyệt</span>
+          </div>
+          <audio id="webAudioPlayer" controls style="width: 100%; height: 36px;"></audio>
+        </div>
+
+        <!-- HƯỚNG DẪN RA LỆNH GIỌNG NÓI CHO ROBOT -->
+        <div style="background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 14px 18px; margin-bottom: 20px;">
+          <div style="font-size: 13px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+            <span>💡</span> <span>Ra lệnh bằng giọng nói trực tiếp với Robot qua Micro:</span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: #cbd5e1;">
+            <span style="background: rgba(15,23,42,0.6); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+              🗣️ <em>"Mở bài Bống Bống Bang Bang trên YouTube"</em>
+            </span>
+            <span style="background: rgba(15,23,42,0.6); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+              🗣️ <em>"Phát bài Sơn Tùng MTP"</em>
+            </span>
+            <span style="background: rgba(15,23,42,0.6); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+              🗣️ <em>"Hát bài Em Của Ngày Hôm Qua"</em>
+            </span>
+            <span style="background: rgba(15,23,42,0.6); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+              🗣️ <em>"Bật nhạc Lofi thư giãn"</em>
+            </span>
+            <span style="background: rgba(239,68,68,0.15); color: #fca5a5; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(239,68,68,0.3); font-weight: 600;">
+              🗣️ <em>"Dừng nhạc" hoặc "Tắt nhạc"</em>
+            </span>
+          </div>
+        </div>
+
+        <!-- KHUNG TÌM KIẾM BÀI HÁT -->
+        <div style="background: #07152b; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px; margin-bottom: 20px;">
+          <label style="display: block; font-size: 13px; font-weight: 600; color: #e2e8f0; margin-bottom: 8px;">
+            🔍 Tìm bài hát trên YouTube hoặc dán link video:
+          </label>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <input type="text" id="musicSearchInput" placeholder="Ví dụ: Bống Bống Bang Bang, Sơn Tùng, Nhạc thiếu nhi, https://youtu.be/..." onkeydown="if(event.key==='Enter') searchYoutubeMusic()" style="flex: 1; min-width: 260px; padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.14); background: #0f172a; color: white; font-size: 14px;">
+            <button id="musicSearchBtn" onclick="searchYoutubeMusic()" style="padding: 12px 22px; border-radius: 8px; background: linear-gradient(135deg, #2563eb, #3b82f6); color: white; border: none; font-weight: bold; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(37,99,235,0.3);">
+              <span>🔍 Tìm kiếm</span>
+            </button>
+          </div>
+
+          <!-- CÁC CHIP GỢI Ý BÀI HÁT NHANH -->
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+            <span style="font-size: 12px; color: #94a3b8;">Gợi ý nhanh:</span>
+            <button onclick="quickPlayMusic('Bống Bống Bang Bang')" style="font-size: 11px; padding: 4px 10px; border-radius: 14px; background: #1e293b; color: #38bdf8; border: 1px solid rgba(56,189,248,0.25); cursor: pointer;">🎵 Bống Bống Bang Bang</button>
+            <button onclick="quickPlayMusic('Em Của Ngày Hôm Qua')" style="font-size: 11px; padding: 4px 10px; border-radius: 14px; background: #1e293b; color: #38bdf8; border: 1px solid rgba(56,189,248,0.25); cursor: pointer;">🎵 Em Của Ngày Hôm Qua</button>
+            <button onclick="quickPlayMusic('Nhạc thiếu nhi vui nhộn')" style="font-size: 11px; padding: 4px 10px; border-radius: 14px; background: #1e293b; color: #38bdf8; border: 1px solid rgba(56,189,248,0.25); cursor: pointer;">🎵 Nhạc thiếu nhi vui nhộn</button>
+            <button onclick="quickPlayMusic('Nhạc Lofi thư giãn')" style="font-size: 11px; padding: 4px 10px; border-radius: 14px; background: #1e293b; color: #38bdf8; border: 1px solid rgba(56,189,248,0.25); cursor: pointer;">🎵 Nhạc Lofi thư giãn</button>
+            <button onclick="quickPlayMusic('Baby Shark')" style="font-size: 11px; padding: 4px 10px; border-radius: 14px; background: #1e293b; color: #38bdf8; border: 1px solid rgba(56,189,248,0.25); cursor: pointer;">🎵 Baby Shark</button>
+            <button onclick="quickPlayMusic('Chú Voi Con Ở Bản Đôn')" style="font-size: 11px; padding: 4px 10px; border-radius: 14px; background: #1e293b; color: #38bdf8; border: 1px solid rgba(56,189,248,0.25); cursor: pointer;">🎵 Chú Voi Con Ở Bản Đôn</button>
+          </div>
+        </div>
+
+        <!-- DANH SÁCH KẾT QUẢ TÌM KIẾM -->
+        <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+          <h4 style="margin: 0; font-size: 15px; color: #f1f5f9; display: flex; align-items: center; gap: 8px;">
+            <span>🎧</span> <span>Kết quả tìm kiếm</span>
+          </h4>
+          <span id="musicResultsCount" style="font-size: 12px; color: #94a3b8;">Chưa tìm kiếm</span>
+        </div>
+
+        <div id="musicSearchResults" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px;">
+          <div style="grid-column: 1 / -1; padding: 40px 20px; text-align: center; color: #94a3b8; font-size: 13px; background: #07152b; border-radius: 10px; border: 1px dashed rgba(255,255,255,0.1);">
+            👉 Nhập tên bài hát ở trên rồi bấm <strong>"Tìm kiếm"</strong> để xem danh sách và phát nhạc trên Robot!
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- TAB 3: HỌC TIẾNG ANH CÙNG GMBOT -->
+    <!-- ============================================================= -->
+    <section id="tabEnglishTutor" class="tab-section" style="display:none;">
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+          <div>
+            <h3 class="card-title" style="margin: 0;">🇬🇧 Học Tiếng Anh cùng GMbot</h3>
+            <div style="font-size: 12.5px; color: #94a3b8; margin-top: 3px;">
+              Luyện phản xạ giao tiếp tiếng Anh theo chủ đề cho bé và gia đình
+            </div>
+          </div>
+          <button class="secondary" onclick="deactivateEnglishTutor()" style="font-size: 12.5px; padding: 7px 14px; border-color: rgba(239, 68, 68, 0.5); color: #fca5a5; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+            <span>⏹️</span> <span>Hủy chế độ Học Tiếng Anh</span>
+          </button>
+        </div>
+        <div class="voice-hint" style="line-height: 1.6;">
+          💡 <strong>Cách dùng & Điều khiển trực tiếp trên Robot bằng Giọng nói:</strong><br>
+          • <strong>Vào học trên Robot:</strong> Bấm giữ nút BOOT (hoặc gọi <em>"Sophia" / "Xin chào"</em>) và nói: <span class="voice-keyword">"Học tiếng Anh"</span> hoặc <span class="voice-keyword">"Bắt đầu bài học tiếng Anh"</span>.<br>
+          • <strong>Hủy bài học trên Robot:</strong> Khi đang học, chỉ cần nói: <span class="voice-keyword">"Hủy học tiếng Anh"</span>, <span class="voice-keyword">"Dừng bài học"</span>, hoặc <span class="voice-keyword">"Quay lại Sophia"</span> -> Robot sẽ dừng ngay và trở về trợ lý Sophia bình thường!<br>
+          • <strong>Điều khiển trên Web:</strong> Chọn bài học rồi bấm nút <strong>"Áp dụng vào Robot"</strong>, hoặc bấm nút đỏ <strong>"Hủy chế độ Học Tiếng Anh"</strong> ở góc phải.
+        </div>
+
+        <div style="margin-top: 16px;">
+          <h4 style="font-size: 15px; color: #ffffff; margin-bottom: 8px;">📚 Chọn giáo trình & kịch bản tiếng Anh có sẵn</h4>
+          <div class="form-group" style="max-width: 320px; margin-bottom: 12px;">
+            <label>Lọc theo trình độ:</label>
+            <select id="englishLevelFilter" onchange="loadEnglishPresets()">
+              <option value="">Tất cả trình độ</option>
+              <option value="starter">Starter - Mới bắt đầu</option>
+              <option value="a1">A1 - Cơ bản</option>
+              <option value="a2">A2 - Sơ cấp</option>
+              <option value="b1">B1 - Trung cấp</option>
+              <option value="b2">B2 - Nâng cao</option>
+            </select>
+          </div>
+
+          <div class="curriculum-layout">
+            <!-- CỘT TRÁI: DANH SÁCH BÀI HỌC -->
+            <div class="curriculum-left">
+              <div style="font-size: 13px; font-weight: 700; color: #94a3b8; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                <span>📚</span> <span>Danh sách bài học / Tình huống</span>
+              </div>
+              <div id="englishListContainer">
+                <div style="color: #94a3b8; padding: 12px;">Đang tải danh sách bài học...</div>
+              </div>
+            </div>
+
+            <!-- CỘT PHẢI: CHI TIẾT BÀI HỌC -->
+            <div class="curriculum-right">
+              <h4 id="englishDetailTitle" style="font-size: 17px; color: #ffffff; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                <span>📘</span> <span>Chi tiết bài học</span>
+              </h4>
+              <div id="englishDetailBody" style="font-size: 13.5px; color: #cbd5e1; line-height: 1.6;">
+                <div style="opacity: 0.6; padding: 20px 0;">👉 Hãy chọn một bài học ở cột bên trái để xem chi tiết từ vựng và câu mẫu.</div>
+              </div>
+              <div id="englishActionBox" style="margin-top: 20px; display: none; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; gap: 10px;">
+                <button id="btnApplyEnglish" class="primary full-width" onclick="applyEnglishToAgent()" style="font-size: 15px; padding: 12px;">
+                  🚀 Áp dụng kịch bản bài học này vào Robot
+                </button>
+                <button id="btnDeactivateEnglish" class="secondary full-width" onclick="deactivateEnglishTutor()" style="font-size: 13px; padding: 10px; border-color: rgba(239,68,68,0.4); color: #fca5a5; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;">
+                  <span>⏹️</span> <span>Hủy bài học (Quay về trợ lý Sophia mặc định)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TỰ TẠO GIÁO TRÌNH TIẾNG ANH -->
+        <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.08);">
+          <h4 style="font-size: 15px; color: #ffffff; margin-bottom: 12px;">✍️ Tự tạo giáo trình tiếng Anh theo nhu cầu của bạn</h4>
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+            <div class="form-group">
+              <label>Tiêu đề bài học:</label>
+              <input type="text" id="customEnTitle" placeholder="Ví dụ: Luyện phỏng vấn du lịch hoặc Mua sắm tại siêu thị">
+            </div>
+            <div class="form-group">
+              <label>Trình độ:</label>
+              <select id="customEnLevel">
+                <option value="starter">Starter - Mới bắt đầu</option>
+                <option value="a1">A1 - Cơ bản</option>
+                <option value="a2">A2 - Sơ cấp</option>
+                <option value="b1">B1 - Trung cấp</option>
+                <option value="b2">B2 - Nâng cao</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Từ vựng mục tiêu (cách nhau bởi dấu phẩy):</label>
+            <input type="text" id="customEnWords" placeholder="Ví dụ: passport, ticket, airport, luggage, flight">
+          </div>
+          <div class="form-group">
+            <label>Mẫu câu phản xạ (mỗi dòng một câu):</label>
+            <textarea id="customEnPhrases" style="min-height: 90px;" placeholder="Ví dụ:&#10;Where is my gate?&#10;Here is my passport.&#10;Have a nice flight!"></textarea>
+          </div>
+          <button class="secondary" onclick="createCustomEnglishLesson()" style="padding: 10px 20px;">
+            💾 Lưu và Áp dụng vào Robot
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- TAB 4: CHỌN BÀI HỌC (20 BÀI HỌC CHUẨN GMBOT) -->
+    <!-- ============================================================= -->
+    <section id="tabCurriculums" class="tab-section" style="display:none;">
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <div>
+            <h3 class="card-title" style="margin: 0;">📖 Kho 20 Bài học Chuẩn GMbot AI</h3>
+            <div style="font-size: 12.5px; color: #94a3b8; margin-top: 3px;">
+              Lộ trình bài học từ căn bản đến giao tiếp thực tế cho bé và gia đình
+            </div>
+          </div>
+          <button class="secondary" onclick="resetDefaultCurriculum()" style="font-size: 12px; padding: 6px 12px;">
+            🔄 Khôi phục Sophia mặc định
+          </button>
+        </div>
+
+        <div class="voice-hint" style="line-height: 1.6;">
+          💡 <strong>Cách sử dụng & Điều khiển:</strong> Chọn bài học rồi bấm nút <span class="voice-keyword">"Áp dụng vào Robot"</span>.
+          Bạn cũng có thể nói trực tiếp vào robot: <span class="voice-keyword">"Học tiếng Anh"</span> để bắt đầu, hoặc <span class="voice-keyword">"Hủy bài học"</span> / <span class="voice-keyword">"Quay lại Sophia"</span> để thoát bất cứ lúc nào!
+        </div>
+
+        <div class="curriculum-layout">
+          <!-- CỘT TRÁI -->
+          <div class="curriculum-left">
+            <div style="font-size: 13px; font-weight: 700; color: #94a3b8; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+              <span>📦</span> <span>20 Bài học có sẵn</span>
+            </div>
+            <div id="curriculumsListContainer">
+              <div style="color: #94a3b8; padding: 12px;">Đang tải danh sách bài học...</div>
+            </div>
+          </div>
+
+          <!-- CỘT PHẢI -->
+          <div class="curriculum-right">
+            <h4 id="curriculumDetailTitle" style="font-size: 17px; color: #ffffff; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+              <span>📘</span> <span>Chi tiết bài học</span>
+            </h4>
+            <div id="curriculumDetailContent" style="font-size: 13.5px; color: #cbd5e1; line-height: 1.6;">
+              <div style="opacity: 0.6; padding: 20px 0;">👉 Hãy chọn một bài học ở cột bên trái để xem nội dung chi tiết.</div>
+            </div>
+            <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; gap: 10px;">
+              <button class="primary" onclick="applyCurrentCurriculum()" style="flex: 1; font-size: 14px; padding: 10px;">
+                🚀 Áp dụng bài học này vào Robot
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- TAB 5: CHỌN VAI TRÒ GMBOT -->
+    <!-- ============================================================= -->
+    <section id="tabAiRoleSelect" class="tab-section" style="display:none;">
+      <div class="card">
+        <h3 class="card-title">🎭 Kho Presets Vai trò & Tính cách Trợ lý GMbot AI</h3>
+        <div class="voice-hint">
+          💡 <strong>Cách dùng:</strong> Bấm chọn một nhân vật mẫu bạn yêu thích bên dưới. Hệ thống sẽ tự động điền kịch bản vào cấu hình của Robot. Sau đó bạn chỉ cần khởi động lại hoặc trò chuyện tiếp để trải nghiệm phong cách mới!
+        </div>
+
+        <div id="rolesGridContainer" class="roles-grid">
+          <div style="color: #94a3b8; padding: 20px;">Đang tải danh sách vai trò...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- TAB 6: QUẢN LÝ BỘ NHỚ ROBOT (MEMORY) -->
+    <!-- ============================================================= -->
+    <section id="tabMemory" class="tab-section" style="display:none;">
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+          <div>
+            <h3 class="card-title" style="margin: 0;">🧠 Quản lý Bộ nhớ Hội thoại (Memory)</h3>
+            <div style="font-size: 12.5px; color: #94a3b8; margin-top: 3px;">
+              Xem, chỉnh sửa hoặc xóa trí nhớ ngắn hạn và dài hạn của Robot AI
+            </div>
+          </div>
+          <button id="btnBulkDeleteMem" class="danger" onclick="bulkDeleteMemories()" style="display: none; font-size: 12px; padding: 6px 12px;">
+            Xóa đã chọn
+          </button>
+        </div>
+
+        <div class="voice-hint">
+          💡 <strong>Nguyên lý Bộ nhớ:</strong> Robot tự động ghi nhớ thông tin bạn chia sẻ trong lúc trò chuyện (sở thích, thói quen, công việc). Bạn có thể tự thêm thông tin bên dưới để robot nhớ ngay lập tức.
+        </div>
+
+        <!-- TÌM KIẾM & THÊM BỘ NHỚ -->
+        <div style="margin-top: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+          <input type="text" id="memSearchInput" placeholder="🔍 Tìm kiếm thông tin đã lưu trong bộ nhớ..." oninput="filterMemories()" style="flex: 1; min-width: 250px;">
+        </div>
+
+        <!-- FORM THÊM MỚI BỘ NHỚ -->
+        <div style="margin-top: 16px; background: #0f2140; padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+          <div style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 8px;">+ Thêm ký ức mới cho Robot:</div>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <input type="text" id="newMemContent" placeholder="Nhập ký ức (Ví dụ: Chủ nhân thích uống cà phê đen không đường mỗi sáng)" style="flex: 1; min-width: 300px;">
+            <select id="newMemType" style="width: auto; min-width: 140px;">
+              <option value="SHORT_TERM">Ngắn hạn (SHORT)</option>
+              <option value="LONG_TERM" selected>Dài hạn (LONG)</option>
+            </select>
+            <button class="primary" onclick="addMemoryItem()" style="padding: 8px 16px;">💾 Thêm bộ nhớ</button>
+          </div>
+        </div>
+
+        <!-- DANH SÁCH BỘ NHỚ -->
+        <div style="margin-top: 20px;">
+          <h4 style="font-size: 14px; color: #94a3b8; margin-bottom: 10px;">Danh sách các mục ghi nhớ:</h4>
+          <div id="memoriesListContainer">
+            <div style="color: #94a3b8; padding: 15px; text-align: center;">Đang tải bộ nhớ...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- TAB 7: TẠO NHIỆM VỤ & MCP SERVER MÁY TÍNH -->
+    <!-- ============================================================= -->
+    <section id="tabTasksMcp" class="tab-section" style="display:none;">
+      <div class="card">
+        <h3 class="card-title">📝 Quản lý Nhiệm vụ & MCP Server Máy tính</h3>
+        <div class="voice-hint">
+          💡 <strong>MCP Server Localhost:</strong> Server này cung cấp giao thức MCP chuẩn JSON-RPC 2.0 tại endpoint: <code id="mcpEndpointHint" style="color: #60a5fa; font-weight: bold;"></code>.<br>
+          Robot có thể gọi về máy tính cá nhân để tra cứu phần cứng PC, thông tin thời tiết Việt Nam, giá vàng chứng khoán, mở ứng dụng hoặc lưu ghi chú!
+        </div>
+
+        <!-- KIỂM TRA TRỰC TIẾP MCP TOOLS -->
+        <div style="margin-top: 16px;">
+          <h4 style="font-size: 15px; color: #ffffff; margin-bottom: 8px;">⚡ Kiểm tra nhanh các MCP Tools trên máy tính:</h4>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+            <button class="secondary" style="font-size: 12.5px; padding: 6px 12px;" onclick="callMcpDirect('pc_system_info')">💻 Thông tin PC (CPU/RAM/Ổ đĩa)</button>
+            <button class="secondary" style="font-size: 12.5px; padding: 6px 12px;" onclick="callMcpDirect('vietnam_weather')">🌤️ Thời tiết Việt Nam</button>
+            <button class="secondary" style="font-size: 12.5px; padding: 6px 12px;" onclick="callMcpDirect('vietnam_gold_stock')">📈 Giá vàng & Chứng khoán VN</button>
+            <button class="secondary" style="font-size: 12.5px; padding: 6px 12px;" onclick="callMcpDirect('pc_list_directory')">📂 Danh sách file thư mục</button>
+            <button class="secondary" style="font-size: 12.5px; padding: 6px 12px;" onclick="callMcpDirect('save_note')">📝 Test ghi chú máy tính</button>
+          </div>
+          <pre id="mcpOutputBox" style="background: #081120; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 14px; font-size: 12px; color: #4ade80; max-height: 180px; overflow-y: auto; white-space: pre-wrap; font-family: monospace;">Bấm vào một nút công cụ MCP phía trên để xem phản hồi thực tế từ máy tính cá nhân...</pre>
+        </div>
+
+        <!-- TẠO NHIỆM VỤ NHẮC VIỆC -->
+        <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.08);">
+          <h4 style="font-size: 15px; color: #ffffff; margin-bottom: 10px;">📌 Danh sách Nhiệm vụ Nhắc việc (Tasks)</h4>
+          <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+            <input type="text" id="newTaskInput" placeholder="Ví dụ: 15h30 chiều nay họp dự án AI hoặc Uống nước sau mỗi 1 tiếng" style="flex: 1;">
+            <button class="primary" onclick="addTaskItem()" style="padding: 8px 16px; white-space: nowrap;">+ Thêm nhiệm vụ</button>
+          </div>
+          <div id="tasksListContainer">
+            <div style="color: #94a3b8; font-size: 13px;">Đang tải danh sách nhiệm vụ...</div>
+          </div>
+        </div>
+
+        <!-- GHI CHÚ PC TỪ ROBOT -->
+        <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.08);">
+          <h4 style="font-size: 15px; color: #ffffff; margin-bottom: 10px;">📓 Ghi chú PC lưu trực tiếp vào ổ cứng (Notes)</h4>
+          <div id="notesListContainer">
+            <div style="color: #94a3b8; font-size: 13px;">Đang tải ghi chú...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <!-- TAB 8: QUẢN LÝ THIẾT BỊ ROBOT & TÀI KHOẢN -->
+    <!-- ============================================================= -->
+    <section id="tabDevicesManager" class="tab-section" style="display:none;">
+      <div class="card">
+        <h3 class="card-title">🔑 Quản lý Thiết bị Robot ESP32 & Đồng bộ Upstream xiaozhi.me</h3>
+        <div class="voice-hint">
+          💡 <strong>Quản lý Robot & Đa người dùng:</strong> Thêm nhiều robot ESP32, kích hoạt chuyển đổi qua lại giữa các máy và đồng bộ trực tiếp cấu hình lên nền tảng đám mây <code>xiaozhi.me</code> khi bạn có Token/Cookie.
+        </div>
+
+        <!-- ĐỒNG BỘ UPSTREAM XIAOZHI.ME -->
+        <div style="margin-top: 16px; background: #0f2140; padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+          <h4 style="font-size: 15px; color: #ffffff; margin-bottom: 10px;">☁️ Đồng bộ Cấu hình Lên Máy chủ Upstream xiaozhi.me:</h4>
+          <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-bottom: 10px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>Upstream Token / Cookie (từ xiaozhi.me):</label>
+              <input type="password" id="upstreamTokenInput" placeholder="Dán Bearer Token hoặc Cookie đăng nhập vào đây">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>Agent ID trên xiaozhi.me:</label>
+              <input type="text" id="upstreamAgentIdInput" placeholder="Ví dụ: 2567180">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>Upstream API URL:</label>
+              <input type="text" id="upstreamUrlInput" value="https://api.xiaozhi.me">
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
+            <div id="upstreamConnectStatus" style="font-size: 13px; color: #94a3b8;">Chưa kiểm tra đồng bộ.</div>
+            <button class="primary" onclick="testAndConnectUpstream()" style="padding: 8px 18px;">🔗 Kiểm tra & Kết nối Upstream</button>
+          </div>
+        </div>
+
+        <!-- DANH SÁCH ROBOT HIỆN CÓ -->
+        <div style="margin-top: 24px;">
+          <h4 style="font-size: 15px; color: #ffffff; margin-bottom: 10px;">🤖 Danh sách Robot ESP32 đã ghép nối:</h4>
+          <div id="devicesTableContainer">
+            <div style="color: #94a3b8; font-size: 13px;">Đang tải danh sách thiết bị...</div>
+          </div>
+        </div>
+
+        <!-- THÊM ROBOT MỚI -->
+        <div style="margin-top: 20px; background: #0f2140; padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+          <h4 style="font-size: 14.5px; color: #ffffff; margin-bottom: 10px;">+ Thêm Robot ESP32 mới:</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px; align-items: flex-end;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>Tên thiết bị:</label>
+              <input type="text" id="newDevName" placeholder="Ví dụ: Robot Phòng Khách">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>Agent ID:</label>
+              <input type="text" id="newDevAgentId" placeholder="Ví dụ: 330730">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>Địa chỉ MAC:</label>
+              <input type="text" id="newDevMac" placeholder="Ví dụ: 14:C1:9F:C4:EE:D0">
+            </div>
+            <button class="secondary" onclick="addNewDevice()" style="padding: 10px 18px; height: 42px;">Thêm Robot</button>
+          </div>
+        </div>
+
+        <!-- QUẢN LÝ NGƯỜI DÙNG SAAS (ADMIN ONLY) -->
+        <div id="adminUserManagementSection" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.08); display: none;">
+          <h4 style="font-size: 16px; color: #fbbf24; margin-bottom: 6px;">👑 Phân quyền & Quản lý Khách hàng (Admin Control)</h4>
+          <p style="font-size: 12.5px; color: #94a3b8; margin-bottom: 14px;">Tạo tài khoản phụ cấp cho khách hàng hoặc học sinh với giới hạn độ dài ký tự Prompt.</p>
+
+          <div style="background: #0f2140; padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(251, 191, 36, 0.2);">
+            <div style="font-size: 14px; font-weight: 700; color: #ffffff; margin-bottom: 10px;">+ Tạo tài khoản người dùng mới:</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 120px 130px auto; gap: 10px; align-items: flex-end;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>Tên đăng nhập:</label>
+                <input type="text" id="newUsername" placeholder="khachhang1">
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>Mật khẩu:</label>
+                <input type="password" id="newPassword" placeholder="••••••••">
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>Vai trò:</label>
+                <select id="newUserRole">
+                  <option value="user" selected>Khách (user)</option>
+                  <option value="admin">Quản trị (admin)</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>Giới hạn Prompt:</label>
+                <input type="number" id="newUserCharLimit" value="500">
+              </div>
+              <button class="primary" onclick="createNewUser()" style="padding: 10px 16px; height: 42px;">Tạo User</button>
+            </div>
+          </div>
+
+          <h5 style="font-size: 13.5px; color: #cbd5e1; margin-bottom: 8px;">Danh sách tài khoản trong hệ thống:</h5>
+          <div id="usersListContainer">
+            <div style="color: #94a3b8; font-size: 13px;">Đang tải danh sách người dùng...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  <!-- JAVASCRIPT FETCH API ĐỒNG BỘ 100% -->
+  <script>
+    // BIẾN TOÀN CỤC TRẠNG THÁI
+    let currentOptions = { models: [], languages: [], voicesByLanguage: {} };
+    let currentAgent = null;
+    let currentUser = null;
+    let allMemories = [];
+    let selectedMemIds = new Set();
+    let currentEnglishPresets = [];
+    let selectedEnglishId = null;
+
+    // HIỂN THỊ TOAST
+    function showToast(msg, type = "success") {
+      const el = document.getElementById("toastMessage");
+      el.className = type;
+      el.innerText = msg;
+      el.style.display = "block";
+      setTimeout(() => { el.style.display = "none"; }, 3500);
+    }
+
+    // CHUYỂN TAB CHÍNH (SPA)
+    function switchMainTab(tabName, clickedEl) {
+      document.querySelectorAll(".sidebar .menu-item").forEach(m => m.classList.remove("active"));
+      if (clickedEl) clickedEl.classList.add("active");
+
+      document.querySelectorAll(".tab-section").forEach(s => s.style.display = "none");
+
+      if (tabName === "xiaozhiConfig") {
+        document.getElementById("tabXiaozhiConfig").style.display = "block";
+      } else if (tabName === "remoteControl") {
+        document.getElementById("tabRemoteControl").style.display = "block";
+        updateRemoteDeviceBadge();
+        fetchSerialStatusAndLogs();
+      } else if (tabName === "youtubeMusic") {
+        document.getElementById("tabYoutubeMusic").style.display = "block";
+        checkMusicStatus();
+      } else if (tabName === "englishTutor") {
+        document.getElementById("tabEnglishTutor").style.display = "block";
+        loadEnglishPresets();
+      } else if (tabName === "curriculums") {
+        document.getElementById("tabCurriculums").style.display = "block";
+        loadCurriculumsFromBackend();
+      } else if (tabName === "aiRoleSelect") {
+        document.getElementById("tabAiRoleSelect").style.display = "block";
+        loadRolePresets();
+      } else if (tabName === "memory") {
+        document.getElementById("tabMemory").style.display = "block";
+        loadMemoriesFromBackend();
+      } else if (tabName === "tasksMcp") {
+        document.getElementById("tabTasksMcp").style.display = "block";
+        loadTasksFromBackend();
+        loadNotesFromBackend();
+      } else if (tabName === "devicesManager") {
+        document.getElementById("tabDevicesManager").style.display = "block";
+        loadDevicesFromBackend();
+        loadUsersFromBackend();
+      }
+    }
+
+    // CHUYỂN SUBTAB TRONG CẤU HÌNH GMBOT
+    function switchConfigSubtab(sub) {
+      document.getElementById("subtabConfigBtn").classList.toggle("active", sub === "config");
+      document.getElementById("subtabSpeakerBtn").classList.toggle("active", sub === "speaker");
+      document.getElementById("subtabConfigContent").classList.toggle("active", sub === "config");
+      document.getElementById("subtabSpeakerContent").classList.toggle("active", sub === "speaker");
+    }
+
+    // ==========================================
+    // ĐIỀU KHIỂN ROBOT TỪ XA (LIVE D-PAD & OLED)
+    // ==========================================
+    function updateRemoteDeviceBadge() {
+      const badge = document.getElementById("activeControlDeviceBadge");
+      if (badge && currentAgent) {
+        badge.innerText = `Robot: ${currentAgent.device_name || 'GMbot'} (${currentAgent.assistant_name || 'Sophia'})`;
+      }
+    }
+
+    async function sendRobotCommand(action) {
+      const feedback = document.getElementById("controlStatusText");
+      if (feedback) feedback.innerText = `Đang gửi lệnh '${action}' tới động cơ robot...`;
+
+      try {
+        const res = await fetch("/api/robot/control", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            device_id: currentAgent ? currentAgent.agent_id : null,
+            action: action
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          const wsInfo = data.delivered_to_ws ? ` (Đã truyền tới ${data.clients_connected} robot qua WebSocket)` : ' (Server đã ghi nhận lệnh)';
+          if (feedback) feedback.innerText = `✓ Lệnh '${action}' thành công!${wsInfo}`;
+          showToast(`✓ Đã gửi lệnh '${action}' tới Robot!`);
+        } else {
+          if (feedback) feedback.innerText = `⚠ Lỗi: ${data.message || 'Không thể gửi lệnh'}`;
+          showToast(`Lỗi: ${data.message || 'Không thể gửi lệnh'}`, "error");
+        }
+      } catch (err) {
+        if (feedback) feedback.innerText = `✗ Lỗi kết nối: ${err.message}`;
+        showToast("Lỗi kết nối tới Server: " + err.message, "error");
+      }
+    }
+
+    async function sendOledDisplay(emotion, text = "") {
+      const feedback = document.getElementById("controlStatusText");
+      if (feedback) feedback.innerText = `Đang gửi biểu cảm '${emotion}' tới màn hình OLED robot...`;
+
+      try {
+        const res = await fetch("/api/robot/display", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            device_id: currentAgent ? currentAgent.agent_id : null,
+            emotion: emotion,
+            text: text
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          const detail = text ? ` | Chữ: "${text}"` : '';
+          if (feedback) feedback.innerText = `✓ Màn hình OLED đã cập nhật: Biểu cảm '${emotion}'${detail}`;
+          showToast(`✓ Đã đổi màn hình OLED sang '${emotion}'!`);
+        } else {
+          if (feedback) feedback.innerText = `⚠ Lỗi: ${data.message || 'Không thể cập nhật OLED'}`;
+          showToast(data.message || "Lỗi cập nhật OLED", "error");
+        }
+      } catch (err) {
+        if (feedback) feedback.innerText = `✗ Lỗi kết nối: ${err.message}`;
+        showToast("Lỗi kết nối: " + err.message, "error");
+      }
+    }
+
+    async function sendCustomTextToOled() {
+      const input = document.getElementById("oledCustomTextInput");
+      const text = input ? input.value.trim() : "";
+      if (!text) {
+        showToast("Vui lòng nhập câu chữ muốn hiển thị", "error");
+        return;
+      }
+      sendOledDisplay("happy", text);
+    }
+
+    async function sendSpeakAndDisplay() {
+      const input = document.getElementById("oledCustomTextInput");
+      const text = input ? input.value.trim() : "Xin chào chủ nhân!";
+      const feedback = document.getElementById("controlStatusText");
+      if (feedback) feedback.innerText = `Đang gửi câu nói & phát loa: "${text}"...`;
+
+      try {
+        const res = await fetch("/api/robot/speak", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            device_id: currentAgent ? currentAgent.agent_id : null,
+            text: text,
+            emotion: "happy"
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          if (feedback) feedback.innerText = `✓ Đã phát âm thanh & hiển thị lên màn hình OLED: "${text}"`;
+          showToast(`✓ Robot đang phát âm thanh & hiển thị!`);
+        } else {
+          if (feedback) feedback.innerText = `⚠ Lỗi: ${data.message || 'Lỗi phát loa'}`;
+          showToast(data.message || "Lỗi phát âm thanh", "error");
+        }
+      } catch (err) {
+        if (feedback) feedback.innerText = `✗ Lỗi kết nối: ${err.message}`;
+        showToast("Lỗi kết nối: " + err.message, "error");
+      }
+    }
+
+    // ==========================================
+    // GIÁM SÁT SERIAL & RESET PHẦN CỨNG COM8
+    // ==========================================
+    async function fetchSerialStatusAndLogs() {
+      try {
+        const res = await fetch("/api/serial/logs");
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        // Cập nhật huy hiệu cổng
+        const portBadge = document.getElementById("serialPortNameBadge");
+        if (portBadge) portBadge.innerText = `${data.port} (115200 bps)`;
+
+        // Cập nhật trạng thái
+        const statusBadge = document.getElementById("serialStatusBadge");
+        const statusText = document.getElementById("serialStatusBadgeText");
+        if (data.connected) {
+          if (statusBadge) {
+            statusBadge.style.background = "rgba(34, 197, 94, 0.15)";
+            statusBadge.style.color = "#4ade80";
+            statusBadge.style.borderColor = "rgba(34, 197, 94, 0.35)";
+          }
+          if (statusText) statusText.innerText = `${data.port} Đã kết nối`;
+        } else {
+          if (statusBadge) {
+            statusBadge.style.background = "rgba(239, 68, 68, 0.15)";
+            statusBadge.style.color = "#f87171";
+            statusBadge.style.borderColor = "rgba(239, 68, 68, 0.35)";
+          }
+          if (statusText) statusText.innerText = `${data.port} Chưa kết nối`;
+        }
+
+        // Cập nhật thông tin phần cứng
+        if (data.hw_info) {
+          const hw = data.hw_info;
+          const sub = document.getElementById("serialStatusSubtitle");
+          if (sub) sub.innerText = `Chip ${hw.chip} • MAC: ${hw.mac} • Wi-Fi IP: ${hw.ip}`;
+          const sku = document.getElementById("hwSkuText");
+          if (sku) sku.innerText = hw.sku;
+          const disp = document.getElementById("hwDisplayText");
+          if (disp) disp.innerText = hw.display;
+        }
+
+        // Cập nhật trạng thái kết nối WebSocket thời gian thực của Robot
+        try {
+          const rStatus = await fetch("/api/robot/status");
+          if (rStatus.ok) {
+            const rData = await rStatus.json();
+            const wsBadge = document.getElementById("wsRobotStatusBadge");
+            if (wsBadge) {
+              if (rData.connected && rData.clients_connected > 0) {
+                wsBadge.className = "badge connected";
+                wsBadge.style.background = "#059669";
+                wsBadge.innerText = `● Robot Online (${rData.clients_connected} thiết bị)`;
+              } else {
+                wsBadge.className = "badge";
+                wsBadge.style.background = "#d97706";
+                wsBadge.innerText = "○ Chờ Robot kết nối...";
+              }
+            }
+          }
+        } catch (_) {}
+
+        // Hiển thị logs lên Terminal
+        const consoleEl = document.getElementById("serialConsoleOutput");
+        const counterEl = document.getElementById("serialLogCounter");
+        if (consoleEl && data.logs && data.logs.length > 0) {
+          if (counterEl) counterEl.innerText = `${data.logs.length} dòng log`;
+          const logText = data.logs.map(l => `[${l.time}] ${l.text}`).join("\n");
+          consoleEl.innerText = logText;
+          const autoScroll = document.getElementById("serialAutoScroll");
+          if (autoScroll && autoScroll.checked) {
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+          }
+        }
+      } catch (err) {
+        console.error("Lỗi fetch serial logs:", err);
+      }
+    }
+
+    async function resetEsp32Hardware() {
+      const btn = document.getElementById("btnResetEsp32");
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = "⏳ Đang Reset...";
+      }
+      showToast("🔄 Đang gửi xung Reset phần cứng DTR/RTS qua cổng COM8...");
+
+      try {
+        const res = await fetch("/api/serial/reset", { method: "POST" });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast("✓ Đã gửi xung Reset! Robot đang khởi động lại...", "success");
+          setTimeout(fetchSerialStatusAndLogs, 400);
+          setTimeout(fetchSerialStatusAndLogs, 1200);
+          setTimeout(fetchSerialStatusAndLogs, 2500);
+        } else {
+          showToast(`⚠ Lỗi Reset: ${data.message || 'Không thành công'}`, "error");
+        }
+      } catch (err) {
+        showToast("Lỗi kết nối Reset: " + err.message, "error");
+      } finally {
+        setTimeout(() => {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span>🔄</span> <span>Reset Robot (DTR/RTS)</span>';
+          }
+        }, 2000);
+      }
+    }
+
+    async function reconnectSerialPort() {
+      showToast("Đang kết nối lại cổng COM8...");
+      try {
+        const res = await fetch("/api/serial/connect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ port: "COM8", baudrate: 115200 })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast("✓ Đã kết nối lại cổng COM8 thành công!", "success");
+        } else {
+          showToast(`⚠ Không thể mở COM8: ${data.message}`, "error");
+        }
+        fetchSerialStatusAndLogs();
+      } catch (err) {
+        showToast("Lỗi kết nối COM8: " + err.message, "error");
+      }
+    }
+
+    async function clearSerialTerminal() {
+      try {
+        await fetch("/api/serial/clear", { method: "POST" });
+        const consoleEl = document.getElementById("serialConsoleOutput");
+        if (consoleEl) consoleEl.innerText = "[HỆ THỐNG] Đã xóa lịch sử log console.";
+        const counterEl = document.getElementById("serialLogCounter");
+        if (counterEl) counterEl.innerText = "0 dòng log";
+        showToast("Đã xóa log console.");
+      } catch (err) {
+        console.error("Lỗi xóa log:", err);
+      }
+    }
+
+    // Tự động poll log mỗi 1.2 giây
+    setInterval(() => {
+      const remoteSec = document.getElementById("tabRemoteControl");
+      if (remoteSec && remoteSec.style.display !== "none") {
+        fetchSerialStatusAndLogs();
+      }
+    }, 1200);
+
+    // Phím tắt điều khiển bàn phím (Arrow keys & Space)
+    window.addEventListener("keydown", (e) => {
+      const remoteSection = document.getElementById("tabRemoteControl");
+      if (!remoteSection || remoteSection.style.display === "none") return;
+      if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+
+      if (e.key === "ArrowUp") { e.preventDefault(); sendRobotCommand("forward"); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); sendRobotCommand("backward"); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); sendRobotCommand("turn_left"); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); sendRobotCommand("turn_right"); }
+      else if (e.key === " " || e.key === "Spacebar") { e.preventDefault(); sendRobotCommand("stop"); }
+    });
+
+    // KHỞI ĐỘNG ỨNG DỤNG
+    window.addEventListener("DOMContentLoaded", async () => {
+      await loadOptions();
+      await loadConfigFromBackend();
+      await loadDevicesDropdown();
+      fetchSerialStatusAndLogs();
+      const hint = document.getElementById("mcpEndpointHint");
+      if (hint) hint.innerText = `http://${window.location.hostname}:${window.location.port || '8000'}/mcp`;
+    });
+
+    // 1. TẢI OPTIONS (MODELS, LANGUAGES, VOICES)
+    async function loadOptions() {
+      try {
+        const res = await fetch("/api/my-xiaozhi-options");
+        currentOptions = await res.json();
+
+        // Điền models
+        const modelSelect = document.getElementById("cfgLlmModel");
+        modelSelect.innerHTML = "";
+        currentOptions.models.forEach(m => {
+          const opt = document.createElement("option");
+          opt.value = m.id;
+          opt.innerText = m.name;
+          modelSelect.appendChild(opt);
+        });
+
+        // Điền languages
+        const langSelect = document.getElementById("cfgLanguage");
+        langSelect.innerHTML = "";
+        currentOptions.languages.forEach(l => {
+          const opt = document.createElement("option");
+          opt.value = l.code;
+          opt.innerText = l.name;
+          langSelect.appendChild(opt);
+        });
+      } catch (err) {
+        console.error("Lỗi tải options:", err);
+      }
+    }
+
+    // KHI ĐỔI NGÔN NGỮ -> CẬP NHẬT DANH SÁCH GIỌNG NÓI
+    function onLanguageChange(preferredVoice = "") {
+      const lang = document.getElementById("cfgLanguage").value || "vi";
+      const voiceSelect = document.getElementById("cfgTtsVoice");
+      voiceSelect.innerHTML = "";
+
+      const voices = currentOptions.voicesByLanguage[lang] || [];
+      if (voices.length === 0) {
+        voiceSelect.innerHTML = `<option value="">Không có giọng nói cho ngôn ngữ này</option>`;
+      } else {
+        voices.forEach(v => {
+          const opt = document.createElement("option");
+          opt.value = v.id;
+          opt.innerText = v.name;
+          opt.dataset.demo = v.demo || "";
+          voiceSelect.appendChild(opt);
+        });
+      }
+
+      if (preferredVoice) {
+        voiceSelect.value = preferredVoice;
+      }
+      updateVoiceDemoBtn();
+    }
+
+    // CẬP NHẬT TRẠNG THÁI NÚT NGHE THỬ
+    function updateVoiceDemoBtn() {
+      const voiceSelect = document.getElementById("cfgTtsVoice");
+      const selOpt = voiceSelect.options[voiceSelect.selectedIndex];
+      const demoUrl = selOpt ? selOpt.dataset.demo : "";
+      const btn = document.getElementById("btnPreviewVoice");
+      if (demoUrl) {
+        btn.disabled = false;
+        btn.title = "Bấm để nghe thử giọng nói này";
+      } else {
+        btn.disabled = true;
+        btn.title = "Giọng này chưa có file nghe thử trực tiếp";
+      }
+    }
+
+    // NGHE THỬ GIỌNG NÓI TRỰC TIẾP TRÊN TRÌNH DUYỆT
+    function previewCurrentVoice() {
+      const voiceSelect = document.getElementById("cfgTtsVoice");
+      const selOpt = voiceSelect.options[voiceSelect.selectedIndex];
+      const demoUrl = selOpt ? selOpt.dataset.demo : "";
+      if (!demoUrl) {
+        showToast("Giọng này chưa có file demo audio", "error");
+        return;
+      }
+      const player = document.getElementById("audioPreviewPlayer");
+      player.src = demoUrl;
+      player.play().catch(e => {
+        showToast("Không thể phát âm thanh: " + e.message, "error");
+      });
+      showToast("Đang phát thử giọng nói...", "success");
+    }
+
+    // 2. TẢI CẤU HÌNH TỪ BACKEND
+    async function loadConfigFromBackend(showNotice = false) {
+      try {
+        const res = await fetch("/api/my-xiaozhi-config");
+        if (!res.ok) throw new Error("Không thể tải cấu hình");
+        const data = await res.json();
+        currentAgent = data.agent;
+        currentUser = data.user;
+
+        // Cập nhật UI
+        document.getElementById("sidebarUserName").innerText = `Xin chào, ${currentAgent.device_name || currentUser.username}`;
+        document.getElementById("sidebarDeviceName").innerText = `Mã: ${currentAgent.device_name} (${currentAgent.assistant_name})`;
+        document.getElementById("cfgAssistantName").value = currentAgent.assistant_name || "Sophia";
+        document.getElementById("cfgLlmModel").value = currentAgent.llm_model || "xz-lite";
+        document.getElementById("cfgLanguage").value = currentAgent.language || "vi";
+
+        onLanguageChange(currentAgent.tts_voice || "Vietnamese_kindhearted_girl");
+
+        document.getElementById("cfgTtsSpeed").value = currentAgent.tts_speech_speed || "normal";
+        document.getElementById("cfgTtsPitch").value = currentAgent.tts_pitch ?? 0;
+        document.getElementById("cfgCharacter").value = currentAgent.character || "";
+
+        // Admin Hidden Prompt & User Management
+        const hiddenGroup = document.getElementById("hiddenPromptGroup");
+        if (hiddenGroup) {
+          hiddenGroup.style.display = (currentUser && currentUser.role === "admin") ? "block" : "none";
+        }
+        const cfgHiddenPrompt = document.getElementById("cfgHiddenPrompt");
+        if (cfgHiddenPrompt) {
+          cfgHiddenPrompt.value = currentAgent.hidden_prompt || "";
+        }
+        const adminSection = document.getElementById("adminUserManagementSection");
+        if (adminSection) {
+          adminSection.style.display = (currentUser && currentUser.role === "admin") ? "block" : "none";
+        }
+
+        // Cập nhật trạng thái Upstream
+        const upBadge = document.getElementById("topbarUpstreamStatus");
+        if (currentUser.has_upstream_token) {
+          upBadge.className = "badge connected";
+          upBadge.innerText = "☁️ Upstream: Đã đồng bộ";
+        } else {
+          upBadge.className = "badge offline";
+          upBadge.innerText = "⚠️ Chế độ Lưu Cục Bộ (Chưa có Token)";
+        }
+
+        updateCharCounter();
+        if (showNotice) showToast("Đã tải cấu hình hiện tại thành công!");
+      } catch (err) {
+        showToast("Lỗi tải cấu hình: " + err.message, "error");
+      }
+    }
+
+    // BỘ ĐẾM KÝ TỰ CHARACTER
+    function updateCharCounter() {
+      const charVal = document.getElementById("cfgCharacter").value || "";
+      const limit = currentUser && currentUser.char_limit ? currentUser.char_limit : 7305;
+      const counterEl = document.getElementById("cfgCharCounter");
+      counterEl.innerText = `${charVal.length} / ${limit} ký tự`;
+      if (charVal.length > limit) {
+        counterEl.style.color = "#ef4444";
+      } else {
+        counterEl.style.color = "#94a3b8";
+      }
+    }
+
+    // LƯU CẤU HÌNH VỀ BACKEND & UPSTREAM
+    async function saveConfigToBackend() {
+      const character = document.getElementById("cfgCharacter").value.trim();
+      if (!character.startsWith("[VAI TRÒ VÀ TÍNH CÁCH]")) {
+        alert("Bắt buộc phải giữ lại tiêu đề: [VAI TRÒ VÀ TÍNH CÁCH]");
+        return;
+      }
+
+      const payload = {
+        assistant_name: document.getElementById("cfgAssistantName").value.trim() || "Sophia",
+        llm_model: document.getElementById("cfgLlmModel").value,
+        language: document.getElementById("cfgLanguage").value,
+        tts_voice: document.getElementById("cfgTtsVoice").value,
+        tts_speech_speed: document.getElementById("cfgTtsSpeed").value,
+        tts_pitch: parseInt(document.getElementById("cfgTtsPitch").value || "0", 10),
+        character: character,
+        hidden_prompt: currentUser.role === "admin" ? document.getElementById("cfgHiddenPrompt").value : null
+      };
+
+      try {
+        showToast("Đang lưu cấu hình...", "success");
+        const res = await fetch("/api/my-xiaozhi-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Không thể lưu cấu hình");
+
+        showToast(data.message || "Đã lưu cấu hình thành công!");
+        document.getElementById("cfgStatusMsg").innerHTML = `<span style="color:#4ade80;">✅ ${data.message}</span>`;
+        await loadConfigFromBackend();
+      } catch (err) {
+        showToast(err.message, "error");
+        document.getElementById("cfgStatusMsg").innerHTML = `<span style="color:#ef4444;">❌ Lỗi: ${err.message}</span>`;
+      }
+    }
+
+    // KHÔI PHỤC PROMPT MẶC ĐỊNH
+    function resetDefaultConfigPrompt() {
+      if (!confirm("Bạn có chắc chắn muốn quay trở lại mô tả vai trò mặc định của Sophia?")) return;
+      document.getElementById("cfgCharacter").value = `[VAI TRÒ VÀ TÍNH CÁCH]\nBạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. Bạn trả lời ngắn gọn, tự nhiên, vui vẻ và sẵn sàng hỗ trợ mọi việc.`;
+      updateCharCounter();
+      showToast("Đã khôi phục prompt mặc định. Hãy bấm Lưu cấu hình!");
+    }
+
+    // 3. TẢI PRESETS VAI TRÒ
+    async function loadRolePresets() {
+      const container = document.getElementById("rolesGridContainer");
+      container.innerHTML = `<div style="color:#94a3b8;">Đang tải kho vai trò...</div>`;
+      try {
+        const res = await fetch("/api/presets?category=role");
+        const roles = await res.json();
+        container.innerHTML = "";
+        roles.forEach(r => {
+          const card = document.createElement("div");
+          card.className = "role-card";
+          card.innerHTML = `
+            <div>
+              <div class="role-header">
+                <div class="role-icon">${r.icon || "🤖"}</div>
+                <div class="role-name">${r.title}</div>
+              </div>
+              <div class="role-desc">${r.description || ""}</div>
+            </div>
+            <button class="primary full-width" onclick="applyRolePreset(${r.id})">Áp dụng vào GMbot AI</button>
+          `;
+          container.appendChild(card);
+        });
+      } catch (err) {
+        container.innerHTML = `<div style="color:#ef4444;">Lỗi tải vai trò: ${err.message}</div>`;
+      }
+    }
+
+    async function applyRolePreset(id) {
+      try {
+        const res = await fetch("/api/presets?category=role");
+        const roles = await res.json();
+        const role = roles.find(r => r.id === id);
+        if (role) {
+          document.getElementById("cfgCharacter").value = role.system_prompt;
+          updateCharCounter();
+          switchMainTab("xiaozhiConfig", document.querySelectorAll(".sidebar .menu-item")[0]);
+          showToast(`Đã nạp vai trò "${role.title}" vào ô Cấu hình! Hãy bấm Lưu cấu hình.`);
+        }
+      } catch (e) {
+        showToast("Lỗi khi áp dụng vai trò: " + e.message, "error");
+      }
+    }
+
+    // 4. TẢI BÀI HỌC TIẾNG ANH
+    async function loadEnglishPresets() {
+      const level = document.getElementById("englishLevelFilter").value;
+      const container = document.getElementById("englishListContainer");
+      container.innerHTML = `<div style="text-align:center; padding:15px; color:#94a3b8;">Đang tải...</div>`;
+
+      let url = "/api/presets?category=english";
+      if (level) url += `&level=${level}`;
+
+      try {
+        const res = await fetch(url);
+        currentEnglishPresets = await res.json();
+        container.innerHTML = "";
+        if (currentEnglishPresets.length === 0) {
+          container.innerHTML = `<div style="color:#94a3b8; padding:15px;">Chưa có bài học cho trình độ này.</div>`;
+          return;
+        }
+        currentEnglishPresets.forEach(item => {
+          const div = document.createElement("div");
+          div.className = "curriculum-item";
+          div.onclick = () => selectEnglishItem(item.id, div);
+          div.innerHTML = `
+            <div class="curriculum-item-title">
+              <span>${item.icon || "📚"}</span>
+              <span>${item.title}</span>
+            </div>
+            <div class="curriculum-item-desc">${item.topic ? `Chủ đề: ${item.topic}` : (item.description || "")}</div>
+          `;
+          container.appendChild(div);
+        });
+      } catch (err) {
+        container.innerHTML = `<div style="color:#ef4444; padding:15px;">Lỗi: ${err.message}</div>`;
+      }
+    }
+
+    function selectEnglishItem(id, itemEl) {
+      document.querySelectorAll(".curriculum-item").forEach(i => i.classList.remove("active"));
+      if (itemEl) itemEl.classList.add("active");
+
+      selectedEnglishId = id;
+      const item = currentEnglishPresets.find(i => i.id === id);
+      if (!item) return;
+
+      document.getElementById("englishDetailTitle").innerText = item.title;
+      document.getElementById("englishDetailBody").innerHTML = `
+        <p><strong>🎯 Trình độ:</strong> <span style="color:#4ade80;">${item.level ? item.level.toUpperCase() : "STARTER"}</span></p>
+        ${item.topic ? `<p><strong>🏷️ Chủ đề:</strong> ${item.topic}</p>` : ""}
+        ${item.target_words ? `<p style="margin-top:8px;"><strong>📝 Từ mục tiêu:</strong><br><span style="color:#fbbf24;">${item.target_words}</span></p>` : ""}
+        ${item.target_phrases ? `<p style="margin-top:8px;"><strong>💬 Mẫu câu phản xạ:</strong><br><pre style="background:rgba(0,0,0,0.2); padding:8px; border-radius:6px; font-family:inherit; color:#e2e8f0;">${item.target_phrases}</pre></p>` : ""}
+        ${item.description ? `<p style="margin-top:8px;"><strong>📖 Tình huống:</strong> ${item.description}</p>` : ""}
+      `;
+      document.getElementById("englishActionBox").style.display = "block";
+
+      const btn = document.getElementById("btnApplyEnglish");
+      if (btn) {
+        btn.disabled = false;
+        btn.innerText = "🚀 Áp dụng kịch bản bài học này vào Robot";
+        btn.style.background = "";
+      }
+    }
+
+    async function applyEnglishToAgent() {
+      const item = currentEnglishPresets.find(i => i.id === selectedEnglishId);
+      if (!item) {
+        showToast("Vui lòng chọn một bài học tiếng Anh", "error");
+        return;
+      }
+      const btn = document.getElementById("btnApplyEnglish");
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = "⏳ Đang nạp vào Robot...";
+      }
+      showToast(`Đang nạp bài học "${item.title}" vào Robot...`, "success");
+
+      try {
+        const res = await fetch("/api/apply-curriculum", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            curriculum_id: String(item.id),
+            name: item.title,
+            content: item.system_prompt
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(`✓ ${data.message || 'Đã nạp bài học vào Robot thành công!'}`);
+          if (btn) {
+            btn.disabled = false;
+            btn.innerText = "✅ Đang áp dụng trên Robot";
+            btn.style.background = "#059669";
+          }
+          if (document.getElementById("cfgCharacter")) {
+            document.getElementById("cfgCharacter").value = item.system_prompt;
+            updateCharCounter();
+          }
+        } else {
+          showToast(`Lỗi: ${data.detail || 'Không thể nạp bài học'}`, "error");
+          if (btn) {
+            btn.disabled = false;
+            btn.innerText = "🚀 Áp dụng kịch bản bài học này vào Robot";
+          }
+        }
+      } catch (err) {
+        showToast("Lỗi kết nối: " + err.message, "error");
+        if (btn) {
+          btn.disabled = false;
+          btn.innerText = "🚀 Áp dụng kịch bản bài học này vào Robot";
+        }
+      }
+    }
+
+    async function deactivateEnglishTutor() {
+      if (!confirm("Bạn có chắc chắn muốn hủy chế độ học tiếng Anh và quay về trợ lý Sophia mặc định?")) return;
+      showToast("Đang hủy chế độ học tiếng Anh...");
+      try {
+        const res = await fetch("/api/english-tutor/deactivate", { method: "POST" });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(`✓ ${data.message || 'Đã hủy chế độ học tiếng Anh thành công!'}`);
+          const btn = document.getElementById("btnApplyEnglish");
+          if (btn) {
+            btn.innerText = "🚀 Áp dụng kịch bản bài học này vào Robot";
+            btn.style.background = "";
+            btn.disabled = false;
+          }
+          await loadConfigFromBackend();
+        } else {
+          showToast(`Lỗi: ${data.detail || 'Không thể hủy chế độ'}`, "error");
+        }
+      } catch (err) {
+        showToast("Lỗi kết nối: " + err.message, "error");
+      }
+    }
+
+    async function createCustomEnglishLesson() {
+      const title = document.getElementById("customEnTitle").value.trim();
+      const level = document.getElementById("customEnLevel").value;
+      const words = document.getElementById("customEnWords").value.trim();
+      const phrases = document.getElementById("customEnPhrases").value.trim();
+
+      if (!title) {
+        alert("Vui lòng nhập tiêu đề bài học");
+        return;
+      }
+
+      const prompt = `[VAI TRÒ VÀ TÍNH CÁCH]\nBạn là gia sư tiếng Anh cho bài học: ${title}.\nTrình độ: ${level.toUpperCase()}.\nTừ vựng: ${words}.\nMẫu câu luyện tập: ${phrases}.\nHãy hướng dẫn học sinh bằng tiếng Anh tự nhiên, hỏi từng câu một và sửa phát âm nhẹ nhàng.`;
+
+      const payload = {
+        category: "english_lesson",
+        title: title,
+        level: level,
+        target_words: words,
+        target_phrases: phrases,
+        system_prompt: prompt,
+        icon: "✍️"
+      };
+
+      try {
+        const res = await fetch("/api/presets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Không thể tạo bài học");
+        showToast("Đã tạo bài học mới thành công!");
+        document.getElementById("cfgCharacter").value = prompt;
+        updateCharCounter();
+        await saveConfigToBackend();
+        switchMainTab("xiaozhiConfig", document.querySelectorAll(".sidebar .menu-item")[0]);
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    }
+
+    // 4B. 20 BÀI HỌC CHUẨN GMBOT (CURRICULUMS)
+    let allCurriculums = [];
+    let selectedCurriculumId = null;
+
+    async function loadCurriculumsFromBackend() {
+      const container = document.getElementById("curriculumsListContainer");
+      if (!container) return;
+      container.innerHTML = `<div style="text-align:center; padding:15px; color:#94a3b8;">Đang tải danh sách bài học...</div>`;
+      try {
+        const res = await fetch("/api/curriculums");
+        allCurriculums = await res.json();
+        container.innerHTML = "";
+        if (!allCurriculums || allCurriculums.length === 0) {
+          container.innerHTML = `<div style="color:#94a3b8; padding:15px;">Chưa có bài học nào.</div>`;
+          return;
+        }
+        allCurriculums.forEach((c, idx) => {
+          const div = document.createElement("div");
+          div.className = "curriculum-item" + (idx === 0 ? " active" : "");
+          div.onclick = () => selectCurriculum(c.id, div);
+          const icon = c.icon || "📖";
+          const title = c.name || c.title || `Bài học ${idx + 1}`;
+          const desc = c.description || (c.content ? c.content.slice(0, 75).replace(/\n/g, ' ') + "..." : "");
+          div.innerHTML = `
+            <div class="curriculum-item-title">
+              <span>${icon}</span>
+              <span>${title}</span>
+            </div>
+            <div class="curriculum-item-desc">${desc}</div>
+          `;
+          container.appendChild(div);
+        });
+        if (allCurriculums.length > 0) {
+          selectCurriculum(allCurriculums[0].id, container.firstElementChild);
+        }
+      } catch (err) {
+        container.innerHTML = `<div style="color:#ef4444; padding:15px;">Lỗi: ${err.message}</div>`;
+      }
+    }
+
+    function selectCurriculum(id, itemEl) {
+      document.querySelectorAll("#curriculumsListContainer .curriculum-item").forEach(i => i.classList.remove("active"));
+      if (itemEl) itemEl.classList.add("active");
+      selectedCurriculumId = id;
+      const c = allCurriculums.find(item => item.id === id);
+      if (!c) return;
+
+      const titleEl = document.getElementById("curriculumDetailTitle");
+      const contentEl = document.getElementById("curriculumDetailContent");
+      if (titleEl) titleEl.innerHTML = `<span>${c.icon || "📖"}</span> <span>${c.name || c.title}</span>`;
+      if (contentEl) {
+        contentEl.innerHTML = `
+          ${c.level ? `<p><strong>🎯 Cấp độ:</strong> <span style="color:#4ade80;">${c.level}</span></p>` : ""}
+          ${c.topic ? `<p style="margin-top:4px;"><strong>🏷️ Chủ đề:</strong> ${c.topic}</p>` : ""}
+          ${c.description ? `<p style="margin-top:6px; color:#94a3b8;">${c.description}</p>` : ""}
+          <p style="margin-top:12px; font-weight:bold; color:#60a5fa;">📋 Kịch bản hội thoại AI (System Prompt):</p>
+          <pre style="background:rgba(0,0,0,0.35); padding:12px; border-radius:8px; font-family:inherit; color:#e2e8f0; white-space:pre-wrap; line-height:1.5; max-height:280px; overflow-y:auto; border:1px solid rgba(255,255,255,0.08); font-size:13px;">${c.content || c.system_prompt || ''}</pre>
+        `;
+      }
+    }
+
+    async function applyCurrentCurriculum() {
+      const c = allCurriculums.find(item => item.id === selectedCurriculumId);
+      if (!c) {
+        showToast("Vui lòng chọn một bài học", "error");
+        return;
+      }
+      try {
+        const res = await fetch("/api/apply-curriculum", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            curriculum_id: String(c.id),
+            name: c.name || c.title,
+            content: c.content || c.system_prompt
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(`✓ ${data.message || 'Đã nạp bài học vào Robot thành công!'}`);
+          await loadConfigFromBackend();
+        } else {
+          showToast(data.detail || "Không thể áp dụng bài học", "error");
+        }
+      } catch (e) {
+        showToast("Lỗi kết nối: " + e.message, "error");
+      }
+    }
+
+    async function resetDefaultCurriculum() {
+      if (!confirm("Khôi phục kịch bản AI về trợ lý Sophia mặc định?")) return;
+      try {
+        const res = await fetch("/api/reset-default-ai-prompt", { method: "POST" });
+        const data = await res.json();
+        if (res.ok) {
+          showToast("✓ Đã khôi phục trợ lý Sophia mặc định!");
+          await loadConfigFromBackend();
+        } else {
+          showToast(data.detail || "Không thể khôi phục", "error");
+        }
+      } catch (e) {
+        showToast("Lỗi: " + e.message, "error");
+      }
+    }
+
+    // 5. BỘ NHỚ (MEMORY)
+    async function loadMemoriesFromBackend() {
+      const container = document.getElementById("memoriesListContainer");
+      try {
+        const res = await fetch("/api/memories");
+        allMemories = await res.json();
+        renderMemoriesList(allMemories);
+      } catch (err) {
+        container.innerHTML = `<div style="color:#ef4444;">Lỗi tải bộ nhớ: ${err.message}</div>`;
+      }
+    }
+
+    function renderMemoriesList(memories) {
+      const container = document.getElementById("memoriesListContainer");
+      if (memories.length === 0) {
+        container.innerHTML = `<div style="text-align:center; padding:20px; color:#94a3b8;">Chưa có dữ liệu bộ nhớ nào.</div>`;
+        return;
+      }
+      container.innerHTML = "";
+      memories.forEach(m => {
+        const div = document.createElement("div");
+        div.className = "memory-item";
+        const dateStr = new Date(m.created_at).toLocaleString("vi-VN");
+        div.innerHTML = `
+          <div style="display:flex; gap:12px; align-items:flex-start; flex:1;">
+            <input type="checkbox" onchange="toggleMemSelect(${m.id}, this.checked)" style="width:16px; height:16px; margin-top:3px; cursor:pointer;">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                <span class="memory-badge ${m.memory_type === 'SHORT_TERM' ? 'memory-short' : 'memory-long'}">${m.memory_type}</span>
+                <span style="font-size:12px; color:#94a3b8;">${dateStr}</span>
+              </div>
+              <div style="font-size:14px; color:#ffffff;">${m.content}</div>
+            </div>
+          </div>
+          <button class="danger" style="padding:6px 10px; font-size:12px;" onclick="deleteSingleMemory(${m.id})">Xóa</button>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function filterMemories() {
+      const search = document.getElementById("memSearchInput").value.toLowerCase();
+      const filtered = allMemories.filter(m => m.content.toLowerCase().includes(search));
+      renderMemoriesList(filtered);
+    }
+
+    function toggleMemSelect(id, checked) {
+      if (checked) selectedMemIds.add(id);
+      else selectedMemIds.delete(id);
+      const btn = document.getElementById("btnBulkDeleteMem");
+      btn.style.display = selectedMemIds.size > 0 ? "inline-flex" : "none";
+      btn.innerText = `Xóa đã chọn (${selectedMemIds.size})`;
+    }
+
+    async function addMemoryItem() {
+      const content = document.getElementById("newMemContent").value.trim();
+      const type = document.getElementById("newMemType").value;
+      if (!content) return;
+      try {
+        const res = await fetch("/api/memories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: content, memory_type: type })
+        });
+        if (res.ok) {
+          document.getElementById("newMemContent").value = "";
+          showToast("Đã thêm bộ nhớ mới!");
+          loadMemoriesFromBackend();
+        }
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    async function deleteSingleMemory(id) {
+      if (!confirm("Bạn có chắc muốn xóa mục bộ nhớ này?")) return;
+      try {
+        await fetch(`/api/memories/${id}`, { method: "DELETE" });
+        showToast("Đã xóa mục bộ nhớ");
+        loadMemoriesFromBackend();
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    async function bulkDeleteMemories() {
+      if (selectedMemIds.size === 0) return;
+      if (!confirm(`Xóa ${selectedMemIds.size} mục bộ nhớ đã chọn?`)) return;
+      try {
+        await fetch("/api/memories/bulk-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: Array.from(selectedMemIds) })
+        });
+        selectedMemIds.clear();
+        document.getElementById("btnBulkDeleteMem").style.display = "none";
+        showToast("Đã xóa các mục đã chọn!");
+        loadMemoriesFromBackend();
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    // 6. NHIỆM VỤ & MCP
+    async function loadTasksFromBackend() {
+      const container = document.getElementById("tasksListContainer");
+      try {
+        const res = await fetch("/api/tasks");
+        const tasks = await res.json();
+        if (tasks.length === 0) {
+          container.innerHTML = `<div style="color:#94a3b8; font-size:13px;">Chưa có nhiệm vụ nào.</div>`;
+          return;
+        }
+        container.innerHTML = "";
+        tasks.forEach(t => {
+          const div = document.createElement("div");
+          div.style = "background:#0f2140; padding:10px 14px; border-radius:8px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;";
+          div.innerHTML = `
+            <span style="font-size:13.5px; color:#ffffff;">📌 ${t.content}</span>
+            <button class="danger" style="padding:4px 8px; font-size:11px;" onclick="deleteTaskItem(${t.id})">Hoàn thành / Xóa</button>
+          `;
+          container.appendChild(div);
+        });
+      } catch (e) {
+        container.innerHTML = e.message;
+      }
+    }
+
+    async function addTaskItem() {
+      const input = document.getElementById("newTaskInput");
+      const content = input.value.trim();
+      if (!content) return;
+      await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content })
+      });
+      input.value = "";
+      showToast("Đã tạo nhiệm vụ mới!");
+      loadTasksFromBackend();
+    }
+
+    async function deleteTaskItem(id) {
+      await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+      showToast("Đã xóa nhiệm vụ!");
+      loadTasksFromBackend();
+    }
+
+    async function callMcpDirect(toolName) {
+      const box = document.getElementById("mcpOutputBox");
+      box.innerText = `⏳ Đang gọi tool '${toolName}' qua JSON-RPC 2.0...`;
+      try {
+        const res = await fetch("/api/mcp/test-call", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tool_name: toolName, arguments: {} })
+        });
+        const data = await res.json();
+        box.innerText = data.result || "Không có kết quả trả về";
+      } catch (e) {
+        box.innerText = "Lỗi khi gọi tool: " + e.message;
+      }
+    }
+
+    async function loadNotesFromBackend() {
+      const container = document.getElementById("notesListContainer");
+      try {
+        const res = await fetch("/api/notes");
+        const notes = await res.json();
+        if (notes.length === 0) {
+          container.innerHTML = `<div style="color:#94a3b8; font-size:13px;">Chưa có ghi chú nào được lưu vào máy tính.</div>`;
+          return;
+        }
+        container.innerHTML = "";
+        notes.forEach(n => {
+          const div = document.createElement("div");
+          div.style = "background:#0f2140; padding:12px 14px; border-radius:8px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:flex-start;";
+          div.innerHTML = `
+            <div>
+              <div style="font-weight:700; color:#60a5fa; font-size:14px;">${n.title}</div>
+              <div style="font-size:13px; color:#cbd5e1; margin-top:4px;">${n.content}</div>
+              <div style="font-size:11px; color:#64748b; margin-top:4px;">${new Date(n.created_at).toLocaleString("vi-VN")}</div>
+            </div>
+            <button class="danger" style="padding:4px 8px; font-size:11px;" onclick="deleteNoteItem(${n.id})">Xóa</button>
+          `;
+          container.appendChild(div);
+        });
+      } catch (e) {
+        container.innerHTML = e.message;
+      }
+    }
+
+    async function deleteNoteItem(id) {
+      await fetch(`/api/notes/${id}`, { method: "DELETE" });
+      showToast("Đã xóa ghi chú!");
+      loadNotesFromBackend();
+    }
+
+    // 7. THIẾT BỊ & UPSTREAM & ADMIN
+    async function loadDevicesDropdown() {
+      try {
+        const res = await fetch("/api/devices");
+        const devices = await res.json();
+        const select = document.getElementById("topDeviceSelect");
+        select.innerHTML = "";
+        devices.forEach(d => {
+          const opt = document.createElement("option");
+          opt.value = d.agent_id;
+          opt.innerText = `${d.device_name} (${d.assistant_name})`;
+          if (d.is_active) opt.selected = true;
+          select.appendChild(opt);
+        });
+      } catch (e) {
+        console.error("Lỗi tải danh sách robot:", e);
+      }
+    }
+
+    async function onActiveDeviceChange(agentId) {
+      try {
+        await fetch(`/api/devices/${agentId}/select`, { method: "POST" });
+        showToast("Đã chuyển sang Robot: " + agentId);
+        await loadConfigFromBackend();
+      } catch (e) {
+        showToast("Lỗi chuyển thiết bị: " + e.message, "error");
+      }
+    }
+
+    async function testAndConnectUpstream() {
+      const token = document.getElementById("upstreamTokenInput").value.trim();
+      const agentId = document.getElementById("upstreamAgentIdInput").value.trim();
+      const url = document.getElementById("upstreamUrlInput").value.trim();
+      const statusEl = document.getElementById("upstreamConnectStatus");
+
+      if (!token) {
+        alert("Vui lòng nhập Upstream Token hoặc Cookie");
+        return;
+      }
+
+      statusEl.innerHTML = `⏳ Đang kiểm tra kết nối với ${url}...`;
+      try {
+        const res = await fetch("/api/upstream/connect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ upstream_token: token, agent_id: agentId, upstream_api_url: url })
+        });
+        const data = await res.json();
+        if (data.connected) {
+          statusEl.innerHTML = `<span style="color:#4ade80;">✅ ${data.message}</span>`;
+          showToast("Đồng bộ với xiaozhi.me thành công!");
+          await loadConfigFromBackend();
+        } else {
+          statusEl.innerHTML = `<span style="color:#fbbf24;">⚠️ ${data.message}</span>`;
+          showToast(data.message, "error");
+        }
+      } catch (e) {
+        statusEl.innerHTML = `<span style="color:#ef4444;">❌ Lỗi: ${e.message}</span>`;
+      }
+    }
+
+    async function loadDevicesFromBackend() {
+      const container = document.getElementById("devicesTableContainer");
+      try {
+        const res = await fetch("/api/devices");
+        const devices = await res.json();
+        container.innerHTML = "";
+        devices.forEach(d => {
+          const div = document.createElement("div");
+          div.style = "background:#0f2140; padding:14px; border-radius:8px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;";
+          div.innerHTML = `
+            <div>
+              <div style="font-weight:700; font-size:15px; color:#ffffff;">${d.device_name} <span class="badge connected">connected</span> ${d.is_active ? '<span class="badge vip-pill" style="margin:0;">ĐANG CHỌN</span>' : ''}</div>
+              <div style="font-size:12.5px; color:#94a3b8; margin-top:4px;">MAC: ${d.mac_address} | Agent ID: ${d.agent_id} | Tên AI: ${d.assistant_name}</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              ${!d.is_active ? `<button class="primary" style="padding:6px 12px; font-size:12px;" onclick="onActiveDeviceChange('${d.agent_id}')">Kích hoạt</button>` : ''}
+              <button class="danger" style="padding:6px 12px; font-size:12px;" onclick="deleteDeviceItem(${d.id})">Xóa</button>
+            </div>
+          `;
+          container.appendChild(div);
+        });
+      } catch (e) {
+        container.innerHTML = e.message;
+      }
+    }
+
+    async function addNewDevice() {
+      const name = document.getElementById("newDevName").value.trim();
+      const agentId = document.getElementById("newDevAgentId").value.trim();
+      const mac = document.getElementById("newDevMac").value.trim();
+      if (!name || !agentId || !mac) {
+        alert("Vui lòng điền đầy đủ Tên, Agent ID và Địa chỉ MAC");
+        return;
+      }
+      try {
+        await fetch("/api/devices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ device_name: name, agent_id: agentId, mac_address: mac })
+        });
+        showToast("Đã lưu thiết bị mới!");
+        document.getElementById("newDevName").value = "";
+        document.getElementById("newDevAgentId").value = "";
+        document.getElementById("newDevMac").value = "";
+        loadDevicesFromBackend();
+        loadDevicesDropdown();
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    async function deleteDeviceItem(id) {
+      if (!confirm("Bạn có chắc muốn xóa thiết bị này?")) return;
+      await fetch(`/api/devices/${id}`, { method: "DELETE" });
+      showToast("Đã xóa thiết bị!");
+      loadDevicesFromBackend();
+      loadDevicesDropdown();
+    }
+
+    async function loadUsersFromBackend() {
+      if (!currentUser || currentUser.role !== "admin") return;
+      const container = document.getElementById("usersListContainer");
+      try {
+        const res = await fetch("/api/users");
+        const users = await res.json();
+        container.innerHTML = "";
+        users.forEach(u => {
+          const div = document.createElement("div");
+          div.style = "background:#0f2140; padding:10px 14px; border-radius:8px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;";
+          div.innerHTML = `
+            <div>
+              <strong style="color:#ffffff;">${u.username}</strong>
+              <span class="badge ${u.role === 'admin' ? 'vip-pill' : 'connected'}" style="margin-left:8px;">${u.role.toUpperCase()}</span>
+              <span style="font-size:12px; color:#94a3b8; margin-left:8px;">Giới hạn prompt: ${u.char_limit} ký tự</span>
+            </div>
+            ${u.username !== "admin" ? `<button class="danger" style="padding:4px 8px; font-size:11px;" onclick="deleteUserItem(${u.id})">Xóa</button>` : ''}
+          `;
+          container.appendChild(div);
+        });
+      } catch (e) {
+        container.innerHTML = e.message;
+      }
+    }
+
+    async function createNewUser() {
+      const u = document.getElementById("newUsername").value.trim();
+      const p = document.getElementById("newPassword").value.trim();
+      const r = document.getElementById("newUserRole").value;
+      const l = parseInt(document.getElementById("newUserCharLimit").value || "500", 10);
+      if (!u || !p) {
+        alert("Vui lòng nhập tên đăng nhập và mật khẩu");
+        return;
+      }
+      try {
+        const res = await fetch("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: u, password: p, role: r, char_limit: l })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Không thể tạo người dùng");
+        showToast("Đã tạo người dùng mới thành công!");
+        document.getElementById("newUsername").value = "";
+        document.getElementById("newPassword").value = "";
+        loadUsersFromBackend();
+      } catch (e) {
+        showToast(e.message, "error");
+      }
+    }
+
+    async function deleteUserItem(id) {
+      if (!confirm("Bạn có chắc muốn xóa người dùng này?")) return;
+      await fetch(`/api/users/${id}`, { method: "DELETE" });
+      showToast("Đã xóa người dùng!");
+      loadUsersFromBackend();
+    }
+
+    function testMcpQuick() {
+      switchMainTab("tasksMcp", document.querySelectorAll(".sidebar .menu-item")[4]);
+      callMcpDirect("pc_system_info");
+    }
+
+    function switchUserModal() {
+      const username = prompt("Nhập tên người dùng muốn chuyển (Ví dụ: admin hoặc khachhang1):");
+      if (username) {
+        document.cookie = `gmbot_user=${username}; path=/; max-age=2592000`;
+        showToast("Đã chuyển tài khoản sang: " + username);
+        setTimeout(() => location.reload(), 800);
+      }
+    }
+
+    function handleLogout() {
+      if (confirm("Đăng xuất khỏi phiên làm việc hiện tại?")) {
+        document.cookie = "gmbot_user=; path=/; max-age=0";
+        showToast("Đã đăng xuất");
+        setTimeout(() => location.reload(), 800);
+      }
+    }
+
+    function addSpeakerPrompt() {
+      const name = prompt("Nhập tên người nói cần nhận diện (Ví dụ: Bố, Mẹ, Bé Bon):");
+      if (name && name.trim()) {
+        const container = document.getElementById("speakerListContainer");
+        const div = document.createElement("div");
+        div.style = "background:#13294b; padding:12px; border-radius:8px; margin-top:8px; display:flex; justify-content:space-between; align-items:center;";
+        div.innerHTML = `<span>👤 <strong>${name.trim()}</strong> (Đã ghi nhận mẫu giọng)</span><button class="danger" style="padding:4px 8px; font-size:11px;" onclick="this.parentElement.remove()">Xóa</button>`;
+        container.appendChild(div);
+        showToast("Đã thêm người nói: " + name.trim());
+      }
+    }
+
+    // ==========================================
+    // TÍNH NĂNG PHÁT NHẠC YOUTUBE ONLINE TRÊN ROBOT
+    // ==========================================
+    let currentMusicTrack = null;
+    let musicStatusPollTimer = null;
+
+    function getActiveDeviceId() {
+      if (currentAgent && (currentAgent.device_mac || currentAgent.agent_id)) {
+        return currentAgent.device_mac || currentAgent.agent_id;
+      }
+      return localStorage.getItem('currentManagedDeviceId') || 'default';
+    }
+
+    async function checkMusicStatus() {
+      try {
+        const deviceId = getActiveDeviceId();
+        const res = await fetch(`/api/music/status?device_id=${encodeURIComponent(deviceId)}`);
+        const data = await res.json();
+        updateNowPlayingUI(data.is_playing, data.track);
+      } catch (e) {
+        console.warn('Lỗi kiểm tra trạng thái nhạc:', e);
+      }
+    }
+
+    function updateNowPlayingUI(isPlaying, track) {
+      const badge = document.getElementById('nowPlayingBadge');
+      const titleEl = document.getElementById('nowPlayingTitle');
+      const uploaderEl = document.getElementById('nowPlayingUploader');
+      const durationEl = document.getElementById('nowPlayingDuration');
+      const thumbEl = document.getElementById('nowPlayingThumb');
+      const discEl = document.getElementById('nowPlayingDiscBadge');
+      const stopBtn = document.getElementById('nowPlayingStopBtn');
+
+      if (isPlaying && track) {
+        currentMusicTrack = track;
+        if (badge) {
+          badge.textContent = '🟢 Đang phát trên Robot';
+          badge.style.background = 'rgba(34, 197, 94, 0.2)';
+          badge.style.color = '#4ade80';
+          badge.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+        }
+        if (titleEl) titleEl.textContent = track.title || 'Đang phát nhạc...';
+        if (uploaderEl) uploaderEl.textContent = `Kênh: ${track.uploader || 'YouTube'}`;
+        if (durationEl) durationEl.textContent = track.duration_str || '--:--';
+        if (thumbEl && track.thumbnail) thumbEl.src = track.thumbnail;
+        if (discEl) {
+          discEl.innerHTML = '🎶';
+          discEl.style.animation = 'spin 4s linear infinite';
+        }
+        if (stopBtn) stopBtn.style.display = 'flex';
+      } else {
+        currentMusicTrack = null;
+        if (badge) {
+          badge.textContent = '⏹ Đang dừng';
+          badge.style.background = 'rgba(148,163,184,0.15)';
+          badge.style.color = '#94a3b8';
+          badge.style.borderColor = 'rgba(148,163,184,0.3)';
+        }
+        if (titleEl) titleEl.textContent = 'Chưa có bài hát nào đang phát';
+        if (uploaderEl) uploaderEl.textContent = 'Hãy tìm kiếm bài hát hoặc ra lệnh bằng giọng nói cho robot!';
+        if (durationEl) durationEl.textContent = '--:--';
+        if (thumbEl) thumbEl.src = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150';
+        if (discEl) {
+          discEl.innerHTML = '🎵';
+          discEl.style.animation = 'none';
+        }
+      }
+    }
+
+    async function searchYoutubeMusic() {
+      const input = document.getElementById('musicSearchInput');
+      const query = (input?.value || '').trim();
+      if (!query) {
+        showToast('Vui lòng nhập tên bài hát cần tìm', 'error');
+        return;
+      }
+
+      const resultsContainer = document.getElementById('musicSearchResults');
+      const countEl = document.getElementById('musicResultsCount');
+      const btn = document.getElementById('musicSearchBtn');
+
+      if (btn) btn.disabled = true;
+      if (resultsContainer) {
+        resultsContainer.innerHTML = `
+          <div style="grid-column: 1 / -1; padding: 40px 20px; text-align: center; color: #94a3b8;">
+            <div style="font-size: 28px; margin-bottom: 8px;">⏳</div>
+            <div>Đang tìm kiếm bài hát trên YouTube...</div>
+          </div>
+        `;
+      }
+      if (countEl) countEl.textContent = 'Đang tìm...';
+
+      const esc = (txt) => {
+        if (txt === undefined || txt === null) return '';
+        return String(txt)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      };
+
+      try {
+        const res = await fetch(`/api/music/search?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+
+        if (!data.success || !data.results || data.results.length === 0) {
+          if (resultsContainer) {
+            resultsContainer.innerHTML = `
+              <div style="grid-column: 1 / -1; padding: 40px 20px; text-align: center; color: #f87171; background: #07152b; border-radius: 10px;">
+                ⚠️ Không tìm thấy bài hát phù hợp cho từ khóa: <strong>"${esc(query)}"</strong>.<br>
+                Hãy thử nhập từ khóa khác hoặc dán link YouTube trực tiếp!
+              </div>
+            `;
+          }
+          if (countEl) countEl.textContent = '0 kết quả';
+          return;
+        }
+
+        if (countEl) countEl.textContent = `${data.results.length} bài hát tìm thấy`;
+        renderMusicResults(data.results);
+      } catch (err) {
+        console.error('Lỗi tìm kiếm YouTube:', err);
+        if (resultsContainer) {
+          resultsContainer.innerHTML = `
+            <div style="grid-column: 1 / -1; padding: 30px; text-align: center; color: #ef4444;">
+              Lỗi kết nối khi tìm kiếm: ${err.message}
+            </div>
+          `;
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    function renderMusicResults(results) {
+      const container = document.getElementById('musicSearchResults');
+      if (!container) return;
+
+      const esc = (txt) => {
+        if (txt === undefined || txt === null) return '';
+        return String(txt)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      };
+
+      container.innerHTML = results.map((item) => `
+        <div style="background: #0d1e38; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.borderColor='rgba(59,130,246,0.4)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'; this.style.transform='none'">
+          <div style="position: relative; width: 100%; aspect-ratio: 16/9; background: #000; overflow: hidden;">
+            <img src="${item.thumbnail}" alt="${esc(item.title)}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover;">
+            <span style="position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.8); color: #f8fafc; font-size: 11px; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: bold;">
+              ${item.duration_str}
+            </span>
+          </div>
+          <div style="padding: 14px; display: flex; flex-direction: column; flex: 1;">
+            <div style="font-size: 14px; font-weight: 700; color: #f8fafc; line-height: 1.4; height: 38px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;" title="${esc(item.title)}">
+              ${esc(item.title)}
+            </div>
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 6px; display: flex; align-items: center; justify-content: space-between;">
+              <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;">👤 ${esc(item.uploader)}</span>
+              <a href="${item.url}" target="_blank" rel="noopener" style="color: #60a5fa; text-decoration: none; font-size: 11px;" title="Xem trên YouTube">Link ↗</a>
+            </div>
+            <div style="margin-top: auto; padding-top: 14px; display: flex; gap: 6px;">
+              <button id="btnPlay_${item.id}" onclick="playYoutubeMusic('${item.id}', '${encodeURIComponent(item.title)}', '${encodeURIComponent(item.thumbnail)}', '${item.duration_str}')" style="flex: 1; padding: 10px 10px; border-radius: 8px; background: linear-gradient(135deg, #059669, #10b981); color: white; border: none; font-weight: bold; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 10px rgba(16,185,129,0.3);">
+                <span>▶ Phát trên Robot</span>
+              </button>
+              <button onclick="previewAudioOnWeb('${item.id}', '${encodeURIComponent(item.title)}')" style="padding: 10px 12px; border-radius: 8px; background: #1e293b; color: #60a5fa; border: 1px solid rgba(96,165,250,0.3); font-weight: bold; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px;" title="Nghe trước trên trình duyệt máy tính">
+                <span>🎧 Web</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function playYoutubeMusic(videoIdOrUrl, encodedTitle, encodedThumb, durationStr) {
+      const deviceId = getActiveDeviceId();
+      const title = decodeURIComponent(encodedTitle || '');
+      const thumb = decodeURIComponent(encodedThumb || '');
+      const playBtn = document.getElementById(`btnPlay_${videoIdOrUrl}`);
+
+      if (playBtn) {
+        playBtn.disabled = true;
+        playBtn.innerHTML = `<span>⏳ Đang chuẩn bị...</span>`;
+      }
+
+      showToast(`Đang kết nối stream bài "${title.slice(0, 30)}..." tới robot...`, "success");
+
+      updateNowPlayingUI(true, {
+        title: title || 'YouTube Track',
+        uploader: 'Đang stream...',
+        thumbnail: thumb,
+        duration_str: durationStr || '--:--',
+      });
+
+      try {
+        const res = await fetch('/api/music/play', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            device_id: deviceId,
+            url: videoIdOrUrl,
+            title: title,
+            thumbnail: thumb,
+            duration_str: durationStr
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`✓ Đang phát "${data.title.slice(0, 30)}" trên Robot!`, "success");
+          updateNowPlayingUI(true, data);
+
+          if (musicStatusPollTimer) clearInterval(musicStatusPollTimer);
+          musicStatusPollTimer = setInterval(checkMusicStatus, 15000);
+        } else {
+          showToast(`Lỗi phát nhạc: ${data.detail || data.error}`, "error");
+          updateNowPlayingUI(false, null);
+        }
+      } catch (err) {
+        console.error('Lỗi gọi play API:', err);
+        showToast('Lỗi gửi lệnh phát nhạc tới máy chủ', "error");
+        updateNowPlayingUI(false, null);
+      } finally {
+        if (playBtn) {
+          playBtn.disabled = false;
+          playBtn.innerHTML = `<span>▶ Phát trên Robot</span>`;
+        }
+      }
+    }
+
+    async function stopYoutubeMusic() {
+      const deviceId = getActiveDeviceId();
+      try {
+        showToast('Đang gửi lệnh dừng phát nhạc...', "success");
+        const res = await fetch('/api/music/stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device_id: deviceId })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('✓ Đã dừng phát nhạc trên Robot!', "success");
+          updateNowPlayingUI(false, null);
+          if (musicStatusPollTimer) clearInterval(musicStatusPollTimer);
+        }
+      } catch (err) {
+        console.error('Lỗi dừng nhạc:', err);
+        showToast('Lỗi dừng phát nhạc', "error");
+      }
+    }
+
+    function quickPlayMusic(keyword) {
+      const input = document.getElementById('musicSearchInput');
+      if (input) {
+        input.value = keyword;
+        searchYoutubeMusic();
+      }
+    }
+
+    async function previewAudioOnWeb(videoId, encodedTitle) {
+      const title = decodeURIComponent(encodedTitle || '');
+      const audioBox = document.getElementById('webAudioBox');
+      const audioPlayer = document.getElementById('webAudioPlayer');
+      const audioTitle = document.getElementById('webAudioTitle');
+
+      if (!audioBox || !audioPlayer) return;
+
+      showToast(`Đang lấy link nghe trước "${title.slice(0, 25)}..."`, "success");
+      try {
+        const res = await fetch(`/api/music/info?id=${encodeURIComponent(videoId)}`);
+        const data = await res.json();
+        if (data.success && data.stream_url) {
+          audioTitle.textContent = `Đang nghe: ${data.title || title}`;
+          audioPlayer.src = data.stream_url;
+          audioBox.style.display = 'block';
+          audioPlayer.play();
+          showToast(`✓ Đang phát trên trình duyệt web!`, "success");
+        } else {
+          showToast('Không lấy được luồng stream audio web', "error");
+        }
+      } catch (err) {
+        showToast('Lỗi kết nối tải âm thanh web: ' + err.message, "error");
+      }
+    }
+  </script>
+</body>
+</html>
