@@ -27,3 +27,7 @@ database.db
 # IDE
 .vscode/
 .idea/
+
+# ESP32 Firmware Source & Builds
+xiaozhi-esp32-main/
+

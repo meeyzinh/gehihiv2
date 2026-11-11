@@ -1063,7 +1063,8 @@ def execute_mcp_tool(name: str, args: Dict[str, Any]) -> str:
 # 6. KHỞI TẠO FASTAPI APP & MIDDLEWARE
 # ==========================================
 
-RENDER_OTA_REGISTER_URL = "https://gehihi.onrender.com/xiaozhi/tunnel/register"
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "https://gehihiv2.onrender.com")
+RENDER_OTA_REGISTER_URL = os.getenv("RENDER_OTA_REGISTER_URL", f"{RENDER_EXTERNAL_URL.rstrip('/')}/xiaozhi/tunnel/register")
 PUBLIC_TUNNEL_URL = os.getenv("CLOUDFLARE_TUNNEL_URL", "https://manner-initiative-toys-egg.trycloudflare.com")
 
 class CloudflareTunnelManager:
@@ -1143,6 +1144,22 @@ async def register_render_tunnel_loop():
                 pass
         await asyncio.sleep(20)
 
+async def keep_alive_self_ping_loop():
+    """Tự động gửi HTTP GET request định kỳ tới Render server để tránh sleep (Render sleep sau 15p không có request)."""
+    target_url = f"{RENDER_EXTERNAL_URL.rstrip('/')}/api/health"
+    await asyncio.sleep(30)
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.get(target_url)
+                if res.status_code == 200:
+                    print(f"[KEEP-ALIVE] ✓ Self-ping thành công tới {target_url} (HTTP {res.status_code}) - Giữ server Render thức 24/7")
+                else:
+                    print(f"[KEEP-ALIVE] ⚠ Self-ping HTTP status: {res.status_code}")
+        except Exception as e:
+            print(f"[KEEP-ALIVE] ⚠ Lỗi self-ping: {e}")
+        await asyncio.sleep(600)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Khởi tạo DB & Seed dữ liệu
@@ -1177,6 +1194,9 @@ async def lifespan(app: FastAPI):
     # Khởi chạy luồng tự động đăng ký Tunnel định kỳ với Render Cloud Router
     reg_task = asyncio.create_task(register_render_tunnel_loop())
 
+    # Khởi chạy luồng tự động ping giữ server Render hoạt động 24/7
+    keep_alive_task = asyncio.create_task(keep_alive_self_ping_loop())
+
     # Tự động reboot Robot ESP32 qua Serial sau khi domain đã sẵn sàng để robot kết nối ngay lập tức
     async def reboot_robot_on_start():
         await asyncio.sleep(2)
@@ -1189,6 +1209,7 @@ async def lifespan(app: FastAPI):
 
     yield
     # Cleanup khi tắt server
+    keep_alive_task.cancel()
     reg_task.cancel()
     tunnel_manager.stop()
     serial_manager.disconnect()

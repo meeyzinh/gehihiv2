@@ -1,0 +1,25 @@
+name: Keep Render Server Alive 24/7
+
+on:
+  schedule:
+    # Chạy mỗi 10 phút để server Render không bao giờ bị sleep (Render sleep sau 15 phút không có request)
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Cho phép nhấn nút Run workflow thủ công trên GitHub Actions bất kỳ lúc nào
+
+jobs:
+  ping:
+    name: Ping Render Health Endpoint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping gehihiv2.onrender.com
+        run: |
+          echo "=== PING SERVER RENDER 24/7 ==="
+          echo "Thời gian (UTC): $(date -u)"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 https://gehihiv2.onrender.com/api/health)
+          echo "HTTP Status Code: $STATUS"
+          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
+            echo "✓ THÀNH CÔNG: Server gehihiv2.onrender.com đang thức và hoạt động 24/7!"
+          else
+            echo "⚠ Đang thử ping lại..."
+            curl -s -o /dev/null -w "%{http_code}" --max-time 60 https://gehihiv2.onrender.com/
+          fi
