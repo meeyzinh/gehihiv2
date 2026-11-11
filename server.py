@@ -12,6 +12,7 @@ import uuid
 import re
 import urllib.parse
 import urllib.request
+import struct
 from collections import deque
 from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
@@ -1894,9 +1895,9 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
     session_id = f"sess-{int(time.time())}"
     await robot_ws_manager.connect(websocket, dev_mac, session_id)
 
-    # 1. Khởi tạo kết nối song công với Máy chủ AI Giọng nói Upstream (Xiaozhi.me / Tenclass)
+    # 1. Khởi tạo kết nối song công với Máy chủ AI Giọng nói Upstream (Gehihi AI / Xiaozhi)
     upstream_ws = None
-    upstream_url = os.getenv("UPSTREAM_WS_URL", "wss://api.tenclass.net/xiaozhi/v1/")
+    upstream_url = os.getenv("UPSTREAM_WS_URL", "wss://gehihi.onrender.com/gehihi/v1/")
     token = os.getenv("UPSTREAM_AUTH_TOKEN", "").strip()
 
     def is_ws_alive(ws):
@@ -2013,8 +2014,17 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     # Nếu đang phát nhạc YouTube, bỏ qua âm thanh nói chèn của AI Upstream
                     if ACTIVE_MUSIC_STATE.get("is_playing"):
                         continue
+                    # Bóc tách BinaryProtocol2 header (16 bytes) nếu có để gửi Opus thuần (Raw Opus) cho firmware ESP32
+                    out_audio = msg
+                    if len(msg) >= 16:
+                        try:
+                            ver, ptype, res, ts, sz = struct.unpack('>HHIII', msg[:16])
+                            if sz == len(msg) - 16 and ptype == 0:
+                                out_audio = msg[16:]
+                        except Exception:
+                            pass
                     try:
-                        await websocket.send_bytes(msg)
+                        await websocket.send_bytes(out_audio)
                     except Exception:
                         break
                 elif isinstance(msg, str):

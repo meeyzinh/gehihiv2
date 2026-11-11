@@ -15,3 +15,5 @@ services:
         value: https://gehihiv2.onrender.com
       - key: WEBSOCKET_URL
         value: wss://gehihiv2.onrender.com/xiaozhi/v1/
+      - key: UPSTREAM_WS_URL
+        value: wss://gehihi.onrender.com/gehihi/v1/
