@@ -1895,7 +1895,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
     await robot_ws_manager.connect(websocket, dev_mac, session_id)
 
     # 1. Bắt tay Hello với Robot NGAY LẬP TỨC (<5ms) để Firmware ESP32 không bị Timeout!
-    # Sử dụng sample_rate 24000 chuẩn native của firmware Xiaozhi để âm thanh trong trẻo, không bị méo tiếng
+    # Sử dụng sample_rate 16000 đồng bộ tuyệt đối với Upstream AI (Tenclass / Xiaozhi.me)
     try:
         await websocket.send_json({
             "type": "hello",
@@ -1904,7 +1904,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
             "session_id": session_id,
             "audio_params": {
                 "format": "opus",
-                "sample_rate": 24000,
+                "sample_rate": 16000,
                 "channels": 1,
                 "frame_duration": 60
             }
