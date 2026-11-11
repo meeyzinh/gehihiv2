@@ -2101,16 +2101,12 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
 async def handle_xiaozhi_ota(request: Request):
     """Xử lý yêu cầu OTA - Cung cấp cấu hình WebSocket kết nối trực tiếp đến Server"""
     client_host = request.headers.get("x-forwarded-host") or request.headers.get("host") or f"{get_lan_ip()}:{PORT}"
-    proto = "wss" if ("trycloudflare.com" in client_host or "https" in request.headers.get("x-forwarded-proto", "")) else "ws"
+    proto = "wss" if ("onrender.com" in client_host or "trycloudflare.com" in client_host or "https" in request.headers.get("x-forwarded-proto", "")) else "ws"
     ws_url = f"{proto}://{client_host}/ws/device"
     return {
         "server_time": {
             "timestamp": int(time.time() * 1000),
             "timezone_offset": 420
-        },
-        "firmware": {
-            "version": "2.5.0",
-            "url": ""
         },
         "websocket": {
             "url": ws_url,
