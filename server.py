@@ -1894,27 +1894,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
     session_id = f"sess-{int(time.time())}"
     await robot_ws_manager.connect(websocket, dev_mac, session_id)
 
-    # 1. Bắt tay Hello với Robot NGAY LẬP TỨC (<5ms) để Firmware ESP32 không bị Timeout!
-    # Sử dụng sample_rate 16000 đồng bộ tuyệt đối với Upstream AI (Tenclass / Xiaozhi.me)
-    try:
-        await websocket.send_json({
-            "type": "hello",
-            "transport": "websocket",
-            "version": 1,
-            "session_id": session_id,
-            "audio_params": {
-                "format": "opus",
-                "sample_rate": 16000,
-                "channels": 1,
-                "frame_duration": 60
-            }
-        })
-    except Exception as e:
-        print(f"[WS ERROR] Không thể gửi hello cho robot: {e}")
-        robot_ws_manager.disconnect(websocket, dev_mac)
-        return
-
-    # 2. Khởi tạo kết nối song công với Máy chủ AI Giọng nói Upstream (Xiaozhi.me / Tenclass)
+    # 1. Khởi tạo kết nối song công với Máy chủ AI Giọng nói Upstream (Xiaozhi.me / Tenclass)
     upstream_ws = None
     upstream_url = os.getenv("UPSTREAM_WS_URL", "wss://api.tenclass.net/xiaozhi/v1/")
     token = os.getenv("UPSTREAM_AUTH_TOKEN", "").strip()
@@ -1946,19 +1926,19 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
             )
             print(f"[VOICE PROXY] ✓ Đã mở kênh Upstream AI ({upstream_url}) cho robot '{dev_mac}'")
 
-            # Gửi bắt tay hello lên upstream
+            # Gửi bắt tay hello lên upstream với tần số chuẩn 24000 Hz
             await upstream_ws.send(json.dumps({
                 "type": "hello",
                 "version": 1,
                 "transport": "websocket",
                 "audio_params": {
                     "format": "opus",
-                    "sample_rate": 16000,
+                    "sample_rate": 24000,
                     "channels": 1,
                     "frame_duration": 60
                 }
             }))
-            up_hello_raw = await asyncio.wait_for(upstream_ws.recv(), timeout=5)
+            up_hello_raw = await asyncio.wait_for(upstream_ws.recv(), timeout=3)
             if isinstance(up_hello_raw, str):
                 up_hello_data = json.loads(up_hello_raw)
                 if up_hello_data.get("session_id"):
@@ -1972,7 +1952,30 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
             upstream_ws = None
             return False
 
-    await connect_upstream_ai()
+    # Thử kết nối Upstream AI trước (<2s) để lấy Session ID chính thức
+    try:
+        await asyncio.wait_for(connect_upstream_ai(), timeout=2.0)
+    except Exception:
+        pass
+
+    # 2. Bắt tay Hello duy nhất với Robot (sample_rate 24000 Hz chuẩn không cần resample)
+    try:
+        await websocket.send_json({
+            "type": "hello",
+            "transport": "websocket",
+            "version": 1,
+            "session_id": session_id,
+            "audio_params": {
+                "format": "opus",
+                "sample_rate": 24000,
+                "channels": 1,
+                "frame_duration": 60
+            }
+        })
+    except Exception as e:
+        print(f"[WS ERROR] Không thể gửi hello cho robot: {e}")
+        robot_ws_manager.disconnect(websocket, dev_mac)
+        return
 
     # Task giữ kết nối Cloudflare Tunnel & Upstream AI luôn sống
     async def heartbeat_loop():
@@ -2018,7 +2021,15 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     try:
                         p = json.loads(msg)
                         p_type = p.get("type")
-                        if p_type == "stt":
+                        if p_type == "hello":
+                            # Cập nhật session_id nếu có, nhưng không chuyển tiếp Hello trùng lặp xuống robot
+                            new_sess = p.get("session_id")
+                            if new_sess and new_sess != session_id:
+                                session_id = new_sess
+                                robot_ws_manager.sessions[websocket] = session_id
+                                robot_ws_manager.dev_sessions[dev_mac] = session_id
+                            continue
+                        elif p_type == "stt":
                             txt = p.get("text", "")
                             if txt:
                                 print(f"[VOICE ASR] Người dùng nói: \"{txt}\"")
@@ -2059,7 +2070,10 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                 try:
                     payload = json.loads(t_str)
                     p_type = payload.get("type")
-                    if p_type == "ping":
+                    if p_type == "hello":
+                        # ESP32 gửi gói hello khi kết nối; server đã bắt tay rồi nên bỏ qua
+                        continue
+                    elif p_type == "ping":
                         await websocket.send_json({"type": "pong", "time": time.time(), "session_id": session_id})
                         if is_ws_alive(upstream_ws):
                             try:
