@@ -376,11 +376,18 @@ class XiaozhiUpstreamClient:
         if not token:
             return {"connected": False, "message": "Chưa nhập Upstream Token hoặc Cookie."}
         headers = self._get_headers(token)
+        # Tự động chuẩn hóa base URL
+        clean_url = api_url.rstrip('/')
+        if not clean_url.startswith("http"):
+            clean_url = "https://" + clean_url
+        if clean_url == "https://api.xiaozhi.me":
+            clean_url = "https://xiaozhi.me"
+
         test_urls = [
-            f"{api_url.rstrip('/')}/agent/detail?id={agent_id}",
-            f"{api_url.rstrip('/')}/agent/{agent_id}",
-            f"{api_url.rstrip('/')}/v1/agents/{agent_id}",
-            f"{api_url.rstrip('/')}/user/info"
+            f"{clean_url}/api/agents/{agent_id}",
+            f"{clean_url}/api/agents",
+            f"{clean_url}/agents/{agent_id}",
+            f"{clean_url}/agents"
         ]
         for url in test_urls:
             try:
@@ -388,7 +395,7 @@ class XiaozhiUpstreamClient:
                 if resp.status_code in [200, 201]:
                     try:
                         data = resp.json()
-                        return {"connected": True, "message": "Kết nối máy chủ Upstream thành công!", "data": data}
+                        return {"connected": True, "message": "Kết nối máy chủ Upstream xiaozhi.me thành công 100%!", "data": data}
                     except Exception:
                         return {"connected": True, "message": "Kết nối thành công (mã 200)."}
                 elif resp.status_code in [401, 403]:
@@ -402,10 +409,17 @@ class XiaozhiUpstreamClient:
         if not token:
             return {"success": False, "offline": True, "message": "Không có Upstream Token, đang dùng cấu hình cục bộ."}
         headers = self._get_headers(token)
+        clean_url = api_url.rstrip('/')
+        if not clean_url.startswith("http"):
+            clean_url = "https://" + clean_url
+        if clean_url == "https://api.xiaozhi.me":
+            clean_url = "https://xiaozhi.me"
+
         urls = [
-            f"{api_url.rstrip('/')}/agent/detail?id={agent_id}",
-            f"{api_url.rstrip('/')}/agent/{agent_id}",
-            f"{api_url.rstrip('/')}/v1/agents/{agent_id}"
+            f"{clean_url}/api/agents/{agent_id}",
+            f"{clean_url}/api/agents",
+            f"{clean_url}/agents/{agent_id}",
+            f"{clean_url}/agents"
         ]
         for url in urls:
             try:
@@ -413,7 +427,15 @@ class XiaozhiUpstreamClient:
                 if resp.status_code == 200:
                     data = resp.json()
                     # Phân tích dữ liệu phản hồi
-                    agent_data = data.get("data") or data.get("agent") or data
+                    agent_data = data.get("data")
+                    if isinstance(agent_data, dict) and "agent" in agent_data:
+                        agent_data = agent_data["agent"]
+                    elif isinstance(agent_data, list):
+                        for a in agent_data:
+                            if str(a.get("id")) == str(agent_id):
+                                return {"success": True, "offline": False, "data": a}
+                        if agent_data:
+                            return {"success": True, "offline": False, "data": agent_data[0]}
                     return {"success": True, "offline": False, "data": agent_data}
             except Exception:
                 continue
@@ -426,22 +448,27 @@ class XiaozhiUpstreamClient:
 
         headers = self._get_headers(token)
         headers["Content-Type"] = "application/json"
+        clean_url = api_url.rstrip('/')
+        if not clean_url.startswith("http"):
+            clean_url = "https://" + clean_url
+        if clean_url == "https://api.xiaozhi.me":
+            clean_url = "https://xiaozhi.me"
+
         endpoints = [
-            (f"{api_url.rstrip('/')}/agent/update", "PUT"),
-            (f"{api_url.rstrip('/')}/agent/save", "POST"),
-            (f"{api_url.rstrip('/')}/agent/{agent_id}", "PUT"),
-            (f"{api_url.rstrip('/')}/v1/agents/{agent_id}", "PUT")
+            (f"{clean_url}/api/agents/{agent_id}/config", "POST"),
+            (f"{clean_url}/agents/{agent_id}/config", "POST"),
+            (f"{clean_url}/api/agents/{agent_id}", "PUT"),
+            (f"{clean_url}/agents/{agent_id}", "PUT")
         ]
         payload = {
-            "id": agent_id,
-            "assistant_name": config_data.get("assistant_name"),
-            "llm_model": config_data.get("llm_model"),
-            "language": config_data.get("language"),
-            "tts_voice": config_data.get("tts_voice"),
-            "tts_speech_speed": config_data.get("tts_speech_speed"),
-            "tts_pitch": config_data.get("tts_pitch"),
-            "character": config_data.get("character"),
-            "mcp_endpoints": config_data.get("mcp_endpoints")
+            "assistant_name": config_data.get("assistant_name", "Sophia"),
+            "user_name": config_data.get("user_name", "Chủ nhân"),
+            "language": config_data.get("language", "vi"),
+            "tts_voice": config_data.get("tts_voice", "Vietnamese_kindhearted_girl"),
+            "llm_model": config_data.get("llm_model", "xz-lite"),
+            "tts_speech_speed": config_data.get("tts_speech_speed", "normal"),
+            "tts_pitch": int(config_data.get("tts_pitch", 0) or 0),
+            "character": config_data.get("character", "")
         }
         for url, method in endpoints:
             try:
@@ -449,8 +476,14 @@ class XiaozhiUpstreamClient:
                     resp = await self.client.put(url, headers=headers, json=payload)
                 else:
                     resp = await self.client.post(url, headers=headers, json=payload)
-                if resp.status_code in [200, 204]:
-                    return {"success": True, "synced_upstream": True, "message": "Đã đồng bộ thành công lên máy chủ gốc xiaozhi.me!"}
+                if resp.status_code in [200, 201, 204]:
+                    res_json = {}
+                    try:
+                        res_json = resp.json()
+                    except Exception:
+                        pass
+                    if res_json.get("success") is not False:
+                        return {"success": True, "synced_upstream": True, "message": "Đã đồng bộ thành công 100% lên máy chủ gốc xiaozhi.me!"}
             except Exception:
                 continue
 
@@ -550,49 +583,14 @@ GMBOT_LANGUAGES = [
 GMBOT_VOICES_BY_LANGUAGE = {
     "vi": [
         {
-            "id": "vi-female",
-            "name": "👩 Giọng nữ tiếng Việt chuẩn AI (Dịu dàng - Mặc định)",
-            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/azure/vi-VN-HoaiMyNeural-4c9402f3ed76c975.wav"
-        },
-        {
-            "id": "zh-CN-XiaoshuangMultilingualNeural",
-            "name": "👧 Giọng bé gái Tiểu Song đa ngôn ngữ (Chuẩn nữ Xiaozhi.me)",
-            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/azure/zh-CN-XiaoshuangMultilingualNeural-8fe5bb288e153c13.wav"
-        },
-        {
             "id": "Vietnamese_kindhearted_girl",
-            "name": "👩 Giọng nữ MiniMax (Truyền cảm, tự nhiên)",
+            "name": "Giọng nữ Việt Nam - dịu dàng, thân thiện (MiniMax)",
             "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/1e7cd75c-c97c-4b80-a70c-c1270c3fd18e.mp3"
-        },
-        {
-            "id": "vi-maingoc",
-            "name": "🌸 Giọng nữ miền Nam (Mai Ngọc - Dễ thương)",
-            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/1e7cd75c-c97c-4b80-a70c-c1270c3fd18e.mp3"
-        },
-        {
-            "id": "vc_vietnamese_voice_003_1011_1004",
-            "name": "👧 Giọng nữ ByteDance (Trẻ trung)",
-            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/tts_vc_vietnamese_voice_003_1011_1004.mp3"
-        },
-        {
-            "id": "vi-VN-HoaiMyNeural",
-            "name": "👩 Giọng nữ Hoài My (Microsoft Azure)",
-            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/azure/vi-VN-HoaiMyNeural-4c9402f3ed76c975.wav"
-        },
-        {
-            "id": "vi-male",
-            "name": "👨 Giọng nam Việt Nam (Điềm đạm)",
-            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/azure/vi-VN-NamMinhNeural-4c9402f3ed76c975.wav"
         },
         {
             "id": "Vietnamese_Serene_Man",
-            "name": "👨 Giọng nam MiniMax (Trầm ấm)",
+            "name": "Giọng nam Việt Nam - điềm đạm (MiniMax)",
             "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/24b645aa-dccb-4dea-9ea1-6d23567733aa.mp3"
-        },
-        {
-            "id": "vi-VN-NamMinhNeural",
-            "name": "👨 Giọng nam Nam Minh (Microsoft Azure)",
-            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/azure/vi-VN-NamMinhNeural-4c9402f3ed76c975.wav"
         },
         {
             "id": "vc_vietnamese_voice_003_1011_1004",
@@ -632,7 +630,7 @@ GMBOT_VOICES_BY_LANGUAGE = {
         {
             "id": "pt-BR-MacerioMultilingualNeural",
             "name": "Giọng nam Macerio đa ngôn ngữ",
-            "demo": ""
+            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/azure/pt-BR-MacerioMultilingualNeural-4c9402f3ed76c975.wav"
         }
     ],
     "en": [
