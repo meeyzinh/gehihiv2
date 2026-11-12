@@ -55,7 +55,7 @@ DEFAULT_DEVICE_NAME = os.getenv("DEVICE_NAME", "Xiaozhi-EED0")
 DEFAULT_DEVICE_MAC = os.getenv("DEVICE_MAC", "14:c1:9f:c4:ee:d0")
 DEFAULT_UPSTREAM_URL = os.getenv("UPSTREAM_API_URL", "https://api.xiaozhi.me")
 DEFAULT_UPSTREAM_TOKEN = os.getenv("UPSTREAM_AUTH_TOKEN", "")
-DEFAULT_UPSTREAM_WS_URL = os.getenv("UPSTREAM_WS_URL", "wss://gehihi.onrender.com/gehihi/v1/")
+DEFAULT_UPSTREAM_WS_URL = os.getenv("UPSTREAM_WS_URL", "wss://api.tenclass.net/xiaozhi/v1/")
 CURRENT_UPSTREAM_WS_URL = DEFAULT_UPSTREAM_WS_URL
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
@@ -851,6 +851,35 @@ MCP_TOOL_DEFINITIONS = [
             },
             "required": ["action"]
         }
+    },
+    {
+        "name": "toggle_cob_light",
+        "description": "Bật hoặc tắt đèn sợi đốt COB / LED trợ sáng trên robot (GPIO 21).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "state": {
+                    "type": "string",
+                    "enum": ["on", "off", "toggle"],
+                    "description": "Trạng thái đèn: 'on' (bật), 'off' (tắt), hoặc 'toggle' (đảo trạng thái)"
+                }
+            },
+            "required": ["state"]
+        }
+    },
+    {
+        "name": "play_youtube_music_on_robot",
+        "description": "Tìm kiếm và phát bài hát hoặc video ca nhạc từ YouTube trên Robot hoặc loa máy tính theo yêu cầu của người dùng.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Tên bài hát hoặc ca sĩ cần tìm và phát (ví dụ: 'Bài hát thiếu nhi vui nhộn', 'Nhạc lofi không lời', 'Em của ngày hôm qua')"
+                }
+            },
+            "required": ["query"]
+        }
     }
 ]
 
@@ -1087,6 +1116,20 @@ class SerialBridgeManager:
         except Exception as e:
             return False, f"Lỗi Reset: {e}"
 
+    def send_command(self, cmd_str: str) -> bool:
+        with self.lock:
+            if self.ser and self.ser.is_open:
+                try:
+                    line = cmd_str.strip() + "\r\n"
+                    self.ser.write(line.encode("utf-8"))
+                    self.ser.flush()
+                    self._add_log(f"[TX COM8] >> {cmd_str.strip()}")
+                    return True
+                except Exception as e:
+                    self._add_log(f"[LỖI TX COM8] {e}")
+                    return False
+        return False
+
     def _add_log(self, text: str):
         ts = time.strftime("%H:%M:%S")
         self.log_history.append({"time": ts, "text": text})
@@ -1144,15 +1187,55 @@ def execute_mcp_tool(name: str, args: Dict[str, Any]) -> str:
     elif name == "control_robot_hardware":
         act = args.get("action", "stop")
         txt = args.get("text", "")
+        # 1. Gửi trực tiếp qua cổng COM8 nếu đang cắm cáp với máy tính
+        if serial_manager.is_running and serial_manager.connected:
+            serial_manager.send_command(f'{{"action":"{act}"}}')
+            if txt:
+                serial_manager.send_command(f'{{"text":"{txt}"}}')
+        # 2. Gửi qua WebSocket Control Plane
         cmd = {"type": "hardware_control", "action": act, "text": txt, "timestamp": time.time()}
         try:
             import asyncio
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 asyncio.create_task(robot_ws_manager.broadcast_command(cmd))
+                if act in ["wiggle", "dance"]:
+                    asyncio.create_task(robot_ws_manager.send_oled_emotion("laughing", text=txt or "Dance!", device_id=None))
+                elif act == "toggle_led":
+                    asyncio.create_task(robot_ws_manager.send_mcp_call("self.lamp.turn_on", {}, None))
         except Exception:
             pass
-        res = f"Đã gửi lệnh điều khiển phần cứng '{act}' tới robot qua WebSocket."
+        res = f"Đã gửi lệnh điều khiển phần cứng '{act}' tới robot qua Serial/Control Plane."
+    elif name == "toggle_cob_light":
+        state = args.get("state", "toggle")
+        if serial_manager.is_running and serial_manager.connected:
+            serial_manager.send_command(f'{{"action":"toggle_led","state":"{state}"}}')
+        cmd = {"type": "hardware_control", "action": "toggle_led", "state": state, "timestamp": time.time()}
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(robot_ws_manager.broadcast_command(cmd))
+                asyncio.create_task(robot_ws_manager.send_mcp_call("self.lamp.turn_on" if state != "off" else "self.lamp.turn_off", {}, None))
+        except Exception:
+            pass
+        res = f"Đã thực hiện lệnh điều khiển đèn LED COB ({state}) trên robot."
+    elif name == "play_youtube_music_on_robot":
+        query = args.get("query", "Nhạc thiếu nhi vui nhộn")
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                async def _play_bg():
+                    tracks = await search_youtube_tracks(query, limit=1)
+                    if tracks:
+                        t = tracks[0]
+                        stop_current_music()
+                        ACTIVE_MUSIC_STATE["task"] = asyncio.create_task(resolve_and_stream_music(t["url"], t))
+                asyncio.create_task(_play_bg())
+            res = f"Đang tìm kiếm và phát bài hát '{query}' từ YouTube trên Robot."
+        except Exception as e:
+            res = f"Lỗi phát nhạc YouTube: {e}"
     else:
         res = f"Công cụ '{name}' không tồn tại trên GMbot MCP Server."
 
@@ -2250,10 +2333,13 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
 @app.get("/gehihi/ota/")
 @app.post("/gehihi/ota/")
 async def handle_xiaozhi_ota(request: Request):
-    """Xử lý yêu cầu OTA - Cung cấp cấu hình WebSocket kết nối trực tiếp đến Server"""
-    client_host = request.headers.get("x-forwarded-host") or request.headers.get("host") or f"{get_lan_ip()}:{PORT}"
-    proto = "wss" if ("onrender.com" in client_host or "trycloudflare.com" in client_host or "https" in request.headers.get("x-forwarded-proto", "")) else "ws"
-    ws_url = f"{proto}://{client_host}/ws/device"
+    """
+    Xử lý yêu cầu OTA cho Robot ESP32 theo Mô hình Wrapper thông minh (Control Plane + MCP):
+    Cung cấp địa chỉ WebSocket cụm máy chủ gốc xiaozhi.me để robot kết nối luồng âm thanh
+    (ASR, LLM, TTS) trực tiếp, đạt 100% chất lượng giọng nữ chuẩn và hoàn toàn miễn phí!
+    """
+    # Mặc định theo mô hình Wrapper thông minh: Robot kết nối thẳng tới wss://api.tenclass.net/xiaozhi/v1/
+    ws_url = CURRENT_UPSTREAM_WS_URL or "wss://api.tenclass.net/xiaozhi/v1/"
     return {
         "server_time": {
             "timestamp": int(time.time() * 1000),
@@ -2263,6 +2349,10 @@ async def handle_xiaozhi_ota(request: Request):
             "url": ws_url,
             "token": f"gmbot-token-{int(time.time())}",
             "version": 1
+        },
+        "firmware": {
+            "version": "2.5.0",
+            "url": ""
         }
     }
 
@@ -2276,6 +2366,17 @@ class RobotControlPayload(BaseModel):
 async def robot_control(payload: RobotControlPayload):
     act = payload.action
     sent_count = 0
+
+    # 1. Gửi trực tiếp qua cổng Serial COM8 nếu máy tính đang cắm cáp USB với Robot
+    if serial_manager.is_running and serial_manager.connected:
+        if act == "toggle_led":
+            serial_manager.send_command('{"action":"toggle_led","state":"toggle"}')
+        elif act in ["wiggle", "dance"]:
+            serial_manager.send_command(f'{{"action":"{act}"}}')
+        else:
+            serial_manager.send_command(f'{{"action":"{act}"}}')
+
+    # 2. Điều khiển qua kênh WebSocket / MCP
     if act == "toggle_led":
         sent_count = await robot_ws_manager.send_mcp_call("self.lamp.turn_on", {}, payload.device_id)
     elif act in ["wiggle", "dance"]:
@@ -3410,6 +3511,24 @@ async def auth_me(current_user: User = Depends(get_current_user)):
 # 8. MCP SERVER PROTOCOL IMPLEMENTATION (/mcp)
 # ==========================================
 
+@app.get("/mcp")
+async def mcp_info_endpoint():
+    """Thông tin trạng thái MCP Server cho trình duyệt hoặc xiaozhi.me kiểm tra"""
+    return {
+        "status": "online",
+        "name": "gmbot-control-plane-mcp",
+        "protocol": "Model Context Protocol (JSON-RPC 2.0)",
+        "protocolVersion": "2024-11-05",
+        "description": "Server MCP cung cấp công cụ phần cứng, tra cứu thời gian, thời tiết và phát nhạc cho Robot Xiaozhi",
+        "endpoints": {
+            "jsonrpc": "/mcp",
+            "sse": "/mcp/sse"
+        },
+        "tools_count": len(MCP_TOOL_DEFINITIONS),
+        "tools": [t["name"] for t in MCP_TOOL_DEFINITIONS]
+    }
+
+
 @app.post("/mcp")
 async def mcp_jsonrpc_endpoint(request: Request):
     """
@@ -3438,6 +3557,17 @@ async def mcp_jsonrpc_endpoint(request: Request):
                     "tools": {}
                 }
             }
+        }
+
+    elif method in ["notifications/initialized", "initialized"]:
+        # Thông báo một chiều từ Client MCP sau khi initialize thành công
+        return Response(status_code=204)
+
+    elif method == "ping":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {}
         }
 
     elif method == "tools/list":

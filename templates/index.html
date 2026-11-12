@@ -581,121 +581,221 @@
     </div>
 
     <!-- ============================================================= -->
-    <!-- TAB 1: CẤU HÌNH GMBOT AI -->
+    <!-- ============================================================= -->
+    <!-- TAB 1: CẤU HÌNH GMBOT AI (MÔ HÌNH WRAPPER THÔNG MINH: CONTROL PLANE + MCP) -->
     <!-- ============================================================= -->
     <section id="tabXiaozhiConfig" class="tab-section">
       <div class="card">
-        <h3 class="card-title">⚙️ Cấu hình cho GMbot AI</h3>
+        
+        <!-- HEADER MÔ HÌNH WRAPPER THÔNG MINH -->
+        <div style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); border: 1px solid #4f46e5; border-radius: 12px; padding: 18px 20px; margin-bottom: 20px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom: 12px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span style="font-size: 28px;">💎</span>
+              <div>
+                <h3 style="margin:0; font-size:18px; color:#ffffff; font-weight:700;">Mô hình Wrapper Thông minh (Control Plane + MCP)</h3>
+                <div style="font-size:12.5px; color:#cbd5e1; margin-top:3px;">
+                  Robot ESP32 kết nối luồng âm thanh trực tiếp với máy chủ gốc <strong>xiaozhi.me</strong> để nhận 100% giọng nữ mượt mà & miễn phí. Server này đóng vai trò <strong>Control Plane & MCP Server</strong>.
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge connected" style="background:#10b981; font-weight:700; padding:6px 12px;">● Chuẩn Xiaozhi.me</span>
+            </div>
+          </div>
 
-        <div class="voice-hint">
-          💡 <strong>Cách dùng:</strong><br>
-          Mục này dùng để Thay đổi tên GMbot, ngôn ngữ, giọng nói Nam-Nữ, vai trò tính cách, mô hình ngôn ngữ cho robot AI. Bạn chỉ cần bấm
-          <span class="voice-keyword">"Tải cấu hình hiện tại"</span>,
-          chỉnh sửa thông tin rồi bấm
-          <span class="voice-keyword">"Lưu cấu hình"</span>. Sau đó khởi động lại robot AI để nạp cấu hình mới.
+          <!-- 3 KHỐI TRỰC QUAN KIẾN TRÚC -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 14px;">
+            <!-- Cột 1: Luồng Audio -->
+            <div style="background: rgba(15,23,42,0.75); border: 1px solid rgba(59,130,246,0.35); border-radius: 8px; padding: 12px 14px;">
+              <div style="font-size: 11.5px; color: #93c5fd; font-weight: 700; text-transform: uppercase;">🎤 1. Luồng Âm thanh (Audio / TTS / ASR)</div>
+              <div style="font-size: 13.5px; color: #ffffff; font-weight: 600; margin-top: 4px;">ESP32 ➔ Máy chủ gốc Xiaozhi.me</div>
+              <div style="font-size: 11.5px; color: #94a3b8; margin-top: 4px; line-height: 1.5;">
+                WebSocket: <code style="color:#38bdf8;">wss://api.tenclass.net/xiaozhi/v1/</code><br>
+                Giọng chuẩn nữ Tiểu Song mượt mà 100%, không độ trễ trung gian, 100% miễn phí.
+              </div>
+            </div>
+
+            <!-- Cột 2: MCP Server -->
+            <div style="background: rgba(15,23,42,0.75); border: 1px solid rgba(168,85,247,0.35); border-radius: 8px; padding: 12px 14px;">
+              <div style="font-size: 11.5px; color: #d8b4fe; font-weight: 700; text-transform: uppercase;">⚡ 2. Cổng MCP Server (8 Tools)</div>
+              <div style="font-size: 13.5px; color: #ffffff; font-weight: 600; margin-top: 4px;">Xiaozhi.me ➔ Server của bạn</div>
+              <div style="font-size: 11.5px; color: #94a3b8; margin-top: 4px; line-height: 1.5;">
+                Endpoint: <code style="color:#c084fc;">https://gehihiv2.onrender.com/mcp</code><br>
+                Thực thi công cụ: chạy xe, bật đèn, đọc cảm biến, báo giờ, tra thời tiết, phát YouTube.
+              </div>
+            </div>
+
+            <!-- Cột 3: Control Plane -->
+            <div style="background: rgba(15,23,42,0.75); border: 1px solid rgba(16,185,129,0.35); border-radius: 8px; padding: 12px 14px;">
+              <div style="font-size: 11.5px; color: #6ee7b7; font-weight: 700; text-transform: uppercase;">🎮 3. Control Plane Quản trị</div>
+              <div style="font-size: 13.5px; color: #ffffff; font-weight: 600; margin-top: 4px;">Cổng COM8 & Web D-Pad</div>
+              <div style="font-size: 11.5px; color: #94a3b8; margin-top: 4px; line-height: 1.5;">
+                Cổng Serial COM8 (USB) & Web Control<br>
+                Điều khiển bánh xe D-Pad, nạp kịch bản prompt, quản lý ghi chú và phát nhạc online.
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div class="xiaozhi-config-tabs">
-          <button type="button" class="xiaozhi-config-tab-btn active" id="subtabConfigBtn" onclick="switchConfigSubtab('config')">⚙️ Cấu hình GMbot</button>
-          <button type="button" class="xiaozhi-config-tab-btn" id="subtabSpeakerBtn" onclick="switchConfigSubtab('speaker')">👤 Nhận dạng người nói</button>
-        </div>
+        <!-- KHUNG KẾT NỐI MCP SERVER CHO XIAOZHI.ME (1-CLICK SETUP) -->
+        <div style="background: #1e1b4b; border: 1px solid #6366f1; border-radius: 10px; padding: 18px; margin-bottom: 20px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+            <h4 style="margin:0; font-size:15px; color:#e0e7ff; display:flex; align-items:center; gap:8px;">
+              <span>🔌</span> <span>Cấu hình tích hợp MCP Server vào tài khoản Xiaozhi.me</span>
+            </h4>
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="secondary" onclick="testMcpServerLive()" style="padding: 6px 14px; font-size: 12px; background: #312e81; border: 1px solid #818cf8; color:#fff;">
+                ⚡ Thử gọi MCP Tool ngay
+              </button>
+            </div>
+          </div>
 
-        <!-- CẤU HÌNH CHÍNH -->
-        <div id="subtabConfigContent" class="xiaozhi-config-tab-content active">
-          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(30,41,59,0.7); padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.08);">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 14px;">
+            <!-- MCP JSON-RPC URL -->
             <div>
-              <span style="color: #94a3b8; font-size: 12.5px;">Thiết bị đang cấu hình:</span> 
-              <strong id="cfgDeviceTag" style="color: #38bdf8;">Xiaozhi-EED0 (14:c1:9f:c4:ee:d0)</strong>
+              <label style="font-size:12px; color:#a5b4fc; font-weight:600;">Endpoint MCP (Dán vào mục MCP Server trên xiaozhi.me):</label>
+              <div style="display:flex; gap:8px; margin-top:5px;">
+                <input type="text" id="mcpPublicUrlDisplay" readonly value="https://gehihiv2.onrender.com/mcp" style="background:#0f172a; color:#38bdf8; font-family:monospace; font-size:13px; font-weight:bold; flex:1;">
+                <button type="button" class="primary" onclick="copyMcpUrlLive()" style="white-space:nowrap; padding:6px 14px; font-size:12px;">📋 Sao chép</button>
+              </div>
             </div>
-            <span class="badge connected" id="cfgDeviceOnlineTag">Đã kích hoạt</span>
-          </div>
 
-          <!-- LỰA CHỌN CỤM MÁY CHỦ UPSTREAM -->
-          <div style="background: #0f2140; border: 1px solid #1e3a8a; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <span style="font-weight: 700; font-size: 13px; color: #38bdf8;">📡 Cụm Máy Chủ Giọng Nói AI (Voice Upstream):</span>
-              <span id="upstreamModeBadge" class="badge" style="background: #0284c7; color: #fff; font-size: 11px;">Cụm Gehihi tiếng Việt</span>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-              <button type="button" class="secondary" id="btnModeGehihi" onclick="switchUpstreamMode('gehihi')" style="padding: 7px 10px; font-size: 12px; text-align: left; border: 1px solid #38bdf8;">
-                🔵 <strong>Cụm Gehihi tiếng Việt</strong><br><span style="font-size: 11px; color: #94a3b8;">Miễn phí, tuỳ chỉnh Prompt, giọng nữ AI</span>
-              </button>
-              <button type="button" class="secondary" id="btnModeOfficial" onclick="switchUpstreamMode('official')" style="padding: 7px 10px; font-size: 12px; text-align: left;">
-                🟣 <strong>Cụm Xiaozhi gốc (xiaozhi.me)</strong><br><span style="font-size: 11px; color: #94a3b8;">Chuẩn giọng nữ bé gái Tiểu Song</span>
-              </button>
+            <!-- MCP SSE URL -->
+            <div>
+              <label style="font-size:12px; color:#a5b4fc; font-weight:600;">Endpoint MCP SSE Stream (Nếu xiaozhi.me yêu cầu SSE):</label>
+              <div style="display:flex; gap:8px; margin-top:5px;">
+                <input type="text" id="mcpSseUrlDisplay" readonly value="https://gehihiv2.onrender.com/mcp/sse" style="background:#0f172a; color:#c084fc; font-family:monospace; font-size:13px; font-weight:bold; flex:1;">
+                <button type="button" class="secondary" onclick="copyMcpSseUrlLive()" style="white-space:nowrap; padding:6px 14px; font-size:12px;">📋 Sao chép SSE</button>
+              </div>
             </div>
           </div>
 
-          <div style="margin-bottom: 16px;">
-            <button class="secondary full-width" onclick="loadConfigFromBackend(true)">🔄 Tải cấu hình hiện tại</button>
-          </div>
-
-          <div class="form-group">
-            <label>Tên của robot - mặc định là Sophia - có thể đổi thành tên bất kỳ:</label>
-            <input type="text" id="cfgAssistantName" placeholder="Ví dụ: Sophia">
-          </div>
-
-          <div class="form-group">
-            <label>Chọn model AI phù hợp với nhu cầu của bạn:</label>
-            <select id="cfgLlmModel"></select>
-          </div>
-
-          <div class="form-group">
-            <label>Chọn ngôn ngữ nói của GMbot:</label>
-            <select id="cfgLanguage" onchange="onLanguageChange()"></select>
-          </div>
-
-          <div class="form-group">
-            <label>Chọn Giọng nói của GMbot:</label>
-            <div style="display: flex; gap: 10px;">
-              <select id="cfgTtsVoice" style="flex: 1;" onchange="updateVoiceDemoBtn()"></select>
-              <button type="button" class="secondary" id="btnPreviewVoice" onclick="previewCurrentVoice()" style="white-space: nowrap;">
-                🔊 Nghe thử
-              </button>
+          <!-- 3 BƯỚC HƯỚNG DẪN SIÊU NHANH -->
+          <div style="background: rgba(15,23,42,0.85); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 14px 16px; font-size: 13px; color: #cbd5e1; line-height: 1.65;">
+            <div style="font-weight: 700; color: #fbbf24; margin-bottom: 6px; font-size: 13.5px;">
+              🚀 3 Bước để Robot có giọng nữ chuẩn 100% và nhận lệnh điều khiển thông minh:
             </div>
-            <div style="font-size: 12px; color: #94a3b8; margin-top: 5px;">
-              💡 <em>Mẹo: Để có <strong>giọng chuẩn nữ</strong>, hãy chọn <strong>"👩 Giọng nữ tiếng Việt chuẩn AI"</strong> hoặc <strong>"👧 Giọng bé gái Tiểu Song (Chuẩn nữ Xiaozhi.me)"</strong>.</em>
+            <div>
+              <strong>Bước 1: Bật nguồn Robot:</strong> Robot kết nối Wi-Fi, tự động nhận địa chỉ cụm gốc <code style="color:#38bdf8;">wss://api.tenclass.net/xiaozhi/v1/</code> từ OTA server.
             </div>
-            <!-- Audio Player ẩn -->
-            <audio id="audioPreviewPlayer" style="display:none;"></audio>
-          </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <div class="form-group">
-              <label>Tốc độ nói:</label>
-              <select id="cfgTtsSpeed">
-                <option value="slow">Chậm</option>
-                <option value="normal" selected>Bình thường</option>
-                <option value="fast">Nhanh</option>
-              </select>
+            <div style="margin-top:4px;">
+              <strong>Bước 2: Cài đặt Giọng Nữ trên xiaozhi.me:</strong> Vào <a href="https://xiaozhi.me" target="_blank" style="color:#60a5fa; text-decoration:underline; font-weight:bold;">xiaozhi.me</a>, thêm thiết bị với MAC: 
+              <strong style="color:#34d399; font-family:monospace; background:rgba(0,0,0,0.4); padding:2px 6px; border-radius:4px;">14:C1:9F:C4:EE:D0</strong> 
+              <button type="button" class="secondary" onclick="copyDeviceMac()" style="padding:2px 8px; font-size:11px; margin-left:4px;">Sao chép MAC</button>, 
+              chọn giọng nói: <strong>Tiểu Song (zh-CN-XiaoshuangMultilingualNeural)</strong> hoặc giọng nữ bạn thích. Robot sẽ lập tức có giọng nữ chuẩn mượt mà 100%!
             </div>
-
-            <div class="form-group">
-              <label>Cao độ giọng nói (-12 đến +12):</label>
-              <input type="number" id="cfgTtsPitch" min="-12" max="12" value="0">
+            <div style="margin-top:4px;">
+              <strong>Bước 3: Cắm MCP Tools:</strong> Trong trang cài đặt Agent trên <a href="https://xiaozhi.me" target="_blank" style="color:#60a5fa; text-decoration:underline;">xiaozhi.me</a>, tìm mục <strong>MCP Server / Plugin (Công cụ mở rộng)</strong>, dán URL MCP ở trên (<code style="color:#38bdf8;">https://gehihiv2.onrender.com/mcp</code>) vào. Nhấn Lưu là xong!
             </div>
           </div>
+        </div>
 
-          <div class="form-group">
+        <!-- DANH SÁCH CÁC CÔNG CỤ MCP TOOL ĐANG HOẠT ĐỘNG -->
+        <div style="background: rgba(30,41,59,0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 16px; margin-bottom: 20px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h4 style="margin:0; font-size:14.5px; color:#ffffff; display:flex; align-items:center; gap:8px;">
+              <span>🧰</span> <span>8 Công cụ MCP Server đã sẵn sàng phục vụ Robot:</span>
+            </h4>
+            <span class="badge" style="background:#0284c7; color:#fff; font-size:11.5px;">Chuẩn JSON-RPC 2.0</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px;">
+            <div style="background:#0f172a; padding:10px 12px; border-radius:6px; border:1px solid #334155;">
+              <div style="font-weight:bold; color:#38bdf8; font-size:12.5px;">⏰ get_vietnam_datetime</div>
+              <div style="font-size:11.5px; color:#94a3b8; margin-top:2px;">Báo giờ, thứ, ngày tháng năm chuẩn Việt Nam (UTC+7).</div>
+            </div>
+            <div style="background:#0f172a; padding:10px 12px; border-radius:6px; border:1px solid #334155;">
+              <div style="font-weight:bold; color:#38bdf8; font-size:12.5px;">🌦️ search_vietnam_weather</div>
+              <div style="font-size:11.5px; color:#94a3b8; margin-top:2px;">Tra cứu nhiệt độ, thời tiết các tỉnh thành Việt Nam.</div>
+            </div>
+            <div style="background:#0f172a; padding:10px 12px; border-radius:6px; border:1px solid #334155;">
+              <div style="font-weight:bold; color:#38bdf8; font-size:12.5px;">🚗 control_robot_hardware</div>
+              <div style="font-size:11.5px; color:#94a3b8; margin-top:2px;">Lệnh bánh xe MX1616 (tiến/lùi/rẽ/dừng/lắc lư), OLED.</div>
+            </div>
+            <div style="background:#0f172a; padding:10px 12px; border-radius:6px; border:1px solid #334155;">
+              <div style="font-weight:bold; color:#38bdf8; font-size:12.5px;">💡 toggle_cob_light</div>
+              <div style="font-size:11.5px; color:#94a3b8; margin-top:2px;">Bật hoặc tắt đèn sợi đốt COB / LED trợ sáng GPIO 21.</div>
+            </div>
+            <div style="background:#0f172a; padding:10px 12px; border-radius:6px; border:1px solid #334155;">
+              <div style="font-weight:bold; color:#38bdf8; font-size:12.5px;">💻 pc_system_info</div>
+              <div style="font-size:11.5px; color:#94a3b8; margin-top:2px;">Kiểm tra % CPU, RAM, dung lượng ổ đĩa máy tính.</div>
+            </div>
+            <div style="background:#0f172a; padding:10px 12px; border-radius:6px; border:1px solid #334155;">
+              <div style="font-weight:bold; color:#38bdf8; font-size:12.5px;">🎵 play_youtube_music_on_robot</div>
+              <div style="font-size:11.5px; color:#94a3b8; margin-top:2px;">Tìm kiếm và phát nhạc YouTube theo bài hát yêu cầu.</div>
+            </div>
+            <div style="background:#0f172a; padding:10px 12px; border-radius:6px; border:1px solid #334155;">
+              <div style="font-weight:bold; color:#38bdf8; font-size:12.5px;">📝 save_quick_note</div>
+              <div style="font-size:11.5px; color:#94a3b8; margin-top:2px;">Ghi chú lời nhắc vào cơ sở dữ liệu trên máy tính.</div>
+            </div>
+            <div style="background:#0f172a; padding:10px 12px; border-radius:6px; border:1px solid #334155;">
+              <div style="font-weight:bold; color:#38bdf8; font-size:12.5px;">📖 read_notes</div>
+              <div style="font-size:11.5px; color:#94a3b8; margin-top:2px;">Đọc lại danh sách ghi chú, lời nhắc gần nhất.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SOẠN THẢO VAI TRÒ & SYSTEM PROMPT CHUẨN (SOPHIA AI GENERATOR) -->
+        <div style="background: rgba(15,23,42,0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap:wrap; gap:8px;">
+            <div>
+              <h4 style="margin:0; font-size:15px; color:#ffffff;">🎭 Thiết lập Vai trò & Kịch bản AI cho Robot</h4>
+              <div style="font-size:12px; color:#94a3b8; margin-top:2px;">Tùy chỉnh tính cách Sophia, sau đó sao chép sang mục Prompt trên Xiaozhi.me.</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="secondary" onclick="loadConfigFromBackend(true)" style="padding:6px 12px; font-size:12px;">🔄 Tải lại</button>
+              <button class="secondary" onclick="resetDefaultConfigPrompt()" style="padding:6px 12px; font-size:12px;">↩️ Mặc định</button>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px;">
+            <div class="form-group" style="margin:0;">
+              <label>Tên của robot:</label>
+              <input type="text" id="cfgAssistantName" placeholder="Ví dụ: Sophia" value="Sophia">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label>Mã thiết bị đang quản lý:</label>
+              <input type="text" readonly value="Xiaozhi-EED0 (14:c1:9f:c4:ee:d0)" style="background:#0f172a; color:#38bdf8; font-family:monospace; font-weight:bold;">
+            </div>
+          </div>
+
+          <!-- Ẩn các trường LLM/Voice không dùng trong mô hình direct wrapper -->
+          <div style="display:none;">
+            <select id="cfgLlmModel"><option value="xz-lite" selected>xz-lite</option></select>
+            <select id="cfgLanguage"><option value="vi" selected>Tiếng Việt</option></select>
+            <select id="cfgTtsVoice"><option value="vi-female" selected>vi-female</option></select>
+            <select id="cfgTtsSpeed"><option value="normal" selected>Bình thường</option></select>
+            <input type="number" id="cfgTtsPitch" value="0">
+          </div>
+
+          <div class="form-group" style="margin-top:12px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <label style="margin: 0;">Mô tả Vai trò - tính cách của GMbot AI (Bắt buộc giữ dòng <code>[VAI TRÒ VÀ TÍNH CÁCH]</code>):</label>
+              <label style="margin: 0; font-weight:600;">Mô tả Vai trò - tính cách của Robot (Bắt buộc giữ dòng <code>[VAI TRÒ VÀ TÍNH CÁCH]</code>):</label>
               <span id="cfgCharCounter" style="font-size: 12px; color: #94a3b8;">0 / 7305 ký tự</span>
             </div>
-            <textarea id="cfgCharacter" rows="8" oninput="updateCharCounter()"></textarea>
+            <textarea id="cfgCharacter" rows="6" oninput="updateCharCounter()"></textarea>
           </div>
 
           <!-- KỊCH BẢN QUẢN TRỊ ẨN (CHỈ DÀNH CHO ADMIN) -->
           <div class="form-group" id="hiddenPromptGroup" style="display:none; background: rgba(15,23,42,0.6); padding: 14px; border-radius: 8px; border: 1px dashed #475569;">
-            <label style="color: #fbbf24; font-weight: 700;">👑 Kịch bản Quản trị ẩn (Admin Hidden Prompt - Tự động nối vào kịch bản khách hàng):</label>
+            <label style="color: #fbbf24; font-weight: 700;">👑 Kịch bản Quản trị ẩn (Admin Hidden Prompt):</label>
             <textarea id="cfgHiddenPrompt" rows="3" placeholder="Nhập các quy tắc ẩn, bảo vệ thương hiệu hoặc lệnh hệ thống bí mật..."></textarea>
           </div>
 
-          <div class="action-row">
-            <button class="primary" style="flex: 1;" onclick="saveConfigToBackend()">💾 Lưu cấu hình</button>
-            <button class="secondary" style="flex: 1;" onclick="resetDefaultConfigPrompt()">↩️ Quay trở lại cấu hình AI mặc định</button>
+          <div class="action-row" style="margin-top:16px; display:flex; gap:12px;">
+            <button class="primary" style="flex: 1; padding:10px 16px; font-weight:bold;" onclick="copyPromptToXiaozhi()">
+              📋 Sao chép Prompt sang Xiaozhi.me
+            </button>
+            <button class="secondary" style="flex: 1; padding:10px 16px;" onclick="saveConfigToBackend()">
+              💾 Lưu cấu hình Control Plane
+            </button>
           </div>
           <div id="cfgStatusMsg" style="margin-top: 12px; font-size: 13.5px;"></div>
         </div>
+
+      </div>
+    </section>
 
         <!-- NHẬN DẠNG NGƯỜI NÓI -->
         <div id="subtabSpeakerContent" class="xiaozhi-config-tab-content">
@@ -1917,6 +2017,84 @@
       });
     }
 
+    function updateMcpUrlsOnLoad() {
+      const origin = window.location.origin;
+      const mcpInput = document.getElementById("mcpPublicUrlDisplay");
+      const sseInput = document.getElementById("mcpSseUrlDisplay");
+      if (mcpInput) {
+        const base = origin.includes("localhost") || origin.includes("127.0.0.1") ? "https://gehihiv2.onrender.com" : origin;
+        mcpInput.value = `${base}/mcp`;
+        if (sseInput) sseInput.value = `${base}/mcp/sse`;
+      }
+    }
+
+    function copyMcpUrlLive() {
+      const el = document.getElementById("mcpPublicUrlDisplay");
+      const url = el ? el.value : "https://gehihiv2.onrender.com/mcp";
+      navigator.clipboard.writeText(url).then(() => {
+        showToast("✓ Đã sao chép URL MCP Server thành công! Bạn hãy dán vào cài đặt Agent trên xiaozhi.me");
+      }).catch(() => {
+        prompt("Sao chép URL MCP Server:", url);
+      });
+    }
+
+    function copyMcpSseUrlLive() {
+      const el = document.getElementById("mcpSseUrlDisplay");
+      const url = el ? el.value : "https://gehihiv2.onrender.com/mcp/sse";
+      navigator.clipboard.writeText(url).then(() => {
+        showToast("✓ Đã sao chép URL MCP SSE Stream thành công!");
+      }).catch(() => {
+        prompt("Sao chép URL MCP SSE:", url);
+      });
+    }
+
+    function copyDeviceMac() {
+      const mac = (currentAgent && currentAgent.mac_address) ? currentAgent.mac_address.toUpperCase() : "14:C1:9F:C4:EE:D0";
+      navigator.clipboard.writeText(mac).then(() => {
+        showToast("✓ Đã sao chép MAC thiết bị: " + mac);
+      }).catch(() => {
+        prompt("Sao chép MAC thiết bị:", mac);
+      });
+    }
+
+    function copyPromptToXiaozhi() {
+      const character = document.getElementById("cfgCharacter").value.trim();
+      navigator.clipboard.writeText(character).then(() => {
+        showToast("✓ Đã sao chép Kịch bản vai trò! Hãy mở xiaozhi.me và dán vào mục Prompt.");
+      }).catch(() => {
+        prompt("Sao chép kịch bản vai trò:", character);
+      });
+    }
+
+    async function testMcpServerLive() {
+      showToast("Đang kiểm tra phản hồi từ MCP Server...", "info");
+      try {
+        const res = await fetch("/mcp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: {
+              name: "get_vietnam_datetime",
+              arguments: {}
+            }
+          })
+        });
+        const data = await res.json();
+        if (data.result && data.result.content) {
+          const txt = data.result.content[0].text;
+          alert("✓ KẾT NỐI MCP SERVER THÀNH CÔNG (JSON-RPC 2.0)!\n\nKết quả trả về từ công cụ get_vietnam_datetime:\n" + txt);
+          showToast("MCP Server phản hồi hoàn hảo!", "success");
+        } else {
+          alert("Kết quả trả về: " + JSON.stringify(data));
+        }
+      } catch (err) {
+        alert("Lỗi khi kiểm tra MCP: " + err.message);
+      }
+    }
+
     // 2. TẢI CẤU HÌNH TỪ BACKEND
     async function loadConfigFromBackend(showNotice = false) {
       try {
@@ -1925,6 +2103,7 @@
         const data = await res.json();
         currentAgent = data.agent;
         currentUser = data.user;
+        updateMcpUrlsOnLoad();
 
         // Cập nhật UI
         const devTag = document.getElementById("cfgDeviceTag");

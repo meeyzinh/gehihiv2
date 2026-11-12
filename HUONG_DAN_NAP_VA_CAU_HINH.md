@@ -73,7 +73,9 @@ python -m esptool --chip esp32s3 -p COMx -b 460800 write-flash 0x0 firmware_robo
 
 ---
 
-## 🤖 4. Trạng thái kết nối Server AI
-- **OTA URL:** `https://gehihiv2.onrender.com/xiaozhi/ota/`
-- **WebSocket URL:** `wss://gehihiv2.onrender.com/ws/device`
+## 🤖 4. Trạng thái kết nối Server AI (Mô hình Wrapper Thông minh: Control Plane + MCP)
+- **Luồng Âm thanh & Hội thoại AI (ASR, LLM, TTS):** Kết nối trực tiếp máy chủ gốc **`wss://api.tenclass.net/xiaozhi/v1/`** (Đảm bảo 100% giọng chuẩn nữ Tiểu Song / Minimax, cực mượt, không trễ, miễn phí).
+- **Máy chủ OTA:** **`https://gehihiv2.onrender.com/xiaozhi/ota/`** (Tự động cấp phát URL cụm gốc cho Robot khi khởi động).
+- **Endpoint MCP Server (Công cụ mở rộng):** **`https://gehihiv2.onrender.com/mcp`** (Cung cấp các công cụ: Báo giờ, Thời tiết, Điều khiển xe, Đèn LED, Ghi chú, CPU máy tính, Phát nhạc YouTube).
+- **Trang Quản trị & Control Plane:** **`https://gehihiv2.onrender.com`** (Bàn điều khiển D-Pad, Giám sát COM8, Phát nhạc, Quản lý thiết bị).
 - **Ngôn ngữ:** Tiếng Việt (thông báo khởi động, kết nối Wi-Fi, trạng thái đối thoại AI).

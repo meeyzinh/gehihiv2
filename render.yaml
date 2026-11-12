@@ -16,4 +16,4 @@ services:
       - key: WEBSOCKET_URL
         value: wss://gehihiv2.onrender.com/xiaozhi/v1/
       - key: UPSTREAM_WS_URL
-        value: wss://gehihi.onrender.com/gehihi/v1/
+        value: wss://api.tenclass.net/xiaozhi/v1/
