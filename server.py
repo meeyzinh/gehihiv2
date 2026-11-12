@@ -2355,7 +2355,7 @@ async def handle_xiaozhi_ota(request: Request):
             "version": 1
         },
         "firmware": {
-            "version": "2.5.0",
+            "version": "2.5.3",
             "url": ""
         }
     }
