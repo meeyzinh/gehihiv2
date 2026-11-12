@@ -2860,6 +2860,8 @@ async def delete_speaker(speaker_id: int, db: Session = Depends(get_db)):
 async def get_device_by_id(agent_id: str, db: Session = Depends(get_db)):
     """Lấy thông tin cấu hình chi tiết của 1 robot"""
     agent = db.query(Agent).filter((Agent.agent_id == agent_id) | (Agent.device_name == agent_id)).first()
+    if not agent and agent_id.isdigit():
+        agent = db.query(Agent).filter(Agent.id == int(agent_id)).first()
     if not agent:
         agent = db.query(Agent).first()
     if not agent:
@@ -2867,36 +2869,85 @@ async def get_device_by_id(agent_id: str, db: Session = Depends(get_db)):
     return {
         "id": agent.id,
         "agent_id": agent.agent_id,
-        "name": agent.assistant_name,
-        "device_name": agent.device_name,
-        "prompt": agent.character,
-        "model_id": agent.llm_model,
-        "voice": agent.tts_voice,
-        "language": agent.language,
-        "voice_speed": agent.tts_speech_speed,
-        "voice_pitch": agent.tts_pitch,
-        "hidden_prompt": agent.hidden_prompt
+        "name": agent.assistant_name or "Sophia",
+        "assistant_name": agent.assistant_name or "Sophia",
+        "device_name": agent.device_name or "Xiaozhi-EED0",
+        "prompt": agent.character or "",
+        "character": agent.character or "",
+        "model_id": agent.llm_model or "xz-lite",
+        "llm_model": agent.llm_model or "xz-lite",
+        "voice": agent.tts_voice or "Vietnamese_kindhearted_girl",
+        "tts_voice": agent.tts_voice or "Vietnamese_kindhearted_girl",
+        "language": agent.language or "vi",
+        "voice_speed": agent.tts_speech_speed or "normal",
+        "tts_speech_speed": agent.tts_speech_speed or "normal",
+        "voice_pitch": agent.tts_pitch or 0,
+        "tts_pitch": agent.tts_pitch or 0,
+        "hidden_prompt": agent.hidden_prompt or "",
+        "gemini_api_key": os.getenv("GEMINI_API_KEY", ""),
+        "openai_api_key": os.getenv("OPENAI_API_KEY", ""),
+        "deepseek_api_key": os.getenv("DEEPSEEK_API_KEY", "")
     }
 
 
 @app.put("/api/devices/{agent_id}")
 async def update_device_by_id(agent_id: str, payload: Dict[str, Any], db: Session = Depends(get_db)):
-    """Cập nhật cấu hình 1 robot"""
+    """Cập nhật cấu hình 1 robot và tự động đồng bộ lên xiaozhi.me"""
     agent = db.query(Agent).filter((Agent.agent_id == agent_id) | (Agent.device_name == agent_id)).first()
+    if not agent and agent_id.isdigit():
+        agent = db.query(Agent).filter(Agent.id == int(agent_id)).first()
     if not agent:
         agent = db.query(Agent).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Không tìm thấy thiết bị")
+    
     if "name" in payload: agent.assistant_name = payload["name"]
+    if "assistant_name" in payload: agent.assistant_name = payload["assistant_name"]
     if "prompt" in payload: agent.character = payload["prompt"]
+    if "character" in payload: agent.character = payload["character"]
     if "model_id" in payload: agent.llm_model = payload["model_id"]
+    if "llm_model" in payload: agent.llm_model = payload["llm_model"]
     if "voice" in payload: agent.tts_voice = payload["voice"]
+    if "tts_voice" in payload: agent.tts_voice = payload["tts_voice"]
     if "language" in payload: agent.language = payload["language"]
     if "voice_speed" in payload: agent.tts_speech_speed = payload["voice_speed"]
+    if "tts_speech_speed" in payload: agent.tts_speech_speed = payload["tts_speech_speed"]
     if "voice_pitch" in payload: agent.tts_pitch = int(payload["voice_pitch"])
+    if "tts_pitch" in payload: agent.tts_pitch = int(payload["tts_pitch"])
     if "hidden_prompt" in payload: agent.hidden_prompt = payload["hidden_prompt"]
     db.commit()
-    return {"status": "ok", "message": "Đã cập nhật cấu hình robot thành công"}
+
+    # Tự động đẩy lên Xiaozhi Upstream nếu đã có token
+    upstream_status = None
+    try:
+        user = db.query(User).filter(User.id == agent.user_id).first()
+        token_to_use = (user.upstream_token if user else None) or DEFAULT_UPSTREAM_TOKEN
+        api_url_to_use = (user.upstream_api_url if user else None) or DEFAULT_UPSTREAM_URL
+        full_prompt = agent.character or ""
+        if agent.hidden_prompt and agent.hidden_prompt.strip():
+            full_prompt = f"{full_prompt}\n\n[HỆ THỐNG QUẢN TRỊ ẨN]\n{agent.hidden_prompt.strip()}"
+
+        upstream_res = await upstream_client.push_to_upstream(
+            agent_id=agent.agent_id,
+            config_data={
+                "assistant_name": agent.assistant_name,
+                "llm_model": agent.llm_model,
+                "language": agent.language,
+                "tts_voice": agent.tts_voice,
+                "tts_speech_speed": agent.tts_speech_speed,
+                "tts_pitch": agent.tts_pitch,
+                "character": full_prompt,
+                "mcp_endpoints": agent.mcp_endpoints
+            },
+            token=token_to_use,
+            api_url=api_url_to_use
+        )
+        upstream_status = upstream_res.get("success", False)
+    except Exception as ex:
+        print(f"Lỗi đồng bộ upstream từ update_device_by_id: {ex}")
+
+    msg = "Đã cập nhật cấu hình robot và đồng bộ lên Xiaozhi.me thành công" if upstream_status else "Đã lưu cấu hình vào server"
+    return {"status": "ok", "message": msg, "upstream_synced": upstream_status}
 
 
 @app.get("/api/my-xiaozhi-options")
