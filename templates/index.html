@@ -638,32 +638,47 @@
           </div>
         </div>
 
-        <!-- KHUNG KẾT NỐI MCP SERVER CHO XIAOZHI.ME (1-CLICK SETUP) -->
+        <!-- KHUNG KẾT NỐI MCP SERVER CHO XIAOZHI.ME -->
         <div style="background: #1e1b4b; border: 1px solid #6366f1; border-radius: 10px; padding: 18px; margin-bottom: 20px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
             <h4 style="margin:0; font-size:15px; color:#e0e7ff; display:flex; align-items:center; gap:8px;">
-              <span>🔌</span> <span>Cấu hình tích hợp MCP Server vào tài khoản Xiaozhi.me</span>
+              <span>🔌</span> <span>Kết nối Điểm cuối MCP với Xiaozhi.me (Tab Mở rộng trên Xiaozhi)</span>
             </h4>
-            <div style="display:flex; gap:8px;">
-              <button type="button" class="secondary" onclick="testMcpServerLive()" style="padding: 6px 14px; font-size: 12px; background: #312e81; border: 1px solid #818cf8; color:#fff;">
-                ⚡ Thử gọi MCP Tool ngay
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="upstreamMcpLiveBadge" class="badge" style="background:#475569; color:#fff; font-size:12px;">● Chưa kết nối</span>
+              <button type="button" class="secondary" onclick="checkUpstreamMcpStatus()" style="padding: 5px 10px; font-size: 11px;">🔄 Kiểm tra</button>
+            </div>
+          </div>
+
+          <!-- Ô DÁN URL ĐIỂM CUỐI MCP TỪ XIAOZHI.ME -->
+          <div style="background: rgba(15,23,42,0.85); border: 1px solid #38bdf8; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+            <label style="font-size:13px; color:#38bdf8; font-weight:700; display:block; margin-bottom:6px;">
+              🔗 Dán URL Điểm cuối MCP từ trang Xiaozhi.me vào đây (Từ Tab "Mở rộng" ➔ "Điểm cuối MCP"):
+            </label>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <input type="text" id="inputXiaozhiMcpEndpoint" placeholder="Ví dụ: wss://api.xiaozhi.me/mcp/?token=eyJhbGci..." style="flex:1; min-width:280px; background:#0b1120; color:#4ade80; font-family:monospace; font-size:13px; padding:8px 12px; border:1px solid #475569; border-radius:6px;">
+              <button type="button" class="primary" onclick="submitXiaozhiMcpEndpoint()" style="white-space:nowrap; padding:8px 18px; font-size:13px; font-weight:bold;">
+                🔌 Kích hoạt & Kết nối ngay
               </button>
+            </div>
+            <div id="mcpConnectNotice" style="font-size:12px; margin-top:6px; color:#94a3b8;">
+              💡 <em>Chỉ cần bấm biểu tượng Copy bên cạnh con mắt ở mục <strong>Điểm cuối MCP</strong> trên xiaozhi.me rồi dán vào đây!</em>
             </div>
           </div>
 
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 14px;">
             <!-- MCP JSON-RPC URL -->
             <div>
-              <label style="font-size:12px; color:#a5b4fc; font-weight:600;">Endpoint MCP (Dán vào mục MCP Server trên xiaozhi.me):</label>
+              <label style="font-size:12px; color:#a5b4fc; font-weight:600;">Endpoint MCP Server máy tính (JSON-RPC 2.0):</label>
               <div style="display:flex; gap:8px; margin-top:5px;">
                 <input type="text" id="mcpPublicUrlDisplay" readonly value="https://gehihiv2.onrender.com/mcp" style="background:#0f172a; color:#38bdf8; font-family:monospace; font-size:13px; font-weight:bold; flex:1;">
-                <button type="button" class="primary" onclick="copyMcpUrlLive()" style="white-space:nowrap; padding:6px 14px; font-size:12px;">📋 Sao chép</button>
+                <button type="button" class="secondary" onclick="copyMcpUrlLive()" style="white-space:nowrap; padding:6px 14px; font-size:12px;">📋 Sao chép</button>
               </div>
             </div>
 
             <!-- MCP SSE URL -->
             <div>
-              <label style="font-size:12px; color:#a5b4fc; font-weight:600;">Endpoint MCP SSE Stream (Nếu xiaozhi.me yêu cầu SSE):</label>
+              <label style="font-size:12px; color:#a5b4fc; font-weight:600;">Endpoint MCP SSE Stream (Server-Sent Events):</label>
               <div style="display:flex; gap:8px; margin-top:5px;">
                 <input type="text" id="mcpSseUrlDisplay" readonly value="https://gehihiv2.onrender.com/mcp/sse" style="background:#0f172a; color:#c084fc; font-family:monospace; font-size:13px; font-weight:bold; flex:1;">
                 <button type="button" class="secondary" onclick="copyMcpSseUrlLive()" style="white-space:nowrap; padding:6px 14px; font-size:12px;">📋 Sao chép SSE</button>
@@ -674,19 +689,16 @@
           <!-- 3 BƯỚC HƯỚNG DẪN SIÊU NHANH -->
           <div style="background: rgba(15,23,42,0.85); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 14px 16px; font-size: 13px; color: #cbd5e1; line-height: 1.65;">
             <div style="font-weight: 700; color: #fbbf24; margin-bottom: 6px; font-size: 13.5px;">
-              🚀 3 Bước để Robot có giọng nữ chuẩn 100% và nhận lệnh điều khiển thông minh:
+              🚀 Hướng dẫn kết nối MCP từ ảnh cấu hình của bạn trên Xiaozhi.me:
             </div>
             <div>
-              <strong>Bước 1: Bật nguồn Robot:</strong> Robot kết nối Wi-Fi, tự động nhận địa chỉ cụm gốc <code style="color:#38bdf8;">wss://api.tenclass.net/xiaozhi/v1/</code> từ OTA server.
+              <strong>Bước 1:</strong> Trong bảng cấu hình của bạn trên Xiaozhi.me, vào tab <strong>"Mở rộng"</strong> (tab thứ 4 sau Vai trò, Mô hình, Nhận dạng người nói).
             </div>
             <div style="margin-top:4px;">
-              <strong>Bước 2: Cài đặt Giọng Nữ trên xiaozhi.me:</strong> Vào <a href="https://xiaozhi.me" target="_blank" style="color:#60a5fa; text-decoration:underline; font-weight:bold;">xiaozhi.me</a>, thêm thiết bị với MAC: 
-              <strong style="color:#34d399; font-family:monospace; background:rgba(0,0,0,0.4); padding:2px 6px; border-radius:4px;">14:C1:9F:C4:EE:D0</strong> 
-              <button type="button" class="secondary" onclick="copyDeviceMac()" style="padding:2px 8px; font-size:11px; margin-left:4px;">Sao chép MAC</button>, 
-              chọn giọng nói: <strong>Tiểu Song (zh-CN-XiaoshuangMultilingualNeural)</strong> hoặc giọng nữ bạn thích. Robot sẽ lập tức có giọng nữ chuẩn mượt mà 100%!
+              <strong>Bước 2:</strong> Ở mục <strong>"Dịch vụ tùy chỉnh" ➔ "Điểm cuối MCP"</strong>, bấm biểu tượng <strong>Sao chép</strong> (hai trang giấy) cạnh dòng <code>wss://api.xiaozhi.me/mcp/?token=...</code>.
             </div>
             <div style="margin-top:4px;">
-              <strong>Bước 3: Cắm MCP Tools:</strong> Trong trang cài đặt Agent trên <a href="https://xiaozhi.me" target="_blank" style="color:#60a5fa; text-decoration:underline;">xiaozhi.me</a>, tìm mục <strong>MCP Server / Plugin (Công cụ mở rộng)</strong>, dán URL MCP ở trên (<code style="color:#38bdf8;">https://gehihiv2.onrender.com/mcp</code>) vào. Nhấn Lưu là xong!
+              <strong>Bước 3:</strong> Dán đường dẫn đó vào ô ở trên và bấm <strong>"Kích hoạt & Kết nối ngay"</strong>! Server của bạn sẽ tự động kết nối và trạng thái trên xiaozhi.me sẽ lập tức đổi sang 🟢 <strong>Đã kết nối</strong>!
             </div>
           </div>
         </div>
@@ -2095,6 +2107,63 @@
       }
     }
 
+    async function submitXiaozhiMcpEndpoint() {
+      const inputEl = document.getElementById("inputXiaozhiMcpEndpoint");
+      const urlVal = inputEl ? inputEl.value.trim() : "";
+      if (!urlVal) {
+        alert("Vui lòng dán đường link Endpoint (wss://api.xiaozhi.me/mcp/?token=...) vào ô trước khi bấm kết nối!");
+        return;
+      }
+      showToast("Đang kết nối tới điểm cuối MCP Xiaozhi.me...", "info");
+      const badge = document.getElementById("upstreamMcpLiveBadge");
+      if (badge) {
+        badge.style.background = "#eab308";
+        badge.innerText = "⏳ Đang kết nối...";
+      }
+      try {
+        const res = await fetch("/api/mcp/connect-upstream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint_url: urlVal })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Không thể kết nối");
+
+        showToast("✓ Đã lưu và bắt đầu kết nối với Xiaozhi.me!", "success");
+        setTimeout(checkUpstreamMcpStatus, 2500);
+      } catch (err) {
+        showToast("Lỗi kết nối: " + err.message, "error");
+        if (badge) {
+          badge.style.background = "#ef4444";
+          badge.innerText = "❌ Lỗi kết nối";
+        }
+      }
+    }
+
+    async function checkUpstreamMcpStatus() {
+      try {
+        const res = await fetch("/api/mcp/upstream-status");
+        const data = await res.json();
+        const badge = document.getElementById("upstreamMcpLiveBadge");
+        const inputEl = document.getElementById("inputXiaozhiMcpEndpoint");
+        if (inputEl && data.endpoint && !inputEl.value) {
+          inputEl.value = data.endpoint;
+        }
+        if (badge) {
+          if (data.is_connected) {
+            badge.style.background = "#10b981";
+            badge.innerText = "🟢 Đã kết nối";
+          } else if (data.endpoint) {
+            badge.style.background = "#eab308";
+            badge.innerText = "🟡 Đang kết nối...";
+          } else {
+            badge.style.background = "#475569";
+            badge.innerText = "● Chưa kết nối";
+          }
+        }
+      } catch (e) {}
+    }
+
     // 2. TẢI CẤU HÌNH TỪ BACKEND
     async function loadConfigFromBackend(showNotice = false) {
       try {
@@ -2104,6 +2173,7 @@
         currentAgent = data.agent;
         currentUser = data.user;
         updateMcpUrlsOnLoad();
+        checkUpstreamMcpStatus();
 
         // Cập nhật UI
         const devTag = document.getElementById("cfgDeviceTag");

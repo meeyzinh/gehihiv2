@@ -1390,6 +1390,10 @@ async def lifespan(app: FastAPI):
             pass
     asyncio.create_task(reboot_robot_on_start())
 
+    # Khởi chạy kết nối tới Điểm cuối MCP xiaozhi.me nếu đã có URL/Token
+    if xiaozhi_mcp_bridge.endpoint_url:
+        xiaozhi_mcp_bridge.start()
+
     yield
     # Cleanup khi tắt server
     keep_alive_task.cancel()
@@ -3643,6 +3647,178 @@ async def test_call_mcp_tool(payload: McpCallPayload):
 async def get_mcp_logs():
     """Lấy danh sách lịch sử gọi công cụ MCP từ Robot ESP32 để theo dõi trực tiếp"""
     return {"logs": MCP_CALL_LOGS}
+
+
+# ==========================================
+# 8.1 XIAOZHI CLOUD MCP BRIDGE CLIENT
+# ==========================================
+
+class XiaozhiCloudMcpBridge:
+    def __init__(self):
+        raw_env = os.getenv("XIAOZHI_MCP_ENDPOINT", "").strip() or os.getenv("UPSTREAM_AUTH_TOKEN", "").strip()
+        self.endpoint_url: str = ""
+        self.is_connected: bool = False
+        self.task: Optional[asyncio.Task] = None
+        self.stop_event = asyncio.Event()
+        if raw_env:
+            if raw_env.startswith("wss://") or raw_env.startswith("ws://"):
+                self.endpoint_url = raw_env
+            elif raw_env.startswith("token="):
+                self.endpoint_url = f"wss://api.xiaozhi.me/mcp/?{raw_env}"
+            else:
+                self.endpoint_url = f"wss://api.xiaozhi.me/mcp/?token={raw_env}"
+            print(f"[XIAOZHI MCP BRIDGE] Tự động tải Điểm cuối MCP: {self.endpoint_url[:40]}...")
+
+    def set_endpoint(self, url_or_token: str):
+        url_or_token = (url_or_token or "").strip()
+        if not url_or_token:
+            self.endpoint_url = ""
+            self.is_connected = False
+            return
+        if url_or_token.startswith("wss://") or url_or_token.startswith("ws://"):
+            self.endpoint_url = url_or_token
+        elif url_or_token.startswith("token="):
+            self.endpoint_url = f"wss://api.xiaozhi.me/mcp/?{url_or_token}"
+        else:
+            self.endpoint_url = f"wss://api.xiaozhi.me/mcp/?token={url_or_token}"
+        print(f"[XIAOZHI MCP BRIDGE] Đã cấu hình Điểm cuối MCP: {self.endpoint_url[:38]}...")
+        if self.task and not self.task.done():
+            self.task.cancel()
+        self.start()
+
+    def start(self):
+        if not self.endpoint_url:
+            return
+        self.stop_event.clear()
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                self.task = loop.create_task(self._connect_loop())
+        except Exception as e:
+            print(f"[XIAOZHI MCP BRIDGE] start error: {e}")
+
+    async def _connect_loop(self):
+        while not self.stop_event.is_set():
+            if not self.endpoint_url:
+                await asyncio.sleep(5)
+                continue
+            try:
+                print(f"[XIAOZHI MCP BRIDGE] 🔌 Đang kết nối tới điểm cuối MCP xiaozhi.me...")
+                async with websockets.connect(
+                    self.endpoint_url,
+                    ping_interval=20,
+                    ping_timeout=20,
+                    close_timeout=5
+                ) as ws:
+                    self.is_connected = True
+                    print(f"[XIAOZHI MCP BRIDGE] ✓ ĐÃ KẾT NỐI THÀNH CÔNG VỚI XIAOZHI.ME MCP! Trạng thái: 🟢 Đã kết nối")
+                    while not self.stop_event.is_set():
+                        msg_text = await ws.recv()
+                        try:
+                            req = json.loads(msg_text)
+                            req_id = req.get("id")
+                            method = req.get("method")
+                            params = req.get("params", {})
+
+                            if method == "initialize":
+                                resp = {
+                                    "jsonrpc": "2.0",
+                                    "id": req_id,
+                                    "result": {
+                                        "protocolVersion": "2024-11-05",
+                                        "serverInfo": {"name": "gmbot-pc-mcp-server", "version": "2.0.0"},
+                                        "capabilities": {"tools": {}}
+                                    }
+                                }
+                                await ws.send(json.dumps(resp))
+                            elif method in ["notifications/initialized", "initialized"]:
+                                pass
+                            elif method == "tools/list":
+                                resp = {
+                                    "jsonrpc": "2.0",
+                                    "id": req_id,
+                                    "result": {"tools": MCP_TOOL_DEFINITIONS}
+                                }
+                                await ws.send(json.dumps(resp))
+                                print(f"[XIAOZHI MCP BRIDGE] ✓ Đã đăng ký {len(MCP_TOOL_DEFINITIONS)} công cụ MCP với xiaozhi.me")
+                            elif method == "tools/call":
+                                t_name = params.get("name")
+                                t_args = params.get("arguments", {})
+                                print(f"[XIAOZHI MCP CALL] 🚀 Xiaozhi gọi công cụ: '{t_name}' ({t_args})")
+                                res_str = execute_mcp_tool(t_name, t_args)
+                                resp = {
+                                    "jsonrpc": "2.0",
+                                    "id": req_id,
+                                    "result": {
+                                        "content": [{"type": "text", "text": res_str}],
+                                        "isError": False
+                                    }
+                                }
+                                await ws.send(json.dumps(resp))
+                            elif method == "ping":
+                                await ws.send(json.dumps({"jsonrpc": "2.0", "id": req_id, "result": {}}))
+                        except Exception as err:
+                            print(f"[XIAOZHI MCP BRIDGE MSG ERR] {err}")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.is_connected = False
+                print(f"[XIAOZHI MCP BRIDGE ERR] Mất kết nối tới xiaozhi.me MCP ({e}). Thử lại sau 5s...")
+                await asyncio.sleep(5)
+
+xiaozhi_mcp_bridge = XiaozhiCloudMcpBridge()
+
+
+class ConnectMcpPayload(BaseModel):
+    endpoint_url: str
+
+
+@app.post("/api/mcp/connect-upstream")
+async def connect_mcp_upstream(payload: ConnectMcpPayload):
+    """Kết nối Server tới Điểm cuối MCP của xiaozhi.me (wss://api.xiaozhi.me/mcp/?token=...)"""
+    raw_url = payload.endpoint_url.strip()
+    if not raw_url:
+        raise HTTPException(status_code=400, detail="Vui lòng cung cấp URL hoặc Token điểm cuối MCP từ xiaozhi.me")
+    
+    xiaozhi_mcp_bridge.set_endpoint(raw_url)
+    
+    # Ghi nhớ vào file .env
+    try:
+        env_lines = []
+        if os.path.exists(".env"):
+            with open(".env", "r", encoding="utf-8") as f:
+                env_lines = f.readlines()
+        has_key = False
+        new_lines = []
+        for l in env_lines:
+            if l.startswith("XIAOZHI_MCP_ENDPOINT="):
+                new_lines.append(f"XIAOZHI_MCP_ENDPOINT={xiaozhi_mcp_bridge.endpoint_url}\n")
+                has_key = True
+            else:
+                new_lines.append(l)
+        if not has_key:
+            new_lines.append(f"\nXIAOZHI_MCP_ENDPOINT={xiaozhi_mcp_bridge.endpoint_url}\n")
+        with open(".env", "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+    except Exception as e:
+        print(f"[SAVE ENV ERR] {e}")
+
+    await asyncio.sleep(1.0)
+    return {
+        "status": "ok",
+        "message": "Đã bắt đầu kết nối tới điểm cuối MCP xiaozhi.me!",
+        "endpoint": xiaozhi_mcp_bridge.endpoint_url,
+        "is_connected": xiaozhi_mcp_bridge.is_connected
+    }
+
+
+@app.get("/api/mcp/upstream-status")
+async def get_mcp_upstream_status():
+    """Kiểm tra trạng thái kết nối tới Điểm cuối MCP xiaozhi.me"""
+    return {
+        "is_connected": xiaozhi_mcp_bridge.is_connected,
+        "endpoint": xiaozhi_mcp_bridge.endpoint_url
+    }
 
 
 # ==========================================
