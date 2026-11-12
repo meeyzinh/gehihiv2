@@ -50,11 +50,13 @@ load_dotenv()
 
 PORT = int(os.getenv("PORT", "8000"))
 HOST = os.getenv("HOST", "0.0.0.0")
-DEFAULT_AGENT_ID = os.getenv("AGENT_ID", "2567180")
-DEFAULT_DEVICE_NAME = os.getenv("DEVICE_NAME", "330730")
-DEFAULT_DEVICE_MAC = os.getenv("DEVICE_MAC", "7c:4f:ad:bb:b3:2c")
+DEFAULT_AGENT_ID = os.getenv("AGENT_ID", "927184")
+DEFAULT_DEVICE_NAME = os.getenv("DEVICE_NAME", "Xiaozhi-EED0")
+DEFAULT_DEVICE_MAC = os.getenv("DEVICE_MAC", "14:c1:9f:c4:ee:d0")
 DEFAULT_UPSTREAM_URL = os.getenv("UPSTREAM_API_URL", "https://api.xiaozhi.me")
 DEFAULT_UPSTREAM_TOKEN = os.getenv("UPSTREAM_AUTH_TOKEN", "")
+DEFAULT_UPSTREAM_WS_URL = os.getenv("UPSTREAM_WS_URL", "wss://gehihi.onrender.com/gehihi/v1/")
+CURRENT_UPSTREAM_WS_URL = DEFAULT_UPSTREAM_WS_URL
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 SECRET_KEY = os.getenv("SECRET_KEY", "gmbot-control-plane-secret-key-local-2026")
@@ -96,7 +98,7 @@ class Agent(Base):
     user_name = Column(String(64), default="Chủ nhân")
     llm_model = Column(String(64), default="xz-lite")
     language = Column(String(16), default="vi")
-    tts_voice = Column(String(128), default="Vietnamese_kindhearted_girl")
+    tts_voice = Column(String(128), default="vi-female")
     tts_speech_speed = Column(String(16), default="normal")
     tts_pitch = Column(Integer, default=0)
     character = Column(Text, default="[VAI TRÒ VÀ TÍNH CÁCH]\nBạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. Bạn trả lời ngắn gọn, tự nhiên, vui vẻ và sẵn sàng hỗ trợ mọi việc.")
@@ -456,6 +458,68 @@ class XiaozhiUpstreamClient:
 
 upstream_client = XiaozhiUpstreamClient()
 
+def map_to_gehihi_voice(tts_voice: str) -> str:
+    if not tts_voice:
+        return "vi-female"
+    v = str(tts_voice).lower()
+    if "maingoc" in v or "nam_bo" in v or "miennam" in v:
+        return "vi-maingoc"
+    # Phải kiểm tra giọng nữ trước vì từ 'female' có chứa chữ 'male'!
+    if "female" in v or "girl" in v or "shuang" in v or "hoaimy" in v or "nữ" in v or "nu" in v:
+        return "vi-female"
+    if "male" in v or "man" in v or "namminh" in v:
+        return "vi-male"
+    return "vi-female"
+
+def map_to_gehihi_model(model_id: str) -> str:
+    if not model_id:
+        return "gemini-3.8-flash"
+    m = str(model_id).lower()
+    if "lite" in m or "xz-lite" in m:
+        return "gemini-flash-lite"
+    if "deepseek" in m:
+        return "deepseek"
+    if "groq" in m:
+        return "groq"
+    if "gpt" in m:
+        return "gpt-4o-mini"
+    return "gemini-3.8-flash"
+
+async def sync_to_upstream_gehihi(mac: str, prompt: str, name: str = "Sophia", voice: str = "vi-female", model_id: str = "xz-lite", language: str = "vi", speed: str = "normal", pitch: int = 0):
+    """Đồng bộ đầy đủ cấu hình AI bao gồm Prompt, Giọng nói, Model sang máy chủ Gehihi"""
+    if not mac:
+        return
+    gehihi_voice = map_to_gehihi_voice(voice)
+    gehihi_model = map_to_gehihi_model(model_id)
+    
+    # Đồng bộ cho cả định dạng chữ thường, chữ hoa và robot mạch tím
+    mac_variants = list(dict.fromkeys([
+        mac.strip().lower(),
+        mac.strip().upper(),
+        "14:c1:9f:c4:ee:d0",
+        "14:C1:9F:C4:EE:D0"
+    ]))
+    payload = {
+        "prompt": prompt,
+        "system_prompt": prompt,
+        "name": f"Robot {name}",
+        "voice": gehihi_voice,
+        "model": gehihi_model,
+        "model_id": gehihi_model,
+        "language": language or "vi",
+        "voice_speed": speed or "normal",
+        "tts_speed": speed or "normal",
+        "voice_pitch": pitch or 0
+    }
+    for m in mac_variants:
+        try:
+            async with httpx.AsyncClient(timeout=4.0) as client:
+                res = await client.put(f"https://gehihi.onrender.com/api/devices/{m}", json=payload)
+                if res.status_code == 200:
+                    print(f"[SYNC UPSTREAM GEHIHI] ✓ Đã đồng bộ MAC {m} -> Giọng: {gehihi_voice}, Model: {gehihi_model}")
+        except Exception as ex:
+            print(f"[SYNC UPSTREAM GEHIHI] ⚠ Lỗi đồng bộ MAC {m}: {ex}")
+
 # ==========================================
 # 4. DANH SÁCH OPTIONS CHUẨN GMBOT (MODELS & VOICES)
 # ==========================================
@@ -486,14 +550,49 @@ GMBOT_LANGUAGES = [
 GMBOT_VOICES_BY_LANGUAGE = {
     "vi": [
         {
+            "id": "vi-female",
+            "name": "👩 Giọng nữ tiếng Việt chuẩn AI (Dịu dàng - Mặc định)",
+            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/azure/vi-VN-HoaiMyNeural-4c9402f3ed76c975.wav"
+        },
+        {
+            "id": "zh-CN-XiaoshuangMultilingualNeural",
+            "name": "👧 Giọng bé gái Tiểu Song đa ngôn ngữ (Chuẩn nữ Xiaozhi.me)",
+            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/azure/zh-CN-XiaoshuangMultilingualNeural-8fe5bb288e153c13.wav"
+        },
+        {
             "id": "Vietnamese_kindhearted_girl",
-            "name": "Giọng nữ Việt Nam - dịu dàng, thân thiện (MiniMax)",
+            "name": "👩 Giọng nữ MiniMax (Truyền cảm, tự nhiên)",
             "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/1e7cd75c-c97c-4b80-a70c-c1270c3fd18e.mp3"
         },
         {
+            "id": "vi-maingoc",
+            "name": "🌸 Giọng nữ miền Nam (Mai Ngọc - Dễ thương)",
+            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/1e7cd75c-c97c-4b80-a70c-c1270c3fd18e.mp3"
+        },
+        {
+            "id": "vc_vietnamese_voice_003_1011_1004",
+            "name": "👧 Giọng nữ ByteDance (Trẻ trung)",
+            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/tts_vc_vietnamese_voice_003_1011_1004.mp3"
+        },
+        {
+            "id": "vi-VN-HoaiMyNeural",
+            "name": "👩 Giọng nữ Hoài My (Microsoft Azure)",
+            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/azure/vi-VN-HoaiMyNeural-4c9402f3ed76c975.wav"
+        },
+        {
+            "id": "vi-male",
+            "name": "👨 Giọng nam Việt Nam (Điềm đạm)",
+            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/azure/vi-VN-NamMinhNeural-4c9402f3ed76c975.wav"
+        },
+        {
             "id": "Vietnamese_Serene_Man",
-            "name": "Giọng nam Việt Nam - điềm đạm (MiniMax)",
+            "name": "👨 Giọng nam MiniMax (Trầm ấm)",
             "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/24b645aa-dccb-4dea-9ea1-6d23567733aa.mp3"
+        },
+        {
+            "id": "vi-VN-NamMinhNeural",
+            "name": "👨 Giọng nam Nam Minh (Microsoft Azure)",
+            "demo": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/azure/vi-VN-NamMinhNeural-4c9402f3ed76c975.wav"
         },
         {
             "id": "vc_vietnamese_voice_003_1011_1004",
@@ -1773,18 +1872,7 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
 
                 # Đồng bộ Upstream AI
                 mac = agent.mac_address or dev_mac or "14:c1:9f:c4:ee:d0"
-                try:
-                    async with httpx.AsyncClient(timeout=5.0) as client:
-                        await client.put(
-                            f"https://gehihi.onrender.com/api/devices/{mac}",
-                            json={
-                                "prompt": default_prompt,
-                                "system_prompt": default_prompt,
-                                "name": "Robot Sophia"
-                            }
-                        )
-                except Exception as ex:
-                    print(f"[VOICE COMMAND] Lỗi sync Upstream: {ex}")
+                await sync_to_upstream_gehihi(mac=mac, prompt=default_prompt, name="Sophia", voice=agent.tts_voice or "vi-female")
 
                 # Cập nhật OLED màn hình robot
                 await robot_ws_manager.send_oled_emotion("happy", text="Da ve Sophia!")
@@ -1833,18 +1921,7 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
                     db.commit()
 
                     mac = agent.mac_address or dev_mac or "14:c1:9f:c4:ee:d0"
-                    try:
-                        async with httpx.AsyncClient(timeout=5.0) as client:
-                            await client.put(
-                                f"https://gehihi.onrender.com/api/devices/{mac}",
-                                json={
-                                    "prompt": lesson.system_prompt,
-                                    "system_prompt": lesson.system_prompt,
-                                    "name": f"Robot ({lesson.title[:12]})"
-                                }
-                            )
-                    except Exception as ex:
-                        print(f"[VOICE COMMAND] Lỗi sync Upstream: {ex}")
+                    await sync_to_upstream_gehihi(mac=mac, prompt=lesson.system_prompt, name=lesson.title[:12], voice=agent.tts_voice or "vi-female")
 
                     short_title = lesson.title.split(":")[0] if ":" in lesson.title else lesson.title
                     await robot_ws_manager.send_oled_emotion("happy", text=f"En: {short_title[:16]}")
@@ -1860,11 +1937,7 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
                     agent.character = role.system_prompt
                     db.commit()
                     mac = agent.mac_address or dev_mac or "14:c1:9f:c4:ee:d0"
-                    try:
-                        async with httpx.AsyncClient(timeout=5.0) as client:
-                            await client.put(f"https://gehihi.onrender.com/api/devices/{mac}", json={"prompt": role.system_prompt, "system_prompt": role.system_prompt, "name": "Robot Ke Chuyen"})
-                    except Exception:
-                        pass
+                    await sync_to_upstream_gehihi(mac=mac, prompt=role.system_prompt, name="Robot Ke Chuyen", voice=agent.tts_voice or "vi-female")
                     await robot_ws_manager.send_oled_emotion("loving", text="Ke chuyen co tich")
                     serial_manager._add_log(f"[KHẨU LỆNH] ✓ Đã chuyển sang vai trò: '{role.title}'")
                     return True
@@ -1892,12 +1965,45 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
     dev_mac = req_headers.get("device-id") or req_headers.get("Device-Id") or device_id or "14:c1:9f:c4:ee:d0"
     dev_mac = dev_mac.lower().strip()
 
+    # Tự động gán MAC của robot đang kết nối vào cơ sở dữ liệu nếu chưa có hoặc đang là MAC cũ
+    try:
+        with SessionLocal() as db_sess:
+            agent_record = db_sess.query(Agent).filter(
+                (sa.func.lower(Agent.mac_address) == dev_mac)
+            ).first()
+            if not agent_record:
+                first_ag = db_sess.query(Agent).first()
+                if first_ag and first_ag.mac_address in ["7c:4f:ad:bb:b3:2c", DEFAULT_DEVICE_MAC, ""]:
+                    first_ag.mac_address = dev_mac
+                    first_ag.device_name = f"Xiaozhi-{dev_mac.replace(':', '')[-4:].upper()}"
+                    first_ag.is_active = True
+                    db_sess.commit()
+                else:
+                    db_sess.query(Agent).update({Agent.is_active: False})
+                    new_ag = Agent(
+                        user_id=1,
+                        agent_id=dev_mac.replace(":", "")[-6:],
+                        device_name=f"Xiaozhi-{dev_mac.replace(':', '')[-4:].upper()}",
+                        mac_address=dev_mac,
+                        assistant_name="Sophia",
+                        tts_voice="vi-female",
+                        is_active=True
+                    )
+                    db_sess.add(new_ag)
+                    db_sess.commit()
+            else:
+                db_sess.query(Agent).update({Agent.is_active: False})
+                agent_record.is_active = True
+                db_sess.commit()
+    except Exception as ex:
+        print(f"[WS AUTO-BIND] Lỗi cập nhật agent MAC: {ex}")
+
     session_id = f"sess-{int(time.time())}"
     await robot_ws_manager.connect(websocket, dev_mac, session_id)
 
     # 1. Khởi tạo kết nối song công với Máy chủ AI Giọng nói Upstream (Gehihi AI / Xiaozhi)
     upstream_ws = None
-    upstream_url = os.getenv("UPSTREAM_WS_URL", "wss://gehihi.onrender.com/gehihi/v1/")
+    upstream_url = CURRENT_UPSTREAM_WS_URL
     token = os.getenv("UPSTREAM_AUTH_TOKEN", "").strip()
 
     def is_ws_alive(ws):
@@ -2557,21 +2663,9 @@ async def apply_curriculum(payload: ApplyCurriculumPayload, db: Session = Depend
         db.refresh(agent)
         cur_name = payload.name or "Bài học mới"
 
-        # 1. Đồng bộ System Prompt lên Upstream AI (gehihi.onrender.com)
+        # 1. Đồng bộ System Prompt, Giọng nói và Model lên Upstream AI (gehihi.onrender.com)
         mac = agent.mac_address or "14:c1:9f:c4:ee:d0"
-        try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
-                await client.put(
-                    f"https://gehihi.onrender.com/api/devices/{mac}",
-                    json={
-                        "prompt": prompt_content,
-                        "system_prompt": prompt_content,
-                        "name": f"Robot ({cur_name[:12]})"
-                    }
-                )
-                print(f"[SYNC UPSTREAM] ✓ Đã đồng bộ bài học '{cur_name}' lên Upstream AI cho MAC {mac}")
-        except Exception as e:
-            print(f"[SYNC UPSTREAM] ⚠ Lỗi đồng bộ Upstream: {e}")
+        await sync_to_upstream_gehihi(mac=mac, prompt=prompt_content, name=cur_name[:12], voice=agent.tts_voice or "vi-female", model_id=agent.llm_model)
 
         # 2. Cập nhật OLED & Log Terminal thời gian thực của Robot
         await robot_ws_manager.send_oled_emotion("happy", text=f"En: {cur_name[:14]}")
@@ -2595,18 +2689,7 @@ async def reset_default_ai_prompt(db: Session = Depends(get_db)):
         db.refresh(agent)
 
         mac = agent.mac_address or "14:c1:9f:c4:ee:d0"
-        try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
-                await client.put(
-                    f"https://gehihi.onrender.com/api/devices/{mac}",
-                    json={
-                        "prompt": default_prompt,
-                        "system_prompt": default_prompt,
-                        "name": "Robot Sophia"
-                    }
-                )
-        except Exception:
-            pass
+        await sync_to_upstream_gehihi(mac=mac, prompt=default_prompt, name="Sophia", voice=agent.tts_voice or "vi-female", model_id=agent.llm_model)
 
         await robot_ws_manager.send_oled_emotion("neutral", text="Sophia Online")
         serial_manager._add_log("[CẤU HÌNH] ✓ Đã khôi phục trợ lý Sophia mặc định!")
@@ -2629,18 +2712,7 @@ async def deactivate_english_tutor(db: Session = Depends(get_db)):
         db.refresh(agent)
 
         mac = agent.mac_address or "14:c1:9f:c4:ee:d0"
-        try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
-                await client.put(
-                    f"https://gehihi.onrender.com/api/devices/{mac}",
-                    json={
-                        "prompt": default_prompt,
-                        "system_prompt": default_prompt,
-                        "name": "Robot Sophia"
-                    }
-                )
-        except Exception:
-            pass
+        await sync_to_upstream_gehihi(mac=mac, prompt=default_prompt, name="Sophia", voice=agent.tts_voice or "vi-female", model_id=agent.llm_model)
 
         await robot_ws_manager.send_oled_emotion("neutral", text="Huy Hoc Tieng Anh")
         serial_manager._add_log("[GIÁO TRÌNH] ✓ Đã hủy chế độ học tiếng Anh, khôi phục trợ lý Sophia mặc định!")
@@ -2870,31 +2942,37 @@ async def save_xiaozhi_config(
         api_url=api_url_to_use
     )
 
-    # Đồng bộ Prompt lên Upstream AI (gehihi.onrender.com)
-    mac = agent.mac_address or "14:c1:9f:c4:ee:d0"
-    try:
-        async with httpx.AsyncClient(timeout=6.0) as client:
-            await client.put(
-                f"https://gehihi.onrender.com/api/devices/{mac}",
-                json={
-                    "prompt": full_prompt_to_sync,
-                    "system_prompt": full_prompt_to_sync,
-                    "name": f"Robot {agent.assistant_name}"
-                }
-            )
-            print(f"[SYNC UPSTREAM] ✓ Đã đồng bộ cấu hình lên Upstream AI cho MAC {mac}")
-    except Exception as e:
-        print(f"[SYNC UPSTREAM] ⚠ Lỗi đồng bộ Upstream: {e}")
+    # 1. Đồng bộ Prompt, Giọng nói và Model lên Upstream AI (gehihi.onrender.com)
+    target_mac = agent.mac_address or "14:c1:9f:c4:ee:d0"
+    await sync_to_upstream_gehihi(
+        mac=target_mac,
+        prompt=full_prompt_to_sync,
+        name=agent.assistant_name,
+        voice=agent.tts_voice,
+        model_id=agent.llm_model,
+        language=agent.language,
+        speed=agent.tts_speech_speed,
+        pitch=agent.tts_pitch
+    )
 
     # Cập nhật OLED hiển thị của Robot ESP32
     await robot_ws_manager.send_oled_emotion("happy", text=f"Lưu: {agent.assistant_name}")
-    serial_manager._add_log(f"[CẤU HÌNH] ✓ Đã lưu cấu hình và đồng bộ vào Robot AI ({agent.assistant_name})!")
+    serial_manager._add_log(f"[CẤU HÌNH] ✓ Đã lưu cấu hình và đồng bộ Giọng '{agent.tts_voice}', Model '{agent.llm_model}' vào Robot AI ({agent.assistant_name})!")
+
+    voice_display_name = agent.tts_voice
+    for v in GMBOT_VOICES_BY_LANGUAGE.get(agent.language or "vi", []):
+        if v["id"] == agent.tts_voice:
+            voice_display_name = v["name"]
+            break
 
     return {
         "success": True,
-        "message": sync_result.get("message", "Đã lưu cấu hình thành công."),
+        "message": f"Đã lưu cấu hình thành công! Giọng nói: {voice_display_name} và Model: {agent.llm_model} đã được đồng bộ vào Robot.",
         "synced_upstream": sync_result.get("synced_upstream", False),
-        "agent_id": agent.agent_id
+        "agent_id": agent.agent_id,
+        "mac_address": agent.mac_address,
+        "voice": agent.tts_voice,
+        "model": agent.llm_model
     }
 
 
@@ -2984,11 +3062,13 @@ class DevicePayload(BaseModel):
 
 @app.post("/api/devices")
 async def create_or_update_device(payload: DevicePayload, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    existing = db.query(Agent).filter(Agent.agent_id == payload.agent_id).first()
+    db.query(Agent).filter(Agent.user_id == current_user.id).update({Agent.is_active: False})
+    existing = db.query(Agent).filter((Agent.agent_id == payload.agent_id) | (sa.func.lower(Agent.mac_address) == payload.mac_address.lower())).first()
     if existing:
         existing.device_name = payload.device_name
         existing.mac_address = payload.mac_address
         existing.assistant_name = payload.assistant_name or existing.assistant_name
+        existing.is_active = True
         db.commit()
         db.refresh(existing)
         return existing
@@ -2999,12 +3079,44 @@ async def create_or_update_device(payload: DevicePayload, db: Session = Depends(
             agent_id=payload.agent_id,
             mac_address=payload.mac_address,
             assistant_name=payload.assistant_name or "Sophia",
+            tts_voice="vi-female",
             is_active=True
         )
         db.add(new_agent)
         db.commit()
         db.refresh(new_agent)
         return new_agent
+
+
+@app.get("/api/upstream/status")
+async def get_upstream_status():
+    global CURRENT_UPSTREAM_WS_URL
+    is_xiaozhi_official = "tenclass" in CURRENT_UPSTREAM_WS_URL or "xiaozhi.me" in CURRENT_UPSTREAM_WS_URL
+    return {
+        "current_url": CURRENT_UPSTREAM_WS_URL,
+        "mode": "official" if is_xiaozhi_official else "gehihi",
+        "name": "Cụm máy chủ gốc Xiaozhi chính thức" if is_xiaozhi_official else "Cụm Gehihi tiếng Việt",
+        "description": "Chuẩn giọng nữ bé gái Tiểu Song Xiaozhi.me" if is_xiaozhi_official else "Miễn phí, tuỳ biến prompt, giọng nữ AI Hoài My / Mai Ngọc"
+    }
+
+
+class UpstreamSwitchPayload(BaseModel):
+    mode: str  # "gehihi" | "official"
+
+
+@app.post("/api/upstream/switch")
+async def switch_upstream(payload: UpstreamSwitchPayload):
+    global CURRENT_UPSTREAM_WS_URL
+    if payload.mode == "official":
+        CURRENT_UPSTREAM_WS_URL = "wss://api.tenclass.net/xiaozhi/v1/"
+    else:
+        CURRENT_UPSTREAM_WS_URL = "wss://gehihi.onrender.com/gehihi/v1/"
+    return {
+        "status": "ok",
+        "current_url": CURRENT_UPSTREAM_WS_URL,
+        "mode": payload.mode,
+        "message": f"Đã chuyển sang {'Cụm máy chủ gốc Xiaozhi chính thức (Chuẩn nữ Tiểu Song)' if payload.mode == 'official' else 'Cụm Gehihi tiếng Việt'}. Hãy khởi động lại Robot để nạp kết nối mới!"
+    }
 
 
 @app.post("/api/devices/{agent_id}/select")
