@@ -990,6 +990,19 @@ MCP_TOOL_DEFINITIONS = [
                 "feedback": {"type": "string", "description": "Lời nhận xét và khen ngợi ngắn gọn gửi tới bé"}
             }
         }
+    },
+    {
+        "name": "robot_go_to_sleep",
+        "description": "Đưa robot vào chế độ ngủ (Standby / kDeviceStateIdle) khi người dùng chào tạm biệt, bảo đi ngủ, tắt robot hoặc không muốn nói chuyện nữa (ví dụ: 'đi ngủ đi', 'tắt robot đi', 'tạm biệt', 'bye bye', 'nghỉ ngơi đi').",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "Lời chúc ngủ ngon hoặc lời chào tạm biệt ngắn gọn (ví dụ: 'Chúc bạn ngủ ngon nhé!', 'Tạm biệt bạn!')"
+                }
+            }
+        }
     }
 ]
 
@@ -1102,17 +1115,56 @@ class RobotConnectionManager:
                     llm_pkt["text"] = text
                 await ws.send_json(llm_pkt)
 
-                # 2. Hiển thị chữ lên màn hình OLED 128x64 qua chu kỳ TTS Subtitle:
-                #    {"type": "tts", "state": "start"} -> {"type": "tts", "state": "sentence_start", "text": text} -> {"type": "tts", "state": "stop"}
-                if text:
-                    await ws.send_json({"session_id": sess_id, "type": "tts", "state": "start"})
-                    await ws.send_json({"session_id": sess_id, "type": "tts", "state": "sentence_start", "text": text})
-                    await ws.send_json({"session_id": sess_id, "type": "tts", "state": "stop"})
-
                 sent_count += 1
                 print(f"[WS] ✓ Đã gửi biểu cảm '{emotion}' & chữ '{text}' tới robot qua WebSocket (Session: {sess_id})")
             except Exception as e:
                 print(f"[WS ERR] send_oled_emotion error: {e}")
+        return sent_count
+
+    async def send_sleep_command(self, device_id: Optional[str] = None) -> int:
+        """Gửi lệnh chuyển Robot sang chế độ ngủ / Standby (kDeviceStateIdle)"""
+        targets = []
+        dev_key = device_id.lower().strip() if device_id else None
+        if dev_key and dev_key in self.active_connections and self.active_connections[dev_key]:
+            targets = self.active_connections[dev_key]
+        else:
+            targets = self.all_robots
+
+        sent_count = 0
+        for ws in list(targets):
+            sess_id = self.sessions.get(ws) or (self.dev_sessions.get(dev_key) if dev_key else "") or f"sess-{int(time.time())}"
+            try:
+                # 1. Đổi biểu cảm OLED sang nhắm mắt ngủ (sleepy)
+                await ws.send_json({
+                    "session_id": sess_id,
+                    "type": "llm",
+                    "emotion": "sleepy",
+                    "text": "Sophia zZz"
+                })
+                # 2. Dừng lắng nghe mic
+                await ws.send_json({
+                    "session_id": sess_id,
+                    "type": "listen",
+                    "state": "stop"
+                })
+                # 3. Chuẩn Xiaozhi: Gửi goodbye để firmware đóng audio channel và chuyển về kDeviceStateIdle
+                await ws.send_json({
+                    "session_id": sess_id,
+                    "type": "goodbye"
+                })
+                sent_count += 1
+                print(f"[WS] 💤 Đã gửi lệnh CHẾ ĐỘ NGỦ (goodbye / standby) tới robot (Session: {sess_id})")
+            except Exception as e:
+                print(f"[WS ERR] send_sleep_command error: {e}")
+
+        # Đồng thời cập nhật trạng thái UI Mic Monitor
+        mic_monitor_manager.current_state["state"] = "idle"
+        asyncio.create_task(mic_monitor_manager.broadcast({
+            "type": "state_change",
+            "state": "idle",
+            "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+            "message": "Robot đã vào chế độ ngủ (Standby - Chờ 'Hi ESP')"
+        }))
         return sent_count
 
     async def send_mcp_call(self, tool_name: str, args: Dict[str, Any], device_id: Optional[str] = None) -> int:
@@ -1671,6 +1723,16 @@ def execute_mcp_tool(name: str, args: Dict[str, Any]) -> str:
             print(f"[COMPLETE LESSON MCP ERROR] {e}")
         serial_manager._add_log(f"[GIA SƯ TIẾNG ANH] 🏆 Bé hoàn thành bài học! Điểm: {score}/100. Đánh giá: {feedback}")
         res = f"Bé đã hoàn thành bài học tiếng Anh xuất sắc với số điểm {score}/100! Robot đã chúc mừng bé và khôi phục trợ lý Sophia."
+    elif name in ["robot_go_to_sleep", "sleep_robot", "device_sleep"]:
+        msg = args.get("message", "Tạm biệt bạn nhé, mình đi ngủ đây!")
+        try:
+            import asyncio
+            if MAIN_ASYNC_LOOP and MAIN_ASYNC_LOOP.is_running():
+                asyncio.run_coroutine_threadsafe(robot_ws_manager.send_sleep_command(), MAIN_ASYNC_LOOP)
+        except Exception as e:
+            print(f"[SLEEP MCP ERR] {e}")
+        serial_manager._add_log(f"[ROBOT AI] 💤 {msg} -> Robot vào chế độ ngủ (Standby).")
+        res = f"Robot đã chào tạm biệt: '{msg}' và chuyển sang chế độ ngủ (Standby)."
     else:
         res = f"Công cụ '{name}' không tồn tại trên GMbot MCP Server."
 
@@ -2345,11 +2407,11 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, http_headers:
         ACTIVE_MUSIC_STATE["stop_event"] = None
         print(f"[YOUTUBE MUSIC] ✓ Đã dừng/hoàn thành bài: '{title_clean}'")
 
-        # Khôi phục trạng thái lắng nghe cho robot
+        # Trả robot về trạng thái rảnh / standby bình thường (không cưỡng ép mở mic lắng nghe)
         for ws in list(robot_ws_manager.all_robots):
             try:
                 sess = robot_ws_manager.sessions.get(ws, session_id)
-                await ws.send_json({"type": "listen", "state": "start", "mode": "auto", "session_id": sess})
+                await ws.send_json({"type": "llm", "emotion": "happy", "text": "Da xong bai hat", "session_id": sess})
             except Exception:
                 pass
 
@@ -2482,6 +2544,48 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
                 await robot_ws_manager.send_oled_emotion("happy", text=f"Phat: {short_title}")
                 serial_manager._add_log(f"[YOUTUBE MUSIC] ▶ Đang phát bài: '{t['title']}' theo giọng nói!")
                 return True
+
+    # 0.3 Kiểm tra LỆNH ĐI NGỦ / TẮT ROBOT / STANDBY
+    sleep_keywords = [
+        "đi ngủ đi", "di ngu di",
+        "ngủ đi", "ngu di",
+        "đi ngủ thôi", "di ngu thoi",
+        "ngủ thôi", "ngu thoi",
+        "ngủ nhé", "ngu nhe",
+        "ngủ nha", "ngu nha",
+        "hãy đi ngủ đi", "hay di ngu di",
+        "tắt robot đi", "tat robot di",
+        "tắt robot", "tat robot",
+        "hãy tắt robot đi", "hay tat robot di",
+        "hãy tắt robot", "hay tat robot",
+        "tắt máy đi", "tat may di",
+        "tắt máy", "tat may",
+        "tắt đi", "tat di",
+        "tạm biệt robot", "tam biet robot",
+        "tạm biệt sophia", "tam biet sophia",
+        "tạm biệt", "tam biet",
+        "chào tạm biệt", "chao tam biet",
+        "bye bye", "goodbye", "bye",
+        "vào chế độ ngủ", "vao che do ngu",
+        "chế độ ngủ", "che do ngu",
+        "vào chế độ chờ", "vao che do cho",
+        "chế độ chờ", "che do cho",
+        "nghỉ ngơi đi", "nghi ngoi di",
+        "nghỉ đi", "nghi di",
+        "đừng nghe nữa", "dung nghe nua",
+        "ngừng nghe", "ngung nghe",
+        "im lặng đi", "im lang di",
+        "im lặng", "im lang",
+        "thôi không nói nữa", "thoi khong noi nua",
+        "standby", "sleep mode", "go to sleep"
+    ]
+    if any(sk in t_norm for sk in sleep_keywords):
+        print(f"[VOICE COMMAND] 💤 Nhận lệnh ĐI NGỦ / TẮT ROBOT: '{txt}'")
+        serial_manager._add_log(f"[KHẨU LỆNH] 💤 '{txt}' -> Nhận lệnh ĐI NGỦ/TẮT ROBOT. Đưa Robot vào chế độ ngủ (Standby)...")
+        stop_active_music()
+        await robot_ws_manager.send_sleep_command(dev_mac)
+        serial_manager._add_log("[ROBOT] 💤 Robot đã nhắm mắt đi ngủ (Standby). Nói 'Hi ESP' hoặc bấm nút để đánh thức.")
+        return True
 
     # Danh sách từ khóa HỦY BÀI HỌC / THOÁT / QUAY VỀ SOPHIA
     cancel_keywords = [
@@ -2750,6 +2854,55 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
         robot_ws_manager.disconnect(websocket, dev_mac)
         return
 
+    last_activity_time = time.time()
+    is_listening = False
+    INACTIVITY_TIMEOUT = 12.0  # 12s im lặng -> tự động đưa Robot vào chế độ ngủ (Standby)
+
+    # Task tự động đưa Robot vào chế độ ngủ (Standby) khi không có người tương tác
+    async def auto_sleep_watchdog():
+        nonlocal is_listening, last_activity_time, session_id
+        while True:
+            await asyncio.sleep(1.0)
+            if ACTIVE_MUSIC_STATE.get("is_playing"):
+                last_activity_time = time.time()
+                continue
+
+            idle_duration = time.time() - last_activity_time
+            if is_listening and idle_duration >= INACTIVITY_TIMEOUT:
+                print(f"[AUTO SLEEP] 💤 Đã qua {int(idle_duration)}s im lặng -> Chuyển Robot sang chế độ ngủ (Standby)!")
+                serial_manager._add_log(f"[TỰ ĐỘNG NGỦ] 💤 Không có tương tác trong {int(idle_duration)}s -> Robot vào chế độ ngủ.")
+                is_listening = False
+                last_activity_time = time.time()
+                sess = session_id or robot_ws_manager.sessions.get(websocket) or ""
+                try:
+                    await websocket.send_json({
+                        "session_id": sess,
+                        "type": "llm",
+                        "emotion": "sleepy",
+                        "text": "Sophia zZz"
+                    })
+                    await websocket.send_json({
+                        "session_id": sess,
+                        "type": "listen",
+                        "state": "stop"
+                    })
+                    await websocket.send_json({
+                        "session_id": sess,
+                        "type": "goodbye"
+                    })
+                except Exception as e:
+                    print(f"[AUTO SLEEP ERR] {e}")
+
+                mic_monitor_manager.current_state["state"] = "idle"
+                asyncio.create_task(mic_monitor_manager.broadcast({
+                    "type": "state_change",
+                    "state": "idle",
+                    "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+                    "message": "Robot đã vào chế độ ngủ (Standby - Chờ 'Hi ESP')"
+                }))
+
+    watchdog_task = asyncio.create_task(auto_sleep_watchdog())
+
     # Task giữ kết nối Cloudflare Tunnel & Upstream AI luôn sống
     async def heartbeat_loop():
         try:
@@ -2814,6 +2967,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                         elif p_type == "stt":
                             txt = p.get("text", "")
                             if txt:
+                                last_activity_time = time.time()
                                 print(f"[VOICE ASR] Người dùng nói: \"{txt}\"")
                                 serial_manager._add_log(f"[GIỌNG NÓI - BẠN] {txt}")
                                 mic_monitor_manager.current_state["last_text"] = txt
@@ -2827,6 +2981,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                         elif p_type == "llm":
                             txt = p.get("text", "")
                             emo = p.get("emotion", "happy")
+                            last_activity_time = time.time()
                             if txt:
                                 print(f"[VOICE AI] Robot đáp: \"{txt}\" (Cảm xúc: {emo})")
                                 serial_manager._add_log(f"[ROBOT AI] {txt}")
@@ -2839,6 +2994,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                                 }))
                         elif p_type == "tts" and p.get("state") == "sentence_start":
                             txt = p.get("text", "")
+                            last_activity_time = time.time()
                             if txt:
                                 serial_manager._add_log(f"[ROBOT AI NÓI] {txt}")
                                 mic_monitor_manager.current_state["state"] = "speaking"
@@ -2849,6 +3005,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                                     "message": f"Robot đang phát loa: \"{txt[:30]}...\""
                                 }))
                         elif p_type == "tts" and p.get("state") in ["stop", "sentence_end"]:
+                            last_activity_time = time.time()
                             mic_monitor_manager.current_state["state"] = "idle"
                             asyncio.create_task(mic_monitor_manager.broadcast({
                                 "type": "state_change",
@@ -2900,9 +3057,14 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     elif p_type == "listen":
                         st = payload.get("state")
                         md = payload.get("mode", "manual")
-                        if st in ["detect", "start"] and ACTIVE_MUSIC_STATE.get("is_playing"):
-                            print("[ROBOT WS] 🎙 Bắt đầu lắng nghe người dùng -> Tự động ngắt phát nhạc!")
-                            stop_active_music()
+                        if st in ["detect", "start"]:
+                            is_listening = True
+                            last_activity_time = time.time()
+                            if ACTIVE_MUSIC_STATE.get("is_playing"):
+                                print("[ROBOT WS] 🎙 Bắt đầu lắng nghe người dùng -> Tự động ngắt phát nhạc!")
+                                stop_active_music()
+                        elif st in ["stop"]:
+                            is_listening = False
                         print(f"[ROBOT MIC] Lắng nghe {st} (chế độ: {md})")
                         serial_manager._add_log(f"[MIC ROBOT] Đang lắng nghe giọng nói ({st})...")
                         st_ui = "recording" if st == "start" else ("processing" if st in ["stop", "detect"] else "idle")
@@ -2966,6 +3128,10 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
     except Exception as e:
         print(f"[WS EXCEPTION] {e}")
     finally:
+        try:
+            watchdog_task.cancel()
+        except Exception:
+            pass
         heartbeat_task.cancel()
         if upstream_task:
             upstream_task.cancel()
@@ -3326,6 +3492,25 @@ async def robot_status(device_id: Optional[str] = None):
         "mcp_connected": getattr(globals().get("xiaozhi_mcp_bridge"), "is_connected", False),
         "connected_macs": connected_macs if online else [],
         "device_id": device_id
+    }
+
+
+@app.post("/api/robot/sleep")
+@app.post("/api/devices/sleep")
+async def api_robot_sleep(payload: Optional[Dict[str, Any]] = None):
+    """
+    API chủ động đưa Robot vào chế độ ngủ (Standby - kDeviceStateIdle).
+    Đóng micro, chuyển biểu cảm nhắm mắt ngủ zZz, và gửi goodbye để robot tiết kiệm năng lượng.
+    """
+    dev_id = payload.get("device_id") if isinstance(payload, dict) else None
+    stop_active_music()
+    sent_count = await robot_ws_manager.send_sleep_command(dev_id)
+    serial_manager._add_log(f"[API SLEEP] 💤 Đã nhận lệnh chuyển Robot sang chế độ ngủ (Standby). Đã gửi tới {sent_count} robot.")
+    return {
+        "status": "ok",
+        "success": True,
+        "message": "Robot đã vào chế độ ngủ (Standby - Chờ 'Hi ESP' hoặc bấm nút)",
+        "sent_count": sent_count
     }
 
 
