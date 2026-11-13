@@ -1959,7 +1959,8 @@ async def search_youtube_tracks(q: str, limit: int = 12) -> List[Dict[str, Any]]
                 'extract_flat': True,
                 'quiet': True,
                 'no_warnings': True,
-                'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'web']}}
+                'socket_timeout': 10,
+                'extractor_args': {'youtube': {'player_client': ['android']}}
             }
             def _extract_search():
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -2185,7 +2186,8 @@ async def resolve_and_stream_music(target_url: str, track_info: dict = None):
                 'format': 'bestaudio/best',
                 'quiet': True,
                 'no_warnings': True,
-                'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'web']}}
+                'socket_timeout': 10,
+                'extractor_args': {'youtube': {'player_client': ['android']}}
             }
             req_target = target_url
             if not req_target.startswith("http://") and not req_target.startswith("https://"):
@@ -3196,7 +3198,8 @@ async def api_music_info(id: str = Query(...)):
                 'format': 'bestaudio/best',
                 'quiet': True,
                 'no_warnings': True,
-                'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'web']}}
+                'socket_timeout': 10,
+                'extractor_args': {'youtube': {'player_client': ['android']}}
             }
             def _extract():
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
