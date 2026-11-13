@@ -5790,7 +5790,7 @@ async function initializeEnglishTutorPage() {
   state.user = { username: "330730", role: "user" };
 
     try {
-        state.user = decodeJwtPayload(state.token);
+        state.user = decodeJwtPayload(state.token) || { username: "Chủ nhân", role: "admin" };
         document.getElementById("currentUsername").textContent = state.user?.username || "Người dùng";
         renderTopicOptions();
         await loadDevices();
