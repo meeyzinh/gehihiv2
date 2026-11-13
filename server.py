@@ -1845,52 +1845,44 @@ POPULAR_CHILDREN_SONGS = [
         "url": "https://www.youtube.com/watch?v=BwN3NiZt-PU"
     },
     {
-        "id": "X0wxLzTe5rE",
-        "title": "Nhạc Thiếu Nhi Tập Thể Dục Buổi Sáng - Con Heo Đất",
-        "uploader": "Con Heo Đất",
-        "duration_str": "3:54",
-        "thumbnail": "https://i.ytimg.com/vi/X0wxLzTe5rE/hqdefault.jpg",
-        "url": "https://www.youtube.com/watch?v=X0wxLzTe5rE"
-    },
-    {
-        "id": "XqZsoesa55w",
-        "title": "Baby Shark Dance - Nhạc Thiếu Nhi Hoạt Hình",
-        "uploader": "Pinkfong Baby Shark",
-        "duration_str": "2:16",
-        "thumbnail": "https://i.ytimg.com/vi/XqZsoesa55w/hqdefault.jpg",
-        "url": "https://www.youtube.com/watch?v=XqZsoesa55w"
-    },
-    {
-        "id": "nN5z6jL1tO4",
-        "title": "Chú Voi Con Ở Bản Đôn - Nhạc Thiếu Nhi Bất Hủ",
-        "uploader": "Xuân Mai Official",
+        "id": "ZEFjgndKTmA",
+        "title": "Chú Voi Con Ở Bản Đôn - Nhạc Thiếu Nhi Cho Bé",
+        "uploader": "Nhạc Thiếu Nhi",
         "duration_str": "2:45",
-        "thumbnail": "https://i.ytimg.com/vi/nN5z6jL1tO4/hqdefault.jpg",
-        "url": "https://www.youtube.com/watch?v=nN5z6jL1tO4"
+        "thumbnail": "https://i.ytimg.com/vi/ZEFjgndKTmA/hqdefault.jpg",
+        "url": "https://www.youtube.com/watch?v=ZEFjgndKTmA"
     },
     {
-        "id": "2b3Xk9dY8kM",
-        "title": "Chú Ếch Con Kìa Chú Là Chú Ếch Con",
-        "uploader": "Vườn Cổ Tích",
-        "duration_str": "3:15",
-        "thumbnail": "https://i.ytimg.com/vi/2b3Xk9dY8kM/hqdefault.jpg",
-        "url": "https://www.youtube.com/watch?v=2b3Xk9dY8kM"
+        "id": "WspfD6MhC4U",
+        "title": "Con Heo Đất - Ca Nhạc Thiếu Nhi Vui Nhộn",
+        "uploader": "Con Heo Đất",
+        "duration_str": "3:20",
+        "thumbnail": "https://i.ytimg.com/vi/WspfD6MhC4U/hqdefault.jpg",
+        "url": "https://www.youtube.com/watch?v=WspfD6MhC4U"
     },
     {
-        "id": "k8vD5OsqhYs",
+        "id": "oIStM-HF_kc",
         "title": "Một Con Vịt Xòe Ra Hai Cái Cánh Vui Nhộn",
         "uploader": "Thiếu Nhi Remi",
         "duration_str": "2:50",
-        "thumbnail": "https://i.ytimg.com/vi/k8vD5OsqhYs/hqdefault.jpg",
-        "url": "https://www.youtube.com/watch?v=k8vD5OsqhYs"
+        "thumbnail": "https://i.ytimg.com/vi/oIStM-HF_kc/hqdefault.jpg",
+        "url": "https://www.youtube.com/watch?v=oIStM-HF_kc"
     },
     {
-        "id": "75p-NVPKCSE",
+        "id": "jz_wc4D6y8c",
+        "title": "Chú Ếch Con Kìa Chú Là Chú Ếch Con",
+        "uploader": "Vườn Cổ Tích",
+        "duration_str": "3:15",
+        "thumbnail": "https://i.ytimg.com/vi/jz_wc4D6y8c/hqdefault.jpg",
+        "url": "https://www.youtube.com/watch?v=jz_wc4D6y8c"
+    },
+    {
+        "id": "Ypz3bsr6SZc",
         "title": "ABC Phonics Song - Bài Hát Học Tiếng Anh Trẻ Em",
         "uploader": "CoComelon",
         "duration_str": "3:40",
-        "thumbnail": "https://i.ytimg.com/vi/75p-NVPKCSE/hqdefault.jpg",
-        "url": "https://www.youtube.com/watch?v=75p-NVPKCSE"
+        "thumbnail": "https://i.ytimg.com/vi/Ypz3bsr6SZc/hqdefault.jpg",
+        "url": "https://www.youtube.com/watch?v=Ypz3bsr6SZc"
     }
 ]
 
@@ -3197,6 +3189,7 @@ async def api_music_info(id: str = Query(...)):
     title = ""
     thumb = ""
     dur = ""
+    err_str = None
     if yt_dlp:
         try:
             ydl_opts = {
@@ -3217,12 +3210,14 @@ async def api_music_info(id: str = Query(...)):
                 dur = f"{int(d // 60)}:{int(d % 60):02d}"
         except Exception as e:
             print(f"[YOUTUBE INFO] Err: {e}")
+            err_str = f"{type(e).__name__}: {str(e)}"
     return {
         "success": bool(audio_stream_url),
         "stream_url": audio_stream_url,
         "title": title,
         "thumbnail": thumb,
-        "duration_str": dur
+        "duration_str": dur,
+        "error": err_str if not audio_stream_url else None
     }
 
 
