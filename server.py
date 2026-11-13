@@ -1120,7 +1120,7 @@ robot_ws_manager = RobotConnectionManager()
 class SerialBridgeManager:
     def __init__(self):
         self.ser: Optional[serial.Serial] = None
-        self.port: str = "COM8"
+        self.port: str = "COM3"
         self.baudrate: int = 115200
         self.is_running: bool = False
         self.reader_thread: Optional[threading.Thread] = None
@@ -1147,7 +1147,7 @@ class SerialBridgeManager:
                           "ESP32" in (p.description or "").upper() or
                           "CP210" in (p.description or "").upper() or 
                           "CH340" in (p.description or "").upper() or
-                          p.device == "COM8")
+                          p.device in ["COM3", "COM8"])
                 ports.append({
                     "device": p.device,
                     "description": p.description,
@@ -1162,8 +1162,8 @@ class SerialBridgeManager:
         ports = self.list_ports()
         target_port = None
         for p in ports:
-            if p["device"] == "COM8":
-                target_port = "COM8"
+            if p["device"] in ["COM3", "COM8"]:
+                target_port = p["device"]
                 break
         if not target_port:
             for p in ports:
@@ -1173,7 +1173,7 @@ class SerialBridgeManager:
         if target_port:
             self.connect(target_port, 115200)
 
-    def connect(self, port: str = "COM8", baudrate: int = 115200):
+    def connect(self, port: str = "COM3", baudrate: int = 115200):
         with self.lock:
             if self.ser and self.ser.is_open:
                 try:
@@ -2955,9 +2955,22 @@ async def handle_xiaozhi_ota(request: Request):
     global ACTIVE_TUNNEL_URL, TUNNEL_LAST_PING
     host = request.headers.get("host", "localhost:8000")
 
-    # Nếu đang chạy trên Render hoặc request trỏ tới tên miền Render, luôn kết nối thẳng tới server Render
-    if "onrender.com" in host or os.getenv("RENDER"):
-        ws_url = f"wss://{host}/ws/device"
+    # 1. Nếu request đến từ mạng LAN nội bộ (192.168.x.x, localhost, 127.0.0.1), ưu tiên kết nối trực tiếp LAN WebSocket
+    clean_host = host.split(":")[0]
+    if clean_host in ["localhost", "127.0.0.1"] or clean_host.startswith("192.168.") or clean_host.startswith("10.") or clean_host.startswith("172."):
+        proto = "wss" if request.url.scheme == "https" else "ws"
+        ws_url = f"{proto}://{host}/ws/device"
+    # 2. Nếu đang chạy trên Render hoặc request trỏ tới Render
+    elif "onrender.com" in host or os.getenv("RENDER"):
+        cached_tunnel = load_tunnel_cache()
+        if cached_tunnel:
+            clean_tunnel = cached_tunnel.replace("https://", "wss://").replace("http://", "ws://")
+            ws_url = f"{clean_tunnel}/ws/device"
+        elif ACTIVE_TUNNEL_URL and (time.time() - TUNNEL_LAST_PING < 300):
+            clean_tunnel = ACTIVE_TUNNEL_URL.replace("https://", "wss://").replace("http://", "ws://")
+            ws_url = f"{clean_tunnel}/ws/device"
+        else:
+            ws_url = f"wss://{host}/ws/device"
     else:
         ws_url = None
         cached_tunnel = load_tunnel_cache()
@@ -3376,7 +3389,7 @@ async def get_serial_ports():
 
 
 class SerialConnectPayload(BaseModel):
-    port: str = "COM8"
+    port: str = "COM3"
     baudrate: Optional[int] = 115200
 
 
