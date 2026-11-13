@@ -2264,16 +2264,8 @@ async def resolve_and_stream_music(target_url: str, track_info: dict = None):
     title = track_info.get("title", "")
     http_headers = None
 
-    # 1. Thử phân giải nhanh qua Invidious API (hoạt động 100% trên Render Docker không bị Google chặn IP)
-    inv_url, inv_title, inv_thumb = await resolve_audio_stream_direct(target_url)
-    if inv_url:
-        audio_stream_url = inv_url
-        if inv_title and not title:
-            title = inv_title
-            track_info["title"] = title
-        if inv_thumb and not track_info.get("thumbnail"):
-            track_info["thumbnail"] = inv_thumb
-    elif yt_dlp:
+    # 1. Ưu tiên giải mã trực tiếp bằng yt-dlp (đặc biệt hiệu quả 100% trên Localhost với IP người dùng)
+    if yt_dlp:
         try:
             ydl_opts = {
                 'format': 'bestaudio/best',
@@ -2300,8 +2292,21 @@ async def resolve_and_stream_music(target_url: str, track_info: dict = None):
                     track_info["title"] = title
                 if info.get("thumbnail") and not track_info.get("thumbnail"):
                     track_info["thumbnail"] = info.get("thumbnail")
+                print(f"[YOUTUBE MUSIC] ✓ yt-dlp trích xuất thành công stream audio: {title}")
         except Exception as e:
-            print(f"[YOUTUBE MUSIC] Background stream extract fallback: {e}")
+            print(f"[YOUTUBE MUSIC] yt-dlp extract error: {e}")
+
+    # 2. Nếu yt-dlp chưa lấy được direct stream URL, thử fallback sang Invidious API
+    if ("youtube.com" in audio_stream_url or "youtu.be" in audio_stream_url):
+        inv_url, inv_title, inv_thumb = await resolve_audio_stream_direct(target_url)
+        if inv_url:
+            audio_stream_url = inv_url
+            if inv_title and not title:
+                title = inv_title
+                track_info["title"] = title
+            if inv_thumb and not track_info.get("thumbnail"):
+                track_info["thumbnail"] = inv_thumb
+            print(f"[YOUTUBE MUSIC] ✓ Invidious fallback trích xuất thành công: {title}")
 
     # Nếu không trích xuất được direct stream URL từ YouTube (chặn IP hoặc lỗi), không chạy ffmpeg trên URL HTML
     if "youtube.com/watch" in audio_stream_url or "youtu.be/" in audio_stream_url:
