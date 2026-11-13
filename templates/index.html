@@ -1916,7 +1916,7 @@ body {
         </div>
         <div id="topServerPill" style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: bold; padding: 4px 10px; border-radius: 20px; background: rgba(34,197,94,0.15); border: 1px solid #22c55e; color: #4ade80;">
           <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e;"></span>
-          <span>Server Render: Trực tuyến (wss://)</span>
+          <span id="topServerStatusText">Server: Trực tuyến</span>
         </div>
         <div id="topRobotAccountBadge" onclick="showAuthModal()" style="display: flex; align-items: center; gap: 6px; background: #0c1a32; border: 1px solid #6366f1; padding: 4px 10px; border-radius: 20px; font-size: 12px; cursor: pointer; color:#c7d2fe;">
           <span>🤖 Robot:</span>
@@ -3477,6 +3477,11 @@ Ví dụ:
 
     // Mặc định hiển thị trang Thiết bị
     window.addEventListener('DOMContentLoaded', () => {
+      const wsProto = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+      const topServerStatusEl = document.getElementById('topServerStatusText');
+      if (topServerStatusEl) {
+        topServerStatusEl.innerText = `Server: Trực tuyến (${wsProto}${window.location.host})`;
+      }
       switchSection('devices', document.querySelector('.sidebar .menu-item'));
     });
   </script>
@@ -5013,15 +5018,21 @@ Ví dụ:
       if (feedback) feedback.innerText = `Đang gửi lệnh '${action}' tới robot...`;
       
       try {
+        const targetDevId = (activeDeviceId && activeDeviceId !== 'ong-robot' && activeDeviceId !== '2') ? activeDeviceId : null;
         const res = await fetch("/api/robot/control", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ device_id: String(activeDeviceId || "2"), action: action })
+          body: JSON.stringify({ device_id: targetDevId, action: action })
         });
         const data = await res.json();
         if (res.ok) {
-          if (feedback) feedback.innerText = `✓ Lệnh '${action}' đã gửi thành công tới động cơ/đèn của robot!`;
-          showToast(`✓ Đã gửi lệnh ${action} tới Robot!`);
+          if (!data.delivered_to_ws && !data.delivered_to_serial) {
+            if (feedback) feedback.innerText = `⚠ Đã nhận lệnh '${action}', nhưng Robot đang ngoại tuyến (Offline)`;
+            showToast(`⚠ Chưa có Robot nào kết nối online`, false);
+          } else {
+            if (feedback) feedback.innerText = `✓ Lệnh '${action}' đã gửi thành công tới động cơ/đèn của robot!`;
+            showToast(`✓ Đã gửi lệnh ${action} tới Robot!`);
+          }
         } else {
           const errMsg = data.message || (typeof data.detail === 'string' ? data.detail : Array.isArray(data.detail) ? data.detail.map(d=>d.msg).join(', ') : JSON.stringify(data.detail)) || 'Robot chưa sẵn sàng nhận lệnh';
           if (feedback) feedback.innerText = `⚠ ${errMsg}`;
@@ -5053,15 +5064,21 @@ Ví dụ:
       if (feedback) feedback.innerText = `Đang gửi biểu cảm '${emotion}' tới màn hình OLED robot...`;
 
       try {
+        const targetDevId = (activeDeviceId && activeDeviceId !== 'ong-robot' && activeDeviceId !== '2') ? activeDeviceId : null;
         const res = await fetch("/api/robot/display", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ device_id: String(activeDeviceId || "2"), emotion: emotion, text: text })
+          body: JSON.stringify({ device_id: targetDevId, emotion: emotion, text: text })
         });
         const data = await res.json();
         if (res.ok && data.status === "ok") {
-          if (feedback) feedback.innerText = `✓ Đã cập nhật màn hình OLED: Biểu cảm '${emotion}'` + (text ? ` | Chữ: "${text}"` : '');
-          showToast(`✓ Đã đổi màn hình OLED sang '${emotion}'!`);
+          if (!data.delivered_to_ws && !data.delivered_to_serial) {
+            if (feedback) feedback.innerText = `⚠ Đã nhận lệnh, nhưng Robot đang ngoại tuyến (Offline)`;
+            showToast(`⚠ Chưa có Robot nào kết nối online`, false);
+          } else {
+            if (feedback) feedback.innerText = `✓ Đã cập nhật màn hình OLED: Biểu cảm '${emotion}'` + (text ? ` | Chữ: "${text}"` : '');
+            showToast(`✓ Đã đổi màn hình OLED sang '${emotion}'!`);
+          }
         } else {
           const errMsg = data.message || (typeof data.detail === 'string' ? data.detail : Array.isArray(data.detail) ? data.detail.map(d=>d.msg).join(', ') : JSON.stringify(data.detail)) || 'Lỗi gửi lệnh tới màn hình';
           if (feedback) feedback.innerText = `⚠ ${errMsg}`;

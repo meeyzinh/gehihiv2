@@ -938,6 +938,39 @@ class RobotConnectionManager:
 
     async def send_oled_emotion(self, emotion: str, text: Optional[str] = None, device_id: Optional[str] = None) -> int:
         """Gửi lệnh chuẩn firmware Xiaozhi để đổi biểu cảm OLED và hiển thị phụ đề"""
+        EMO_ALIASES = {
+            "wink": "winking",
+            "winking": "winking",
+            "happy": "happy",
+            "laughing": "laughing",
+            "laugh": "laughing",
+            "funny": "funny",
+            "sad": "sad",
+            "angry": "angry",
+            "crying": "crying",
+            "cry": "crying",
+            "loving": "loving",
+            "love": "loving",
+            "embarrassed": "embarrassed",
+            "surprised": "surprised",
+            "surprise": "surprised",
+            "shocked": "shocked",
+            "shock": "shocked",
+            "thinking": "thinking",
+            "think": "thinking",
+            "cool": "cool",
+            "relaxed": "relaxed",
+            "delicious": "delicious",
+            "kissy": "kissy",
+            "confident": "confident",
+            "sleepy": "sleepy",
+            "silly": "silly",
+            "confused": "confused",
+            "neutral": "neutral"
+        }
+        clean_emo = (emotion or "neutral").lower().strip()
+        emotion = EMO_ALIASES.get(clean_emo, clean_emo)
+
         targets = []
         dev_key = device_id.lower().strip() if device_id else None
         if dev_key and dev_key in self.active_connections and self.active_connections[dev_key]:
@@ -1074,9 +1107,16 @@ class SerialBridgeManager:
             self.port = port
             self.baudrate = baudrate
             try:
-                self.ser = serial.Serial(port, baudrate, timeout=0.1, write_timeout=0.5)
-                self.ser.dtr = True
+                self.ser = serial.Serial()
+                self.ser.port = port
+                self.ser.baudrate = baudrate
+                self.ser.timeout = 0.1
+                self.ser.write_timeout = 0.5
+                self.ser.dsrdtr = False
+                self.ser.rtscts = False
+                self.ser.dtr = False
                 self.ser.rts = False
+                self.ser.open()
                 self.connected = True
                 self.is_running = True
                 if not self.reader_thread or not self.reader_thread.is_alive():
@@ -1144,8 +1184,6 @@ class SerialBridgeManager:
             with self.lock:
                 try:
                     if self.ser and self.ser.is_open:
-                        if not self.ser.dtr:
-                            self.ser.dtr = True
                         line = cmd_str.strip() + "\r\n"
                         self.ser.write(line.encode("utf-8"))
                         self._add_log(f"[TX COM8] >> {cmd_str.strip()}")
@@ -1856,12 +1894,12 @@ async def search_youtube_tracks(q: str, limit: int = 12) -> List[Dict[str, Any]]
                 'extract_flat': True,
                 'quiet': True,
                 'no_warnings': True,
-                'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+                'extractor_args': {'youtube': {'player_client': ['android']}}
             }
             def _extract_search():
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     return ydl.extract_info(f"ytsearch{limit}:{q}", download=False)
-            res = await asyncio.wait_for(asyncio.to_thread(_extract_search), timeout=4.0)
+            res = await asyncio.wait_for(asyncio.to_thread(_extract_search), timeout=15.0)
             entries = res.get("entries", [])
             for e in entries:
                 if not e:
@@ -1939,7 +1977,7 @@ async def search_youtube_tracks(q: str, limit: int = 12) -> List[Dict[str, Any]]
 
     return POPULAR_CHILDREN_SONGS[:limit]
 
-async def stream_music_to_robots(audio_url: str, track_info: dict):
+async def stream_music_to_robots(audio_url: str, track_info: dict, http_headers: Optional[dict] = None):
     stop_event = asyncio.Event()
     ACTIVE_MUSIC_STATE["stop_event"] = stop_event
     ACTIVE_MUSIC_STATE["is_playing"] = True
@@ -1974,13 +2012,19 @@ async def stream_music_to_robots(audio_url: str, track_info: dict):
         "-reconnect", "1",
         "-reconnect_streamed", "1",
         "-reconnect_delay_max", "5",
+    ]
+    if http_headers and isinstance(http_headers, dict):
+        h_lines = [f"{k}: {v}" for k, v in http_headers.items() if k.lower() in ['user-agent', 'accept', 'accept-language']]
+        if h_lines:
+            cmd.extend(["-headers", "\r\n".join(h_lines) + "\r\n"])
+    cmd.extend([
         "-i", audio_url,
         "-f", "s16le",
         "-acodec", "pcm_s16le",
         "-ac", "1",
         "-ar", str(sample_rate),
         "pipe:1"
-    ]
+    ])
 
     proc = None
     try:
@@ -2064,20 +2108,20 @@ async def stream_music_to_robots(audio_url: str, track_info: dict):
                 await ws.send_json({"type": "listen", "state": "start", "mode": "auto", "session_id": sess})
             except Exception:
                 pass
-                pass
 
 async def resolve_and_stream_music(target_url: str, track_info: dict = None):
     if track_info is None:
         track_info = {}
     audio_stream_url = target_url
     title = track_info.get("title", "")
+    http_headers = None
     if yt_dlp:
         try:
             ydl_opts = {
                 'format': 'bestaudio/best',
                 'quiet': True,
                 'no_warnings': True,
-                'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+                'extractor_args': {'youtube': {'player_client': ['android']}}
             }
             req_target = target_url
             if not req_target.startswith("http://") and not req_target.startswith("https://"):
@@ -2085,12 +2129,13 @@ async def resolve_and_stream_music(target_url: str, track_info: dict = None):
             def _extract():
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     return ydl.extract_info(req_target, download=False)
-            info = await asyncio.wait_for(asyncio.to_thread(_extract), timeout=8.0)
+            info = await asyncio.wait_for(asyncio.to_thread(_extract), timeout=20.0)
             if info:
                 if "entries" in info and len(info["entries"]) > 0:
                     info = info["entries"][0]
                 if info.get("url"):
                     audio_stream_url = info.get("url")
+                http_headers = info.get("http_headers")
                 if not title and info.get("title"):
                     title = info.get("title")
                     track_info["title"] = title
@@ -2099,7 +2144,13 @@ async def resolve_and_stream_music(target_url: str, track_info: dict = None):
         except Exception as e:
             print(f"[YOUTUBE MUSIC] Background stream extract fallback: {e}")
 
-    await stream_music_to_robots(audio_stream_url, track_info)
+    # Nếu không trích xuất được direct stream URL từ YouTube (chặn IP hoặc lỗi), không chạy ffmpeg trên URL HTML
+    if "youtube.com/watch" in audio_stream_url or "youtu.be/" in audio_stream_url:
+        print(f"[YOUTUBE MUSIC] ⚠ Không thể lấy audio stream cho '{target_url}' (IP bị giới hạn hoặc URL chưa hỗ trợ)")
+        serial_manager._add_log(f"[YOUTUBE MUSIC] ⚠ Không thể trích xuất stream cho: {title or target_url}")
+        return
+
+    await stream_music_to_robots(audio_stream_url, track_info, http_headers=http_headers)
 
 
 # ==========================================
@@ -2811,10 +2862,6 @@ async def handle_xiaozhi_ota(request: Request):
             "url": ws_url,
             "token": f"gmbot-token-{int(time.time())}",
             "version": 1
-        },
-        "firmware": {
-            "version": "2.5.3",
-            "url": ""
         }
     }
 
@@ -3009,6 +3056,7 @@ class MusicPlayPayload(BaseModel):
     device_id: Optional[Any] = None
     url: Optional[str] = None
     id: Optional[str] = None
+    query: Optional[str] = None
     title: Optional[str] = None
     uploader: Optional[str] = None
     thumbnail: Optional[str] = None
@@ -3037,19 +3085,28 @@ async def api_music_search(q: str = Query("nhạc thiếu nhi vui nhộn")):
 @app.post("/api/music/play")
 async def api_music_play(payload: MusicPlayPayload):
     target = payload.url or payload.id or ""
+    track_info = None
+
+    if not target and payload.query:
+        # Tự động tìm kiếm nếu truyền query
+        searched = await search_youtube_tracks(payload.query, limit=1)
+        if searched:
+            track_info = dict(searched[0])
+            target = track_info["url"]
+
     if not target:
-        raise HTTPException(status_code=400, detail="Thiếu thông tin bài hát (URL hoặc ID)")
+        raise HTTPException(status_code=400, detail="Thiếu thông tin bài hát (URL, ID hoặc Query)")
 
     # 1. Dừng bài trước nếu đang phát
     stop_active_music()
 
     target_url = target if target.startswith("http") else f"https://www.youtube.com/watch?v={target}"
-    track_info = None
 
-    for song in POPULAR_CHILDREN_SONGS:
-        if song["id"] == target or song["url"] == target or target in song["url"]:
-            track_info = dict(song)
-            break
+    if not track_info:
+        for song in POPULAR_CHILDREN_SONGS:
+            if song["id"] == target or song["url"] == target or target in song["url"]:
+                track_info = dict(song)
+                break
 
     if not track_info:
         track_info = {
@@ -3097,12 +3154,12 @@ async def api_music_info(id: str = Query(...)):
                 'format': 'bestaudio/best',
                 'quiet': True,
                 'no_warnings': True,
-                'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+                'extractor_args': {'youtube': {'player_client': ['android']}}
             }
             def _extract():
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     return ydl.extract_info(target_url, download=False)
-            info = await asyncio.wait_for(asyncio.to_thread(_extract), timeout=6.0)
+            info = await asyncio.wait_for(asyncio.to_thread(_extract), timeout=20.0)
             if info:
                 audio_stream_url = info.get("url", "")
                 title = info.get("title", "")
