@@ -51,7 +51,7 @@ load_dotenv()
 
 PORT = int(os.getenv("PORT", "8000"))
 HOST = os.getenv("HOST", "0.0.0.0")
-DEFAULT_AGENT_ID = os.getenv("AGENT_ID", "927184")
+DEFAULT_AGENT_ID = os.getenv("AGENT_ID", "2625491")
 DEFAULT_DEVICE_NAME = os.getenv("DEVICE_NAME", "Xiaozhi-EED0")
 DEFAULT_DEVICE_MAC = os.getenv("DEVICE_MAC", "14:c1:9f:c4:ee:d0")
 DEFAULT_UPSTREAM_URL = os.getenv("UPSTREAM_API_URL", "https://api.xiaozhi.me")
@@ -554,6 +554,79 @@ async def sync_to_upstream_gehihi(mac: str, prompt: str, name: str = "Sophia", v
                     print(f"[SYNC UPSTREAM GEHIHI] ✓ Đã đồng bộ MAC {m} -> Giọng: {gehihi_voice}, Model: {gehihi_model}")
         except Exception as ex:
             print(f"[SYNC UPSTREAM GEHIHI] ⚠ Lỗi đồng bộ MAC {m}: {ex}")
+
+async def sync_prompt_to_upstream(prompt: str, display_name: str = "Sophia", voice: Optional[str] = None, model_id: Optional[str] = None) -> bool:
+    """
+    Đồng bộ cấu hình Prompt / Nhân vật AI lên toàn hệ thống:
+    1. Cơ sở dữ liệu SQLite (bảng Agent).
+    2. Cụm upstream Xiaozhi.me qua REST API chính thức (hỗ trợ cụm Tenclass wss://api.tenclass.net/xiaozhi/v1/).
+    3. Cụm upstream Gehihi qua REST API (https://gehihi.onrender.com).
+    4. Cập nhật biểu cảm và chữ hiển thị trên màn hình OLED của Robot.
+    """
+    mac = DEFAULT_DEVICE_MAC
+    agent_id = str(DEFAULT_AGENT_ID)
+    v = voice or "vi-female"
+    m_id = model_id or "xz-lite"
+
+    # 1. Cập nhật DB
+    try:
+        with SessionLocal() as db:
+            ag = db.query(Agent).filter(Agent.is_active == True).first() or db.query(Agent).first()
+            if ag:
+                ag.character = prompt
+                ag.updated_at = datetime.datetime.utcnow()
+                db.commit()
+                mac = ag.mac_address or mac
+                if ag.agent_id and ag.agent_id not in ["927184", "default", ""]:
+                    agent_id = str(ag.agent_id)
+                else:
+                    agent_id = os.getenv("AGENT_ID", "2625491")
+                v = voice or ag.tts_voice or v
+                m_id = model_id or ag.llm_model or m_id
+    except Exception as e:
+        print(f"[SYNC PROMPT] Lỗi lưu DB: {e}")
+
+    if not agent_id or agent_id == "927184":
+        agent_id = "2625491"
+
+    # 2. Cập nhật Xiaozhi.me (Upstream chính thức)
+    token = os.getenv("UPSTREAM_AUTH_TOKEN", "").strip()
+    if token and agent_id:
+        endpoints = [
+            f"https://xiaozhi.me/api/agents/{agent_id}/config",
+            f"https://xiaozhi.me/api/agents/{agent_id}"
+        ]
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        payload = {"character": prompt}
+        for ep in endpoints:
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.post(ep, headers=headers, json=payload)
+                    if resp.status_code == 200:
+                        print(f"[XIAOZHI.ME SYNC] ✓ Đã đồng bộ Prompt '{display_name}' lên xiaozhi.me (Agent {agent_id})")
+                        break
+            except Exception as e:
+                print(f"[XIAOZHI.ME SYNC] ⚠ Lỗi đồng bộ {ep}: {e}")
+
+    # 3. Cập nhật Gehihi Upstream
+    try:
+        await sync_to_upstream_gehihi(mac=mac, prompt=prompt, name=display_name[:12], voice=v, model_id=m_id)
+    except Exception:
+        pass
+
+    # 4. Gửi OLED & Serial Log
+    short_title = display_name[:14]
+    try:
+        await robot_ws_manager.send_oled_emotion("happy", text=f"En: {short_title}")
+    except Exception:
+        pass
+    if serial_manager.is_running and serial_manager.connected:
+        try:
+            serial_manager.send_command(json.dumps({"action": "display", "emotion": "happy", "text": f"En: {short_title}"}))
+        except Exception:
+            pass
+
+    return True
 
 # ==========================================
 # 4. DANH SÁCH OPTIONS CHUẨN GMBOT (MODELS & VOICES)
@@ -1894,7 +1967,7 @@ async def search_youtube_tracks(q: str, limit: int = 12) -> List[Dict[str, Any]]
                 'extract_flat': True,
                 'quiet': True,
                 'no_warnings': True,
-                'extractor_args': {'youtube': {'player_client': ['android']}}
+                'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'web']}}
             }
             def _extract_search():
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -1988,24 +2061,22 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, http_headers:
     title_clean = raw_title.split("-")[0].split("|")[0].strip()[:24]
     print(f"[YOUTUBE MUSIC] ▶ Bắt đầu stream tới Robot ({len(robot_ws_manager.all_robots)} robot online): '{title_clean}'")
 
+    sample_rate = 16000  # Chuẩn âm thanh 16kHz của MAX98357A trên bo mạch RobotMiniS3
     # 1. Báo hiển thị OLED & khởi tạo luồng âm thanh theo đúng thứ tự firmware yêu cầu
     for ws in list(robot_ws_manager.all_robots):
         try:
             sess = robot_ws_manager.sessions.get(ws, session_id)
             await ws.send_json({"type": "llm", "emotion": "happy", "session_id": sess})
-            await asyncio.sleep(0.01)
+            await ws.send_json({"type": "tts", "state": "start", "session_id": sess, "sample_rate": sample_rate})
+            await asyncio.sleep(0.05)
             await ws.send_json({
                 "type": "tts",
                 "state": "sentence_start",
                 "text": f"🎶 {title_clean}",
                 "session_id": sess
             })
-            await asyncio.sleep(0.01)
-            await ws.send_json({"type": "tts", "state": "start", "session_id": sess})
         except Exception as e:
             print(f"[YOUTUBE MUSIC] Lỗi gửi tín hiệu khởi tạo tới robot: {e}")
-
-    sample_rate = 16000  # Chuẩn âm thanh 16kHz của MAX98357A trên bo mạch RobotMiniS3
     ffmpeg_exe = get_ffmpeg_cmd()
     cmd = [
         ffmpeg_exe,
@@ -2093,6 +2164,7 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, http_headers:
         for ws in list(robot_ws_manager.all_robots):
             try:
                 sess = robot_ws_manager.sessions.get(ws, session_id)
+                await ws.send_json({"type": "tts", "state": "sentence_end", "session_id": sess})
                 await ws.send_json({"type": "tts", "state": "stop", "session_id": sess})
             except Exception:
                 pass
@@ -2121,7 +2193,7 @@ async def resolve_and_stream_music(target_url: str, track_info: dict = None):
                 'format': 'bestaudio/best',
                 'quiet': True,
                 'no_warnings': True,
-                'extractor_args': {'youtube': {'player_client': ['android']}}
+                'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'web']}}
             }
             req_target = target_url
             if not req_target.startswith("http://") and not req_target.startswith("https://"):
@@ -2267,27 +2339,15 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
         if is_cancel:
             print(f"[VOICE COMMAND] 🛑 Nhận lệnh HỦY bài học: '{txt}'")
             serial_manager._add_log(f"[KHẨU LỆNH] 🛑 '{txt}' -> Nhận lệnh HỦY học tiếng Anh, khôi phục Sophia...")
-            agent = db.query(Agent).filter((Agent.mac_address == dev_mac) | (Agent.is_active == True)).first()
-            if not agent:
-                agent = db.query(Agent).first()
-            if agent:
-                default_prompt = (
-                    "[VAI TRÒ VÀ TÍNH CÁCH]\n"
-                    "Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. "
-                    "Bạn trả lời ngắn gọn, tự nhiên, vui vẻ và sẵn sàng hỗ trợ mọi việc."
-                )
-                agent.character = default_prompt
-                agent.updated_at = datetime.datetime.utcnow()
-                db.commit()
-
-                # Đồng bộ Upstream AI
-                mac = agent.mac_address or dev_mac or "14:c1:9f:c4:ee:d0"
-                await sync_to_upstream_gehihi(mac=mac, prompt=default_prompt, name="Sophia", voice=agent.tts_voice or "vi-female")
-
-                # Cập nhật OLED màn hình robot
-                await robot_ws_manager.send_oled_emotion("happy", text="Da ve Sophia!")
-                serial_manager._add_log("[KHẨU LỆNH] ✓ Đã khôi phục trợ lý Sophia mặc định thành công!")
-                return True
+            default_prompt = (
+                "[VAI TRÒ VÀ TÍNH CÁCH]\n"
+                "Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. "
+                "Bạn trả lời ngắn gọn, tự nhiên, vui vẻ và sẵn sàng hỗ trợ mọi việc."
+            )
+            await sync_prompt_to_upstream(default_prompt, display_name="Sophia")
+            await robot_ws_manager.send_oled_emotion("happy", text="Da ve Sophia!")
+            serial_manager._add_log("[KHẨU LỆNH] ✓ Đã khôi phục trợ lý Sophia mặc định thành công!")
+            return True
 
         elif is_start:
             print(f"[VOICE COMMAND] 🚀 Nhận lệnh BẮT ĐẦU học tiếng Anh: '{txt}'")
@@ -2322,35 +2382,20 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
                 lesson = lessons[0]  # Mặc định bài Daily Routine
 
             if lesson:
-                agent = db.query(Agent).filter((Agent.mac_address == dev_mac) | (Agent.is_active == True)).first()
-                if not agent:
-                    agent = db.query(Agent).first()
-                if agent:
-                    agent.character = lesson.system_prompt
-                    agent.updated_at = datetime.datetime.utcnow()
-                    db.commit()
-
-                    mac = agent.mac_address or dev_mac or "14:c1:9f:c4:ee:d0"
-                    await sync_to_upstream_gehihi(mac=mac, prompt=lesson.system_prompt, name=lesson.title[:12], voice=agent.tts_voice or "vi-female")
-
-                    short_title = lesson.title.split(":")[0] if ":" in lesson.title else lesson.title
-                    await robot_ws_manager.send_oled_emotion("happy", text=f"En: {short_title[:16]}")
-                    serial_manager._add_log(f"[KHẨU LỆNH] ✓ Đã kích hoạt bài học '{lesson.title}' trên Robot!")
-                    return True
+                await sync_prompt_to_upstream(lesson.system_prompt, display_name=lesson.title)
+                short_title = lesson.title.split(":")[0] if ":" in lesson.title else lesson.title
+                await robot_ws_manager.send_oled_emotion("happy", text=f"En: {short_title[:16]}")
+                serial_manager._add_log(f"[KHẨU LỆNH] ✓ Đã kích hoạt bài học '{lesson.title}' trên Robot!")
+                return True
 
         # Hỗ trợ chuyển vai trò khác bằng giọng nói
         elif any(k in t_norm for k in ["kể chuyện cổ tích", "ke chuyen co tich", "truyện cổ tích", "chuyện cổ tích"]):
             role = db.query(Preset).filter(Preset.title.like("%kể chuyện cổ tích%")).first()
             if role:
-                agent = db.query(Agent).filter((Agent.mac_address == dev_mac) | (Agent.is_active == True)).first()
-                if agent:
-                    agent.character = role.system_prompt
-                    db.commit()
-                    mac = agent.mac_address or dev_mac or "14:c1:9f:c4:ee:d0"
-                    await sync_to_upstream_gehihi(mac=mac, prompt=role.system_prompt, name="Robot Ke Chuyen", voice=agent.tts_voice or "vi-female")
-                    await robot_ws_manager.send_oled_emotion("loving", text="Ke chuyen co tich")
-                    serial_manager._add_log(f"[KHẨU LỆNH] ✓ Đã chuyển sang vai trò: '{role.title}'")
-                    return True
+                await sync_prompt_to_upstream(role.system_prompt, display_name="Robot Ke Chuyen")
+                await robot_ws_manager.send_oled_emotion("loving", text="Ke chuyen co tich")
+                serial_manager._add_log(f"[KHẨU LỆNH] ✓ Đã chuyển sang vai trò: '{role.title}'")
+                return True
     except Exception as e:
         print(f"[VOICE COMMAND ERROR] {e}")
     finally:
@@ -2823,32 +2868,36 @@ async def handle_xiaozhi_ota(request: Request):
     global ACTIVE_TUNNEL_URL, TUNNEL_LAST_PING
     host = request.headers.get("host", "localhost:8000")
 
-    ws_url = None
-    cached_tunnel = load_tunnel_cache()
-    if cached_tunnel:
-        clean_tunnel = cached_tunnel.replace("https://", "wss://").replace("http://", "ws://")
-        ws_url = f"{clean_tunnel}/ws/device"
-    elif ACTIVE_TUNNEL_URL and (time.time() - TUNNEL_LAST_PING < 300):
-        clean_tunnel = ACTIVE_TUNNEL_URL.replace("https://", "wss://").replace("http://", "ws://")
-        ws_url = f"{clean_tunnel}/ws/device"
-    elif getattr(tunnel_manager, "public_url", None):
-        clean_cf = tunnel_manager.public_url.replace("https://", "wss://").replace("http://", "ws://")
-        ws_url = f"{clean_cf}/ws/device"
-    elif os.path.exists("CURRENT_ONLINE_URL.txt"):
-        try:
-            with open("CURRENT_ONLINE_URL.txt", "r", encoding="utf-8") as f:
-                for line in f:
-                    if line.startswith("PUBLIC_WEBSOCKET_URL="):
-                        val = line.split("=", 1)[1].strip()
-                        if val and "manner-initiative" not in val:
-                            ws_url = val
-                            break
-        except Exception:
-            pass
+    # Nếu đang chạy trên Render hoặc request trỏ tới tên miền Render, luôn kết nối thẳng tới server Render
+    if "onrender.com" in host or os.getenv("RENDER"):
+        ws_url = f"wss://{host}/ws/device"
+    else:
+        ws_url = None
+        cached_tunnel = load_tunnel_cache()
+        if cached_tunnel:
+            clean_tunnel = cached_tunnel.replace("https://", "wss://").replace("http://", "ws://")
+            ws_url = f"{clean_tunnel}/ws/device"
+        elif ACTIVE_TUNNEL_URL and (time.time() - TUNNEL_LAST_PING < 300):
+            clean_tunnel = ACTIVE_TUNNEL_URL.replace("https://", "wss://").replace("http://", "ws://")
+            ws_url = f"{clean_tunnel}/ws/device"
+        elif getattr(tunnel_manager, "public_url", None):
+            clean_cf = tunnel_manager.public_url.replace("https://", "wss://").replace("http://", "ws://")
+            ws_url = f"{clean_cf}/ws/device"
+        elif os.path.exists("CURRENT_ONLINE_URL.txt"):
+            try:
+                with open("CURRENT_ONLINE_URL.txt", "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith("PUBLIC_WEBSOCKET_URL="):
+                            val = line.split("=", 1)[1].strip()
+                            if val and "manner-initiative" not in val:
+                                ws_url = val
+                                break
+            except Exception:
+                pass
 
-    if not ws_url:
-        proto = "wss" if ("trycloudflare.com" in host or request.url.scheme == "https") else "ws"
-        ws_url = f"{proto}://{host}/ws/device"
+        if not ws_url:
+            proto = "wss" if ("trycloudflare.com" in host or request.url.scheme == "https") else "ws"
+            ws_url = f"{proto}://{host}/ws/device"
 
     dev_id = request.headers.get("Device-Id") or request.headers.get("device-id") or "unknown"
     print(f"[OTA ROUTER] Robot '{dev_id}' yêu cầu OTA -> Cấp phát WebSocket: {ws_url}")
@@ -3154,7 +3203,7 @@ async def api_music_info(id: str = Query(...)):
                 'format': 'bestaudio/best',
                 'quiet': True,
                 'no_warnings': True,
-                'extractor_args': {'youtube': {'player_client': ['android']}}
+                'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'web']}}
             }
             def _extract():
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -3359,26 +3408,9 @@ async def api_english_tutor_activate(payload: EnglishTemplatePayload, db: Sessio
         if desc:
             prompt_content = f"{prompt_content}\nKịch bản chi tiết: {desc}"
 
-    if agent:
-        agent.character = prompt_content
-        db.commit()
-
-        try:
-            up_token = agent.upstream_token or os.getenv("XIAOZHI_TOKEN", "")
-            if up_token and agent.agent_id:
-                asyncio.create_task(upstream_client.update_agent_config(
-                    token=up_token,
-                    agent_id=str(agent.agent_id),
-                    payload={"prompt": prompt_content}
-                ))
-        except Exception:
-            pass
-
-    short_title = title[:12]
-    await robot_ws_manager.send_oled_emotion("happy", text=f"En: {short_title}")
-    if serial_manager.is_running and serial_manager.connected:
-        serial_manager.send_command(json.dumps({"action": "display", "emotion": "happy", "text": f"En: {short_title}"}))
-        serial_manager._add_log(f"[GIÁO TRÌNH TIẾNG ANH] ✓ Đã kích hoạt bài học: '{title}' vào Robot!")
+    # Đồng bộ toàn diện: SQLite DB, xiaozhi.me Upstream, Gehihi Upstream, OLED & Serial
+    await sync_prompt_to_upstream(prompt_content, display_name=title)
+    serial_manager._add_log(f"[GIÁO TRÌNH TIẾNG ANH] ✓ Đã kích hoạt bài học: '{title}' vào Robot!")
 
     return {
         "status": "ok",
@@ -3758,79 +3790,39 @@ class ApplyCurriculumPayload(BaseModel):
 @app.post("/api/apply-curriculum")
 async def apply_curriculum(payload: ApplyCurriculumPayload, db: Session = Depends(get_db)):
     """Áp dụng kịch bản bài học được chọn trực tiếp vào Robot và OLED"""
-    agent = db.query(Agent).filter(Agent.is_active == True).first()
-    if not agent:
-        agent = db.query(Agent).first()
-    if agent:
-        prompt_content = payload.content
-        if "[QUY TẮC ĐIỀU KHIỂN & HỦY BÀI HỌC]" not in prompt_content:
-            prompt_content += (
-                "\n\n[QUY TẮC ĐIỀU KHIỂN & HỦY BÀI HỌC]\n"
-                "Nếu người dùng nói bằng tiếng Việt yêu cầu dừng học, hủy học, thoát bài học hoặc quay về trợ lý Sophia "
-                "(ví dụ: 'hủy học tiếng anh', 'dừng bài học', 'thoát', 'quay lại sophia', 'stop english'), "
-                "bạn PHẢI vui vẻ chào tạm biệt bằng tiếng Việt và xác nhận đã kết thúc bài học để trở về trợ lý Sophia."
-            )
-        agent.character = prompt_content
-        agent.updated_at = datetime.datetime.utcnow()
-        db.commit()
-        db.refresh(agent)
-        cur_name = payload.name or "Bài học mới"
-
-        # 1. Đồng bộ System Prompt, Giọng nói và Model lên Upstream AI (gehihi.onrender.com)
-        mac = agent.mac_address or "14:c1:9f:c4:ee:d0"
-        await sync_to_upstream_gehihi(mac=mac, prompt=prompt_content, name=cur_name[:12], voice=agent.tts_voice or "vi-female", model_id=agent.llm_model)
-
-        # 2. Cập nhật OLED & Log Terminal thời gian thực của Robot
-        await robot_ws_manager.send_oled_emotion("happy", text=f"En: {cur_name[:14]}")
-        serial_manager._add_log(f"[GIÁO TRÌNH] ✓ Đã áp dụng bài học '{cur_name}' lên Robot ESP32!")
-
-        return {"status": "ok", "message": f"Đã áp dụng bài học '{cur_name}' thành công vào Robot!"}
-    raise HTTPException(status_code=404, detail="Không tìm thấy robot")
+    prompt_content = payload.content
+    if "[QUY TẮC ĐIỀU KHIỂN & HỦY BÀI HỌC]" not in prompt_content:
+        prompt_content += (
+            "\n\n[QUY TẮC ĐIỀU KHIỂN & HỦY BÀI HỌC]\n"
+            "Nếu người dùng nói bằng tiếng Việt yêu cầu dừng học, hủy học, thoát bài học hoặc quay về trợ lý Sophia "
+            "(ví dụ: 'hủy học tiếng anh', 'dừng bài học', 'thoát', 'quay lại sophia', 'stop english'), "
+            "bạn PHẢI vui vẻ chào tạm biệt bằng tiếng Việt và xác nhận đã kết thúc bài học để trở về trợ lý Sophia."
+        )
+    cur_name = payload.name or "Bài học mới"
+    await sync_prompt_to_upstream(prompt_content, display_name=cur_name)
+    serial_manager._add_log(f"[GIÁO TRÌNH] ✓ Đã áp dụng bài học '{cur_name}' lên Robot ESP32!")
+    return {"status": "ok", "message": f"Đã áp dụng bài học '{cur_name}' thành công vào Robot!"}
 
 
 @app.post("/api/reset-default-ai-prompt")
 async def reset_default_ai_prompt(db: Session = Depends(get_db)):
     """Khôi phục kịch bản AI về trợ lý Sophia mặc định"""
-    agent = db.query(Agent).filter(Agent.is_active == True).first()
-    if not agent:
-        agent = db.query(Agent).first()
-    if agent:
-        default_prompt = "[VAI TRÒ VÀ TÍNH CÁCH]\nBạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. Bạn trả lời ngắn gọn, tự nhiên, vui vẻ và sẵn sàng hỗ trợ mọi việc."
-        agent.character = default_prompt
-        agent.updated_at = datetime.datetime.utcnow()
-        db.commit()
-        db.refresh(agent)
-
-        mac = agent.mac_address or "14:c1:9f:c4:ee:d0"
-        await sync_to_upstream_gehihi(mac=mac, prompt=default_prompt, name="Sophia", voice=agent.tts_voice or "vi-female", model_id=agent.llm_model)
-
-        await robot_ws_manager.send_oled_emotion("neutral", text="Sophia Online")
-        serial_manager._add_log("[CẤU HÌNH] ✓ Đã khôi phục trợ lý Sophia mặc định!")
-        return {"status": "ok", "message": "Đã khôi phục kịch bản AI mặc định thành công!"}
-    raise HTTPException(status_code=404, detail="Không tìm thấy robot")
+    default_prompt = "[VAI TRÒ VÀ TÍNH CÁCH]\nBạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. Bạn trả lời ngắn gọn, tự nhiên, vui vẻ và sẵn sàng hỗ trợ mọi việc."
+    await sync_prompt_to_upstream(default_prompt, display_name="Sophia")
+    await robot_ws_manager.send_oled_emotion("neutral", text="Sophia Online")
+    serial_manager._add_log("[CẤU HÌNH] ✓ Đã khôi phục trợ lý Sophia mặc định!")
+    return {"status": "ok", "message": "Đã khôi phục kịch bản AI mặc định thành công!"}
 
 
 @app.post("/api/english-tutor/deactivate")
 @app.delete("/api/english-tutor/active")
 async def deactivate_english_tutor(db: Session = Depends(get_db)):
     """Hủy chế độ học tiếng Anh và khôi phục về trợ lý Sophia mặc định"""
-    agent = db.query(Agent).filter(Agent.is_active == True).first()
-    if not agent:
-        agent = db.query(Agent).first()
-    if agent:
-        default_prompt = "[VAI TRÒ VÀ TÍNH CÁCH]\nBạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. Bạn trả lời ngắn gọn, tự nhiên, vui vẻ và sẵn sàng hỗ trợ mọi việc."
-        agent.character = default_prompt
-        agent.updated_at = datetime.datetime.utcnow()
-        db.commit()
-        db.refresh(agent)
-
-        mac = agent.mac_address or "14:c1:9f:c4:ee:d0"
-        await sync_to_upstream_gehihi(mac=mac, prompt=default_prompt, name="Sophia", voice=agent.tts_voice or "vi-female", model_id=agent.llm_model)
-
-        await robot_ws_manager.send_oled_emotion("neutral", text="Huy Hoc Tieng Anh")
-        serial_manager._add_log("[GIÁO TRÌNH] ✓ Đã hủy chế độ học tiếng Anh, khôi phục trợ lý Sophia mặc định!")
-        return {"status": "ok", "message": "Đã hủy chế độ học tiếng Anh, khôi phục trợ lý Sophia mặc định thành công!"}
-    raise HTTPException(status_code=404, detail="Không tìm thấy robot")
+    default_prompt = "[VAI TRÒ VÀ TÍNH CÁCH]\nBạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. Bạn trả lời ngắn gọn, tự nhiên, vui vẻ và sẵn sàng hỗ trợ mọi việc."
+    await sync_prompt_to_upstream(default_prompt, display_name="Sophia")
+    await robot_ws_manager.send_oled_emotion("neutral", text="Huy Hoc Tieng Anh")
+    serial_manager._add_log("[GIÁO TRÌNH] ✓ Đã hủy chế độ học tiếng Anh, khôi phục trợ lý Sophia mặc định!")
+    return {"status": "ok", "message": "Đã hủy chế độ học tiếng Anh, khôi phục trợ lý Sophia mặc định thành công!"}
 
 
 class SpeakerPayload(BaseModel):

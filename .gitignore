@@ -22,6 +22,7 @@ Web_templates/node_modules/
 
 # Database (Render starts fresh and seeds automatically)
 database.db
+*.db
 *.sqlite3
 
 # IDE
