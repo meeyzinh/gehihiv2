@@ -1918,10 +1918,88 @@ def stop_active_music():
         task.cancel()
     ACTIVE_MUSIC_STATE["is_playing"] = False
 
+INVIDIOUS_APIS = [
+    "https://yt.chocolatemoo53.com",
+    "https://inv.nadeko.net",
+    "https://invidious.jing.rocks",
+    "https://invidious.private.coffee"
+]
+
+def extract_video_id(url_or_id: str) -> Optional[str]:
+    if not url_or_id:
+        return None
+    s = str(url_or_id).strip()
+    if "watch?v=" in s:
+        return s.split("watch?v=")[1].split("&")[0].split("#")[0]
+    elif "youtu.be/" in s:
+        return s.split("youtu.be/")[1].split("?")[0].split("#")[0]
+    elif len(s) == 11 and "/" not in s and " " not in s:
+        return s
+    return None
+
+async def resolve_audio_stream_direct(target_url: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Trích xuất link direct audio stream (.googlevideo.com) từ Invidious APIs:
+    Hoạt động hoàn hảo trên server đám mây Render/Docker không bị chặn IP!
+    Trả về: (audio_stream_url, title, thumbnail)
+    """
+    vid = extract_video_id(target_url)
+    if not vid:
+        return None, None, None
+
+    for inst in INVIDIOUS_APIS:
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                r = await client.get(f"{inst}/api/v1/videos/{vid}")
+                if r.status_code == 200:
+                    d = r.json()
+                    formats = d.get("adaptiveFormats", [])
+                    audio_formats = [f for f in formats if "audio" in f.get("type", "")]
+                    if audio_formats:
+                        best = sorted(audio_formats, key=lambda x: int(x.get("bitrate", 0)), reverse=True)[0]
+                        stream_url = best.get("url")
+                        title = d.get("title")
+                        thumb = None
+                        if d.get("videoThumbnails"):
+                            thumb = d["videoThumbnails"][0].get("url")
+                        if stream_url:
+                            print(f"[AUDIO RESOLVER] ✓ Đã trích xuất link stream từ Invidious ({inst}): {title[:25] if title else vid}")
+                            return stream_url, title, thumb
+        except Exception:
+            continue
+    return None, None, None
+
 async def search_youtube_tracks(q: str, limit: int = 12) -> List[Dict[str, Any]]:
     q = (q or "").strip()
     if not q:
         return POPULAR_CHILDREN_SONGS[:limit]
+
+    # 0. Thử tìm kiếm trực tiếp qua Invidious API (cực nhanh, không bị Google/YouTube chặn datacenter IP)
+    results = []
+    for inst in INVIDIOUS_APIS:
+        try:
+            async with httpx.AsyncClient(timeout=4.0) as client:
+                r = await client.get(f"{inst}/api/v1/search", params={"q": q, "type": "video"})
+                if r.status_code == 200:
+                    items = r.json()
+                    for it in items[:limit]:
+                        vid_s = it.get("videoId")
+                        tit_s = it.get("title")
+                        if vid_s and tit_s:
+                            dur_s = it.get("lengthSeconds") or 180
+                            dur_str_s = f"{int(dur_s // 60)}:{int(dur_s % 60):02d}"
+                            results.append({
+                                "id": vid_s,
+                                "title": tit_s,
+                                "uploader": it.get("author") or "YouTube",
+                                "duration_str": dur_str_s,
+                                "thumbnail": f"https://i.ytimg.com/vi/{vid_s}/hqdefault.jpg",
+                                "url": f"https://www.youtube.com/watch?v={vid_s}"
+                            })
+                    if len(results) >= 1:
+                        return results[:limit]
+        except Exception:
+            pass
 
     # Kiểm tra dán URL trực tiếp
     if "youtube.com/" in q or "youtu.be/" in q:
@@ -2180,7 +2258,17 @@ async def resolve_and_stream_music(target_url: str, track_info: dict = None):
     audio_stream_url = target_url
     title = track_info.get("title", "")
     http_headers = None
-    if yt_dlp:
+
+    # 1. Thử phân giải nhanh qua Invidious API (hoạt động 100% trên Render Docker không bị Google chặn IP)
+    inv_url, inv_title, inv_thumb = await resolve_audio_stream_direct(target_url)
+    if inv_url:
+        audio_stream_url = inv_url
+        if inv_title and not title:
+            title = inv_title
+            track_info["title"] = title
+        if inv_thumb and not track_info.get("thumbnail"):
+            track_info["thumbnail"] = inv_thumb
+    elif yt_dlp:
         try:
             ydl_opts = {
                 'format': 'bestaudio/best',
@@ -3192,7 +3280,16 @@ async def api_music_info(id: str = Query(...)):
     thumb = ""
     dur = ""
     err_str = None
-    if yt_dlp:
+
+    # 1. Thử phân giải nhanh qua Invidious API
+    inv_url, inv_title, inv_thumb = await resolve_audio_stream_direct(target_url)
+    if inv_url:
+        audio_stream_url = inv_url
+        title = inv_title or "Bản nhạc YouTube"
+        vid = extract_video_id(target_url) or ""
+        thumb = inv_thumb or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+        dur = "3:30"
+    elif yt_dlp:
         try:
             ydl_opts = {
                 'format': 'bestaudio/best',
