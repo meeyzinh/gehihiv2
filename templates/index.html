@@ -1866,8 +1866,8 @@ body {
           <span id="sidebarStatusText" style="color:#fde047;font-weight:600;">● Chờ kết nối</span>
         </div>
         <div style="margin-top: 6px; display:flex; align-items:center; gap:6px;">
-          <span class="badge" style="background:#1e40af;color:#bfdbfe;font-size:11px;padding:3px 8px;border-radius:8px;font-weight:bold;">🤖 Robot Mini S3</span>
-          <span style="font-size:11.5px;color:#94a3b8;">Động cơ MX1616</span>
+          <span class="badge" id="sidebarRobotName" style="background:#1e40af;color:#bfdbfe;font-size:11px;padding:3px 8px;border-radius:8px;font-weight:bold;">🤖 Robot Sophia</span>
+          <span id="sidebarRobotMac" style="font-size:11.5px;color:#94a3b8;">ESP32-S3</span>
         </div>
       </div>
     </div>
@@ -4310,30 +4310,36 @@ Ví dụ:
 
     function updateSidebarRobotInfo(devices) {
       if (!devices || devices.length === 0) return;
-      let dev = devices.find(d => d.id === activeDeviceId || d.device_code === activeDeviceId);
+      let dev = devices.find(d => d.id === activeDeviceId || d.device_code === activeDeviceId || d.agent_id === activeDeviceId);
       if (!dev) {
         dev = devices.find(d => d.is_online) || devices[0];
         if (dev) {
           activeDeviceId = dev.id;
+          const devName = dev.name || dev.assistant_name || dev.device_name || "Robot Sophia";
+          const devPin = dev.device_code || dev.agent_id || "927184";
           localStorage.setItem("megabot_active_robot_id", dev.id);
-          localStorage.setItem("megabot_active_robot_name", dev.name);
-          localStorage.setItem("megabot_active_robot_code", dev.device_code || "");
+          localStorage.setItem("megabot_active_robot_name", devName);
+          localStorage.setItem("megabot_active_robot_code", devPin);
         }
       }
       if (!dev) return;
       
+      const devName = dev.name || dev.assistant_name || dev.device_name || "Robot Sophia";
+      const devPin = dev.device_code || dev.agent_id || "927184";
+      const devMac = dev.device_mac || dev.mac_address || "14:c1:9f:c4:ee:d0";
+
       const nameEl = document.getElementById("sidebarRobotName");
       const macEl = document.getElementById("sidebarRobotMac");
       const dotEl = document.getElementById("sidebarStatusDot");
       const textEl = document.getElementById("sidebarStatusText");
 
-      if (nameEl) nameEl.innerText = `${dev.name} (ESP32-S3)`;
-      if (macEl) macEl.innerText = `PIN: ${dev.device_code || '927184'} (${dev.device_mac || 'ESP32'})`;
+      if (nameEl) nameEl.innerText = `${devName} (ESP32-S3)`;
+      if (macEl) macEl.innerText = `PIN: ${devPin} (${devMac})`;
       
-      const isOnline = dev.is_online === true;
+      const isOnline = dev.is_online === true || dev.is_online === "true" || dev.online === true;
       if (dotEl) {
         dotEl.style.background = isOnline ? "#22c55e" : "#94a3b8";
-        dotEl.style.boxShadow = isOnline ? "0 0 6px #22c55e" : "none";
+        dotEl.style.boxShadow = isOnline ? "0 0 8px #22c55e" : "none";
       }
       if (textEl) {
         textEl.innerText = isOnline ? "🟢 Trực tuyến" : "⚪ Chờ kết nối";
@@ -4341,16 +4347,20 @@ Ví dụ:
       }
 
       const activeBadge = document.getElementById("activeControlDeviceBadge");
-      if (activeBadge) activeBadge.innerText = `Robot: ${dev.name}`;
+      if (activeBadge) activeBadge.innerText = `Robot: ${devName}`;
 
       const topName = document.getElementById("topRobotNameDisplay");
-      if (topName) topName.innerText = dev.name;
+      if (topName) topName.innerText = devName;
       const topPin = document.getElementById("topRobotPinDisplay");
-      if (topPin) topPin.innerText = dev.device_code || '927184';
+      if (topPin) topPin.innerText = devPin;
     }
 
     function updateDeviceProfileDashboard(dev) {
       if (!dev) return;
+      const devName = dev.name || dev.assistant_name || dev.device_name || "Robot Sophia";
+      const devPin = dev.device_code || dev.agent_id || "927184";
+      const devMac = dev.device_mac || dev.mac_address || "14:c1:9f:c4:ee:d0";
+
       const titleEl = document.getElementById("dashRobotTitle");
       const pinSubEl = document.getElementById("dashRobotPinSubtitle");
       const nameEl = document.getElementById("dashRobotName");
@@ -4364,19 +4374,19 @@ Ví dụ:
       const volEl = document.getElementById("dashRobotVolume");
       const speedEl = document.getElementById("dashRobotSpeed");
 
-      if (titleEl) titleEl.innerText = `Hồ sơ Quản trị ${dev.name}`;
-      if (pinSubEl) pinSubEl.innerText = dev.device_code || '927184';
-      if (nameEl) nameEl.innerText = dev.name;
-      if (codeEl) codeEl.innerText = dev.device_code || '927184';
-      if (macEl) macEl.innerText = dev.device_mac || 'ESP32';
+      if (titleEl) titleEl.innerText = `Hồ sơ Quản trị ${devName}`;
+      if (pinSubEl) pinSubEl.innerText = devPin;
+      if (nameEl) nameEl.innerText = devName;
+      if (codeEl) codeEl.innerText = devPin;
+      if (macEl) macEl.innerText = devMac;
       
       if (avatarEl) {
-        avatarEl.innerText = dev.initial || (dev.name ? dev.name[0] : 'R');
+        avatarEl.innerText = dev.initial || devName[0] || 'R';
         avatarEl.style.background = dev.badge_color || '#ffe4e6';
         avatarEl.style.color = dev.initial_color || '#e11d48';
       }
 
-      const isOnline = dev.is_online === true;
+      const isOnline = dev.is_online === true || dev.is_online === "true" || dev.online === true;
       if (statusBadge) {
         statusBadge.style.background = isOnline ? 'rgba(34,197,94,0.18)' : 'rgba(148,163,184,0.12)';
         statusBadge.style.borderColor = isOnline ? '#22c55e' : '#64748b';
@@ -4386,9 +4396,9 @@ Ví dụ:
         statusText.innerText = isOnline ? '🟢 Trực tuyến (WebSocket Live)' : '⚪ Ngoại tuyến (Chờ kết nối)';
       }
 
-      if (modelEl) modelEl.innerText = dev.model || dev.model_id || 'Gemini 3.1 Flash Lite';
-      if (voiceEl) voiceEl.innerText = dev.voice_name || (dev.voice || '').split('-').pop().replace('Neural', '') || 'Hoài My';
-      if (volEl) volEl.innerText = `Mức ${dev.volume || 7} / 10`;
+      if (modelEl) modelEl.innerText = dev.model || dev.model_id || dev.llm_model || 'Gemini 3.1 Flash Lite';
+      if (voiceEl) voiceEl.innerText = dev.voice_name || (dev.voice || dev.tts_voice || '').split('-').pop().replace('Neural', '') || 'Hoài My';
+      if (volEl) volEl.innerText = `Mức ${dev.volume !== undefined ? dev.volume : 8} / 10`;
       
       const toy = dev.toy_settings || {};
       if (speedEl) speedEl.innerText = `Tốc độ: ${toy.speed || 80}% (Tránh vật cản: ${toy.auto_avoid ? 'Bật' : 'Tắt'})`;
@@ -4499,9 +4509,10 @@ Ví dụ:
       }
 
       grid.innerHTML = devices.map(d => {
-        const isOnline = d.is_online === true;
-        const isSelected = d.id === activeDeviceId || d.device_code === activeDeviceId;
-        const initial = d.initial || (d.name ? d.name[0] : "R").toUpperCase();
+        const devName = d.name || d.assistant_name || d.device_name || "Robot Sophia";
+        const isOnline = d.is_online === true || d.is_online === "true" || d.online === true;
+        const isSelected = d.id === activeDeviceId || d.device_code === activeDeviceId || d.agent_id === activeDeviceId;
+        const initial = d.initial || devName[0].toUpperCase();
         const badgeBg = d.badge_color || "#ffe4e6";
         const initialColor = d.initial_color || "#e11d48";
         const borderStyle = isSelected
@@ -4511,12 +4522,12 @@ Ví dụ:
           ? '0 0 20px rgba(56,189,248,0.35), 0 8px 24px rgba(0,0,0,0.5)'
           : '0 6px 18px rgba(0,0,0,0.3)';
 
-        const pinCode = d.device_code || '927184';
-        const macAddr = d.device_mac || 'ESP32';
-        const modelName = d.model || d.model_id || 'Gemini 3.1 Flash Lite';
-        const voiceShort = (d.voice_name || d.voice || 'Hoài My').split('-').pop().replace('Neural', '');
-        const volumeVal = d.volume !== undefined ? d.volume : 7;
-        const safeName = (d.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const pinCode = d.device_code || d.agent_id || '927184';
+        const macAddr = d.device_mac || d.mac_address || '14:c1:9f:c4:ee:d0';
+        const modelName = d.model || d.model_id || d.llm_model || 'Gemini 3.1 Flash Lite';
+        const voiceShort = (d.voice_name || d.voice || d.tts_voice || 'Hoài My').split('-').pop().replace('Neural', '');
+        const volumeVal = d.volume !== undefined ? d.volume : 8;
+        const safeName = devName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
         return `
           <div style="background: linear-gradient(145deg, #0b1a33 0%, #081426 100%); border: ${borderStyle}; border-radius: 14px; padding: 18px; display: flex; flex-direction: column; justify-content: space-between; gap: 14px; box-shadow: ${shadowStyle}; position: relative; transition: all 0.2s ease;">
@@ -4529,7 +4540,7 @@ Ví dụ:
                 </div>
                 <div style="min-width: 0;">
                   <h4 style="margin: 0; font-size: 15.5px; font-weight: 800; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px;">
-                    ${d.name}
+                    ${devName}
                     ${isSelected ? '<span style="font-size: 10px; background: #0284c7; color: white; padding: 1px 7px; border-radius: 6px; font-weight: 700;">👑 Đang chọn</span>' : ''}
                   </h4>
                   <div style="font-size: 11.5px; color: #94a3b8; font-family: monospace; margin-top: 3px; display: flex; gap: 8px; flex-wrap: wrap;">
@@ -4848,9 +4859,10 @@ Ví dụ:
       }
 
       container.innerHTML = devices.map(d => {
-        const isOnline = d.is_online === true;
-        const isSelected = d.id === activeDeviceId || d.device_code === activeDeviceId;
-        const initial = d.initial || (d.name ? d.name[0] : "R");
+        const devName = d.name || d.assistant_name || d.device_name || "Robot Sophia";
+        const isOnline = d.is_online === true || d.is_online === "true" || d.online === true;
+        const isSelected = d.id === activeDeviceId || d.device_code === activeDeviceId || d.agent_id === activeDeviceId;
+        const initial = d.initial || devName[0].toUpperCase();
         const badgeBg = d.badge_color || "#1e3a8a";
         const initialColor = d.initial_color || "#38bdf8";
         const borderStyle = isSelected 
@@ -4871,9 +4883,9 @@ Ví dụ:
                 </div>
                 <div>
                   <h4 style="margin:0;font-size:15px;color:#f8fafc;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                    ${d.name}
+                    ${devName}
                     ${isSelected ? '<span style="font-size:10px;background:#0284c7;color:white;padding:1px 6px;border-radius:6px;font-weight:bold;">👑 Đang chọn</span>' : ''}
-                    ${d.name.startsWith("Robot AI (") ? `<span onclick="renameDeviceQuick('${d.id}', '${d.name.replace(/'/g, "\\'")}')" style="font-size:10px;background:rgba(234,179,8,0.2);color:#facc15;border:1px solid #ca8a04;padding:1px 6px;border-radius:4px;font-weight:bold;cursor:pointer;" title="Nhấn để đặt tên cho robot mới">✨ Mới kết nối - Đổi tên</span>` : ''}
+                    ${devName.startsWith("Robot AI (") ? `<span onclick="renameDeviceQuick('${d.id}', '${devName.replace(/'/g, "\\'")}')" style="font-size:10px;background:rgba(234,179,8,0.2);color:#facc15;border:1px solid #ca8a04;padding:1px 6px;border-radius:4px;font-weight:bold;cursor:pointer;" title="Nhấn để đặt tên cho robot mới">✨ Mới kết nối - Đổi tên</span>` : ''}
                   </h4>
                   <div style="font-size:11px;color:#38bdf8;margin-top:3px;font-family:monospace;font-weight:600;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                     <span>🔢 PIN: <strong style="background:rgba(56,189,248,0.15);padding:1px 6px;border-radius:4px;color:#7dd3fc;border:1px solid rgba(56,189,248,0.3);">${d.device_code || '927184'}</strong></span>

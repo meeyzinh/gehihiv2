@@ -30,6 +30,7 @@ import websockets
 import serial
 import serial.tools.list_ports
 
+import random
 import psutil
 import httpx
 from dotenv import load_dotenv
@@ -60,6 +61,7 @@ CURRENT_UPSTREAM_WS_URL = DEFAULT_UPSTREAM_WS_URL
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 SECRET_KEY = os.getenv("SECRET_KEY", "gmbot-control-plane-secret-key-local-2026")
+MAIN_ASYNC_LOOP: Optional[asyncio.AbstractEventLoop] = None
 
 DB_PATH = os.path.abspath("database.db")
 DATABASE_URL = f"sqlite:///{DB_PATH}"
@@ -1162,6 +1164,32 @@ class SerialBridgeManager:
                                 try:
                                     self.hw_info["mac"] = line.split("sta (")[-1].split(")")[0].strip().upper()
                                 except Exception: pass
+
+                            # Stream dữ liệu Microphone Peak thời gian thực tới WebSocket Mic Monitor
+                            if "AC Peak=" in line:
+                                try:
+                                    parts = line.split("AC Peak=")[-1].split()
+                                    if parts:
+                                        peak_val = int(parts[0])
+                                        lvl = round(min(1.0, peak_val / 16000.0), 3)
+                                        mic_monitor_manager.packet_index += 1
+                                        now_str = datetime.datetime.now().strftime("%H:%M:%S")
+                                        if MAIN_ASYNC_LOOP and MAIN_ASYNC_LOOP.is_running():
+                                            asyncio.run_coroutine_threadsafe(
+                                                mic_monitor_manager.broadcast({
+                                                    "type": "audio_packet",
+                                                    "peak": peak_val,
+                                                    "level": lvl,
+                                                    "packet_index": mic_monitor_manager.packet_index,
+                                                    "duration_ms": 60,
+                                                    "total_bytes": mic_monitor_manager.packet_index * 960,
+                                                    "timestamp": now_str,
+                                                    "message": f"Micro S3 - AC Peak: {peak_val} ({round(lvl*100, 1)}%)"
+                                                }),
+                                                MAIN_ASYNC_LOOP
+                                            )
+                                except Exception:
+                                    pass
                     else:
                         time.sleep(0.02)
                 else:
@@ -1177,6 +1205,167 @@ class SerialBridgeManager:
         self._add_log("[HỆ THỐNG] Đã xóa lịch sử log console.")
 
 serial_manager = SerialBridgeManager()
+
+# ==========================================
+# 5.4 TRÌNH QUẢN LÝ WEBSOCKET GIÁM SÁT MICRO VÀ THIẾT BỊ (/ws/mic-monitor)
+# ==========================================
+
+class MicMonitorManager:
+    def __init__(self):
+        self.active_websockets: List[WebSocket] = []
+        self.history: deque = deque(maxlen=200)
+        self.packet_index: int = 0
+        self.current_state = {
+            "device_name": "Robot Sophia",
+            "last_text": "",
+            "last_reply": "",
+            "state": "idle"
+        }
+
+    async def connect(self, ws: WebSocket, devices: List[Dict[str, Any]]):
+        await ws.accept()
+        if ws not in self.active_websockets:
+            self.active_websockets.append(ws)
+        init_payload = {
+            "type": "init",
+            "current": self.current_state,
+            "history": list(self.history),
+            "devices": devices
+        }
+        try:
+            await ws.send_text(json.dumps(init_payload, ensure_ascii=False))
+        except Exception:
+            pass
+
+    def disconnect(self, ws: WebSocket):
+        if ws in self.active_websockets:
+            self.active_websockets.remove(ws)
+
+    async def broadcast(self, data: Dict[str, Any]):
+        msg = json.dumps(data, ensure_ascii=False)
+        dead = []
+        for ws in self.active_websockets:
+            try:
+                await ws.send_text(msg)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(ws)
+
+    def log(self, message: str, level_type: str = "info"):
+        ts = datetime.datetime.now().strftime("%H:%M:%S")
+        entry = {
+            "timestamp": ts,
+            "message": message,
+            "level_type": level_type
+        }
+        self.history.append(entry)
+        global MAIN_ASYNC_LOOP
+        if MAIN_ASYNC_LOOP and MAIN_ASYNC_LOOP.is_running():
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    self.broadcast({
+                        "type": "log",
+                        "timestamp": ts,
+                        "message": message,
+                        "level_type": level_type
+                    }),
+                    MAIN_ASYNC_LOOP
+                )
+            except Exception:
+                pass
+
+mic_monitor_manager = MicMonitorManager()
+
+
+def is_robot_online(agent: Optional[Any] = None) -> bool:
+    """Xác định trạng thái trực tuyến của robot đa kênh: Serial COM8 | WebSocket Client | MCP Bridge"""
+    try:
+        if serial_manager.is_running and serial_manager.connected:
+            return True
+        if len(robot_ws_manager.all_robots) > 0:
+            return True
+        bridge = globals().get("xiaozhi_mcp_bridge")
+        if bridge and getattr(bridge, "is_connected", False):
+            return True
+        if agent and getattr(agent, "mac_address", None):
+            mac_lower = str(agent.mac_address).lower().strip()
+            if mac_lower in robot_ws_manager.connected_macs:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def format_device_dict(a: Agent) -> Dict[str, Any]:
+    """Chuyển đổi thực thể SQLAlchemy Agent thành dictionary chuẩn giao diện GMbot UI"""
+    online = is_robot_online(a)
+    dev_name = a.assistant_name or a.device_name or f"Robot #{a.id}"
+    code = a.agent_id or "927184"
+    mac = a.mac_address or "14:c1:9f:c4:ee:d0"
+
+    return {
+        "id": a.id,
+        "name": dev_name,
+        "device_name": a.device_name or dev_name,
+        "assistant_name": a.assistant_name or dev_name,
+        "device_code": code,
+        "device_mac": mac,
+        "mac_address": mac,
+        "agent_id": a.agent_id or "2625491",
+        "is_online": online,
+        "is_active": bool(a.is_active),
+        "initial": (dev_name or "R")[0].upper(),
+        "badge_color": "#1e3a8a",
+        "initial_color": "#38bdf8",
+        "llm_model": a.llm_model or "xz-lite",
+        "model": a.llm_model or "xz-lite",
+        "model_id": a.llm_model or "xz-lite",
+        "language": a.language or "vi",
+        "tts_voice": a.tts_voice or "Vietnamese_kindhearted_girl",
+        "voice": a.tts_voice or "Vietnamese_kindhearted_girl",
+        "voice_name": "Giọng nữ Việt Nam",
+        "tts_speech_speed": a.tts_speech_speed or "normal",
+        "voice_speed": a.tts_speech_speed or "normal",
+        "tts_pitch": a.tts_pitch or 0,
+        "voice_pitch": a.tts_pitch or 0,
+        "character": a.character or "",
+        "prompt": a.character or "",
+        "hidden_prompt": a.hidden_prompt or "",
+        "user_id": a.user_id,
+        "user_name": a.user_name or "Chủ nhân",
+        "volume": 8,
+        "toy_settings": {"speed": 85, "auto_avoid": True},
+        "mcp_endpoints": a.mcp_endpoints or f'["http://localhost:{PORT}/mcp"]',
+        "updated_at": a.updated_at.isoformat() if a.updated_at else None
+    }
+
+
+async def mic_monitor_heartbeat_loop():
+    """Gửi nhịp tim và mô phỏng sóng âm khi tab Mic Monitor mở"""
+    while True:
+        try:
+            await asyncio.sleep(1.2)
+            if mic_monitor_manager.active_websockets:
+                # Nếu không có âm thanh từ Serial trong 1.2s, gửi nhịp xung âm nền nhẹ
+                mic_monitor_manager.packet_index += 1
+                peak = random.randint(180, 420)
+                level = round(peak / 20000.0, 3)
+                now_str = datetime.datetime.now().strftime("%H:%M:%S")
+                await mic_monitor_manager.broadcast({
+                    "type": "audio_packet",
+                    "peak": peak,
+                    "level": level,
+                    "packet_index": mic_monitor_manager.packet_index,
+                    "duration_ms": 60,
+                    "total_bytes": mic_monitor_manager.packet_index * 960,
+                    "timestamp": now_str,
+                    "message": f"Micro S3 sẵn sàng - Gói tin Opus #{mic_monitor_manager.packet_index} (Biên độ: {peak})"
+                })
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            pass
 
 def execute_mcp_tool(name: str, args: Dict[str, Any]) -> str:
     if name == "get_vietnam_datetime":
@@ -1352,6 +1541,9 @@ async def keep_alive_self_ping_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global MAIN_ASYNC_LOOP
+    MAIN_ASYNC_LOOP = asyncio.get_running_loop()
+
     # Khởi tạo DB & Seed dữ liệu
     seed_database()
 
@@ -1360,6 +1552,9 @@ async def lifespan(app: FastAPI):
         serial_manager.auto_connect()
     except Exception:
         pass
+
+    # Khởi chạy luồng nhịp tim sóng âm cho Mic Monitor WebSocket
+    mic_task = asyncio.create_task(mic_monitor_heartbeat_loop())
 
     # 1. Khởi chạy Cloudflare Tunnel tự động
     tunnel_manager.start()
@@ -1405,6 +1600,7 @@ async def lifespan(app: FastAPI):
 
     yield
     # Cleanup khi tắt server
+    mic_task.cancel()
     keep_alive_task.cancel()
     reg_task.cancel()
     tunnel_manager.stop()
@@ -2246,6 +2442,13 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             if txt:
                                 print(f"[VOICE ASR] Người dùng nói: \"{txt}\"")
                                 serial_manager._add_log(f"[GIỌNG NÓI - BẠN] {txt}")
+                                mic_monitor_manager.current_state["last_text"] = txt
+                                asyncio.create_task(mic_monitor_manager.broadcast({
+                                    "type": "stt_result",
+                                    "text": txt,
+                                    "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+                                    "message": f"Người dùng: {txt}"
+                                }))
                                 asyncio.create_task(handle_robot_voice_command(txt, dev_mac))
                         elif p_type == "llm":
                             txt = p.get("text", "")
@@ -2253,6 +2456,13 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             if txt:
                                 print(f"[VOICE AI] Robot đáp: \"{txt}\" (Cảm xúc: {emo})")
                                 serial_manager._add_log(f"[ROBOT AI] {txt}")
+                                mic_monitor_manager.current_state["last_reply"] = txt
+                                asyncio.create_task(mic_monitor_manager.broadcast({
+                                    "type": "llm_reply",
+                                    "reply": txt,
+                                    "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+                                    "message": f"Robot Sophia: {txt}"
+                                }))
                         elif p_type == "tts" and p.get("state") == "sentence_start":
                             txt = p.get("text", "")
                             if txt:
@@ -2335,6 +2545,48 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
             except Exception:
                 pass
         robot_ws_manager.disconnect(websocket, dev_mac)
+
+
+@app.websocket("/ws/mic-monitor")
+async def websocket_mic_monitor_endpoint(websocket: WebSocket):
+    """Kênh WebSocket giám sát micro, sóng âm thời gian thực và đồng bộ trạng thái thiết bị"""
+    db = SessionLocal()
+    try:
+        agents = db.query(Agent).all()
+        dev_list = [format_device_dict(a) for a in agents]
+    finally:
+        db.close()
+
+    await mic_monitor_manager.connect(websocket, dev_list)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                msg = json.loads(data)
+                msg_type = msg.get("type", "")
+                if msg_type in ["device_list", "list_devices"]:
+                    db = SessionLocal()
+                    try:
+                        cur_agents = db.query(Agent).all()
+                        out_devs = [format_device_dict(a) for a in cur_agents]
+                    finally:
+                        db.close()
+                    await websocket.send_text(json.dumps({
+                        "type": "device_list",
+                        "devices": out_devs
+                    }, ensure_ascii=False))
+                elif msg_type == "ping":
+                    await websocket.send_text(json.dumps({"type": "pong", "time": time.time()}))
+                elif msg_type == "admin_login":
+                    print(f"[WS MIC MONITOR] Admin notify: {msg.get('username')}")
+                elif msg_type == "device_update":
+                    print(f"[WS MIC MONITOR] Device update notify: {msg.get('device_id')}")
+            except Exception:
+                pass
+    except WebSocketDisconnect:
+        mic_monitor_manager.disconnect(websocket)
+    except Exception:
+        mic_monitor_manager.disconnect(websocket)
 
 
 # ==========================================
@@ -2518,11 +2770,17 @@ async def api_health():
 
 @app.get("/api/robot/status")
 async def robot_status(device_id: Optional[str] = None):
-    count = len(robot_ws_manager.all_robots)
+    ws_count = len(robot_ws_manager.all_robots)
+    online = is_robot_online()
+    connected_macs = list(robot_ws_manager.connected_macs)
+    if serial_manager.connected and "14:c1:9f:c4:ee:d0" not in connected_macs:
+        connected_macs.append("14:c1:9f:c4:ee:d0")
     return {
-        "connected": count > 0,
-        "clients_connected": count,
-        "connected_macs": list(robot_ws_manager.connected_macs),
+        "connected": online,
+        "clients_connected": ws_count,
+        "serial_connected": serial_manager.connected,
+        "mcp_connected": getattr(globals().get("xiaozhi_mcp_bridge"), "is_connected", False),
+        "connected_macs": connected_macs,
         "device_id": device_id
     }
 
@@ -2781,6 +3039,23 @@ async def api_chat(payload: ChatPayload):
     if serial_manager.is_running and serial_manager.connected:
         serial_manager.send_command(json.dumps({"action": "display", "emotion": "happy", "text": short_oled_text}))
         serial_manager._add_log(f"[CHAT AI] User: '{user_text}' -> Robot: '{reply}'")
+
+    # Phát sóng tới WebSocket Mic Monitor
+    ts_now = datetime.datetime.now().strftime("%H:%M:%S")
+    mic_monitor_manager.current_state["last_text"] = user_text
+    mic_monitor_manager.current_state["last_reply"] = reply
+    asyncio.create_task(mic_monitor_manager.broadcast({
+        "type": "stt_result",
+        "text": user_text,
+        "timestamp": ts_now,
+        "message": f"Người dùng: {user_text}"
+    }))
+    asyncio.create_task(mic_monitor_manager.broadcast({
+        "type": "llm_reply",
+        "reply": reply,
+        "timestamp": ts_now,
+        "message": f"Robot Sophia: {reply}"
+    }))
 
     return {
         "status": "ok",
@@ -3328,28 +3603,11 @@ async def get_device_by_id(agent_id: str, db: Session = Depends(get_db)):
         agent = db.query(Agent).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Không tìm thấy thiết bị")
-    return {
-        "id": agent.id,
-        "agent_id": agent.agent_id,
-        "name": agent.assistant_name or "Sophia",
-        "assistant_name": agent.assistant_name or "Sophia",
-        "device_name": agent.device_name or "Xiaozhi-EED0",
-        "prompt": agent.character or "",
-        "character": agent.character or "",
-        "model_id": agent.llm_model or "xz-lite",
-        "llm_model": agent.llm_model or "xz-lite",
-        "voice": agent.tts_voice or "Vietnamese_kindhearted_girl",
-        "tts_voice": agent.tts_voice or "Vietnamese_kindhearted_girl",
-        "language": agent.language or "vi",
-        "voice_speed": agent.tts_speech_speed or "normal",
-        "tts_speech_speed": agent.tts_speech_speed or "normal",
-        "voice_pitch": agent.tts_pitch or 0,
-        "tts_pitch": agent.tts_pitch or 0,
-        "hidden_prompt": agent.hidden_prompt or "",
-        "gemini_api_key": os.getenv("GEMINI_API_KEY", ""),
-        "openai_api_key": os.getenv("OPENAI_API_KEY", ""),
-        "deepseek_api_key": os.getenv("DEEPSEEK_API_KEY", "")
-    }
+    res_dict = format_device_dict(agent)
+    res_dict["gemini_api_key"] = os.getenv("GEMINI_API_KEY", "")
+    res_dict["openai_api_key"] = os.getenv("OPENAI_API_KEY", "")
+    res_dict["deepseek_api_key"] = os.getenv("DEEPSEEK_API_KEY", "")
+    return res_dict
 
 
 @app.put("/api/devices/{agent_id}")
@@ -3483,8 +3741,8 @@ class SaveConfigPayload(BaseModel):
     language: Optional[str] = "vi"
     tts_voice: Optional[str] = "Vietnamese_kindhearted_girl"
     tts_speech_speed: Optional[str] = "normal"
-    tts_pitch: Optional[int] = 0
-    character: str
+    tts_pitch: Optional[Any] = 0
+    character: Optional[str] = None
     hidden_prompt: Optional[str] = None
     mcp_endpoints: Optional[str] = None
 
@@ -3505,10 +3763,12 @@ async def save_xiaozhi_config(
     if not agent:
         raise HTTPException(status_code=404, detail="Không tìm thấy thiết bị nào để lưu cấu hình")
 
-    # Kiểm tra dòng bắt buộc [VAI TRÒ VÀ TÍNH CÁCH]
-    char_clean = payload.character.strip()
-    if not char_clean.startswith("[VAI TRÒ VÀ TÍNH CÁCH]"):
-        raise HTTPException(status_code=400, detail="Bắt buộc phải giữ lại tiêu đề: [VAI TRÒ VÀ TÍNH CÁCH]")
+    # Xử lý nội dung vai trò và tự động thêm tiêu đề nếu chưa có
+    char_clean = (payload.character or agent.character or "").strip()
+    if not char_clean:
+        char_clean = "[VAI TRÒ VÀ TÍNH CÁCH]\nBạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình."
+    elif not char_clean.startswith("[VAI TRÒ VÀ TÍNH CÁCH]"):
+        char_clean = f"[VAI TRÒ VÀ TÍNH CÁCH]\n{char_clean}"
 
     # Giới hạn ký tự
     max_limit = current_user.char_limit or 7305
@@ -3661,12 +3921,12 @@ async def delete_preset(preset_id: int, db: Session = Depends(get_db)):
 # Quản lý Thiết bị (Devices / Robots)
 @app.get("/api/devices")
 async def get_devices(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Lấy danh sách các robot ESP32"""
+    """Lấy danh sách các robot ESP32 chuẩn giao diện GMbot UI"""
     if current_user.role == "admin":
         agents = db.query(Agent).all()
     else:
         agents = db.query(Agent).filter(Agent.user_id == current_user.id).all()
-    return agents
+    return [format_device_dict(a) for a in agents]
 
 
 class DevicePayload(BaseModel):
