@@ -1163,7 +1163,7 @@ class RobotConnectionManager:
             "type": "state_change",
             "state": "idle",
             "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
-            "message": "Robot đã vào chế độ ngủ (Standby - Chờ 'Hi ESP')"
+            "message": "Robot đã vào chế độ ngủ (Standby - Chờ 'Hi Sophia' hoặc 'Sophia')"
         }))
         return sent_count
 
@@ -2584,7 +2584,7 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
         serial_manager._add_log(f"[KHẨU LỆNH] 💤 '{txt}' -> Nhận lệnh ĐI NGỦ/TẮT ROBOT. Đưa Robot vào chế độ ngủ (Standby)...")
         stop_active_music()
         await robot_ws_manager.send_sleep_command(dev_mac)
-        serial_manager._add_log("[ROBOT] 💤 Robot đã nhắm mắt đi ngủ (Standby). Nói 'Hi ESP' hoặc bấm nút để đánh thức.")
+        serial_manager._add_log("[ROBOT] 💤 Robot đã nhắm mắt đi ngủ (Standby). Nói 'Hi Sophia' hoặc 'Sophia' hoặc bấm nút để đánh thức.")
         return True
 
     # Danh sách từ khóa HỦY BÀI HỌC / THOÁT / QUAY VỀ SOPHIA
@@ -2898,7 +2898,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     "type": "state_change",
                     "state": "idle",
                     "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
-                    "message": "Robot đã vào chế độ ngủ (Standby - Chờ 'Hi ESP')"
+                    "message": "Robot đã vào chế độ ngủ (Standby - Chờ 'Hi Sophia' hoặc 'Sophia')"
                 }))
 
     watchdog_task = asyncio.create_task(auto_sleep_watchdog())
@@ -3509,7 +3509,7 @@ async def api_robot_sleep(payload: Optional[Dict[str, Any]] = None):
     return {
         "status": "ok",
         "success": True,
-        "message": "Robot đã vào chế độ ngủ (Standby - Chờ 'Hi ESP' hoặc bấm nút)",
+        "message": "Robot đã vào chế độ ngủ (Standby - Chờ 'Hi Sophia' hoặc 'Sophia' hoặc bấm nút)",
         "sent_count": sent_count
     }
 
