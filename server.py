@@ -14,7 +14,7 @@ import urllib.parse
 import urllib.request
 import struct
 from collections import deque
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from contextlib import asynccontextmanager
 
 try:
