@@ -5,13 +5,12 @@
 
 FROM python:3.11-slim-bookworm
 
-# Cài đặt curl, FFmpeg, Libopus và Node.js cho stream nhạc YouTube & giải mã signature JS
+# Cài đặt curl, FFmpeg và Libopus cho stream nhạc YouTube
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         ffmpeg \
         libopus0 \
         libopus-dev \
-        nodejs \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /app
 
