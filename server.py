@@ -56,6 +56,7 @@ DEFAULT_DEVICE_NAME = os.getenv("DEVICE_NAME", "Xiaozhi-EED0")
 DEFAULT_DEVICE_MAC = os.getenv("DEVICE_MAC", "14:c1:9f:c4:ee:d0")
 DEFAULT_UPSTREAM_URL = os.getenv("UPSTREAM_API_URL", "https://api.xiaozhi.me")
 DEFAULT_UPSTREAM_TOKEN = os.getenv("UPSTREAM_AUTH_TOKEN", "")
+DEFAULT_UPSTREAM_DEV_TOKEN = "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJnaXRodWJfdXNlcm5hbWUiOiJtZWV5emluaC13ZWIiLCJ1c2VySWQiOjEwNzIwOTEsInVzZXJuYW1lIjoibWVleXppbmhAZ21haWwuY29tIiwidGVsZXBob25lIjoiIiwiZ29vZ2xlRW1haWwiOiJtZWV5emluaEBnbWFpbC5jb20iLCJyb2xlIjoiZGV2ZWxvcGVyIiwicHVycG9zZSI6ImxvZ2luIiwiaWF0IjoxNzk0NDcwMDcyLCJleHAiOjE3OTUwNzQ4NzJ9.V4HW5raWQnIHQvFJUUEL3NxI1S5SHJx29Od5atUYTlA9nGDGNFljW-wzZiORwijsSAHo8T3jw37G42Ez-lV1Ag"
 DEFAULT_UPSTREAM_WS_URL = os.getenv("UPSTREAM_WS_URL", "wss://api.tenclass.net/xiaozhi/v1/")
 CURRENT_UPSTREAM_WS_URL = DEFAULT_UPSTREAM_WS_URL
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
@@ -591,6 +592,8 @@ async def sync_prompt_to_upstream(prompt: str, display_name: str = "Sophia", voi
 
     # 2. Cập nhật Xiaozhi.me (Upstream chính thức)
     token = os.getenv("UPSTREAM_AUTH_TOKEN", "").strip()
+    if not token or "mcp-endpoint" in token:
+        token = DEFAULT_UPSTREAM_DEV_TOKEN
     if token and agent_id:
         endpoints = [
             f"https://xiaozhi.me/api/agents/{agent_id}/config",
