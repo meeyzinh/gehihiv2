@@ -966,6 +966,19 @@ MCP_TOOL_DEFINITIONS = [
             },
             "required": ["query"]
         }
+    },
+    {
+        "name": "stop_youtube_music_on_robot",
+        "description": "Dừng phát nhạc, tắt bài hát YouTube ngay lập tức khi người dùng yêu cầu (ví dụ: 'dừng nhạc', 'tắt nhạc', 'dừng bài hát', 'thôi đừng hát nữa', 'im đi', 'stop').",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "description": "Lý do dừng phát nhạc (ví dụ: 'người dùng yêu cầu dừng')"
+                }
+            }
+        }
     }
 ]
 
@@ -1612,12 +1625,22 @@ def execute_mcp_tool(name: str, args: Dict[str, Any]) -> str:
                     tracks = await search_youtube_tracks(query, limit=1)
                     if tracks:
                         t = tracks[0]
-                        stop_current_music()
+                        stop_active_music()
                         ACTIVE_MUSIC_STATE["task"] = asyncio.create_task(resolve_and_stream_music(t["url"], t))
                 asyncio.create_task(_play_bg())
             res = f"Đang tìm kiếm và phát bài hát '{query}' từ YouTube trên Robot."
         except Exception as e:
             res = f"Lỗi phát nhạc YouTube: {e}"
+    elif name in ["stop_youtube_music_on_robot", "stop_music", "stop_youtube_music"]:
+        stop_active_music()
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(robot_ws_manager.send_oled_emotion("neutral", text="Da tat nhac"))
+        except Exception:
+            pass
+        res = "Đã dừng phát nhạc trên Robot thành công theo yêu cầu của bạn."
     else:
         res = f"Công cụ '{name}' không tồn tại trên GMbot MCP Server."
 
@@ -2351,9 +2374,17 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
     stop_music_keywords = [
         "dừng nhạc", "dung nhac", "tắt nhạc", "tat nhac",
         "ngừng nhạc", "ngung nhac", "stop music", "dừng bài hát",
-        "tat bai hat", "dừng phát", "dung phat", "thôi phát nhạc", "stop song"
+        "dung bai hat", "dừng bài", "dung bai", "tat bai hat",
+        "tắt bài hát", "tắt bài", "tat bai", "dừng phát", "dung phat",
+        "thôi phát nhạc", "stop song", "dừng lại", "dung lai",
+        "ngưng nhạc", "ngung nhac", "im đi", "im di", "im lặng", "im lang",
+        "thôi đừng hát", "thôi hát", "thoi hat", "stop", "tắt đi", "tat di",
+        "dừng nghe", "dung nghe", "tắt loa", "tat loa", "ngưng hát", "ngung hat"
     ]
-    if any(kw in t_norm for kw in stop_music_keywords):
+    is_playing = bool(ACTIVE_MUSIC_STATE.get("is_playing"))
+    words = t_norm.split()
+    quick_stop_words = ["dừng", "dung", "tắt", "tat", "ngừng", "ngung", "thôi", "thoi", "stop", "im", "pause", "ngưng", "ngung"]
+    if (is_playing and any(w in words or w in t_norm for w in quick_stop_words)) or any(kw in t_norm for kw in stop_music_keywords):
         stop_active_music()
         await robot_ws_manager.send_oled_emotion("neutral", text="Da tat nhac")
         serial_manager._add_log("[KHẨU LỆNH] ⏹ Đã dừng phát nhạc theo giọng nói!")
@@ -2783,9 +2814,17 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             except Exception:
                                 pass
                         continue
+                    elif p_type == "abort":
+                        print(f"[ROBOT WS] ⏹ Robot gửi tín hiệu ABORT (Wake Word hoặc phím bấm) -> Ngắt phát nhạc!")
+                        stop_active_music()
+                        serial_manager._add_log("[ROBOT] ⏹ Nhận tín hiệu Abort -> Đã ngắt âm thanh phát nhạc.")
+                        asyncio.create_task(robot_ws_manager.send_oled_emotion("neutral", text="Da tat nhac"))
                     elif p_type == "listen":
                         st = payload.get("state")
                         md = payload.get("mode", "manual")
+                        if st in ["detect", "start"] and ACTIVE_MUSIC_STATE.get("is_playing"):
+                            print("[ROBOT WS] 🎙 Bắt đầu lắng nghe người dùng -> Tự động ngắt phát nhạc!")
+                            stop_active_music()
                         print(f"[ROBOT MIC] Lắng nghe {st} (chế độ: {md})")
                         serial_manager._add_log(f"[MIC ROBOT] Đang lắng nghe giọng nói ({st})...")
                         st_ui = "recording" if st == "start" else ("processing" if st in ["stop", "detect"] else "idle")
