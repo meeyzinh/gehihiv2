@@ -7163,7 +7163,11 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
         bufEl.innerText = totalBytes > 1024 ? `${(totalBytes / 1024).toFixed(1)} KB` : `${totalBytes} B`;
       }
 
-      updateMicState("recording");
+      if (level > 0.15 || peak > 2500) {
+        updateMicState("recording");
+      } else {
+        updateMicState("idle");
+      }
     }
 
     function updateMicState(state) {
@@ -7191,6 +7195,14 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
         ind.style.boxShadow = "none";
         txt.innerText = "⚪ ROBOT NGẮT KẾT NỐI (OFFLINE)";
         txt.style.color = "#9ca3af";
+        const bar = document.getElementById("micLevelBar");
+        if (bar) bar.style.width = "0%";
+        const waveBars = document.querySelectorAll("#micWaveBars .mic-wave-bar");
+        waveBars.forEach(b => b.style.height = "5%");
+        const peakEl = document.getElementById("micPeakValue");
+        if (peakEl) peakEl.innerText = "0";
+        const dbEl = document.getElementById("micDbValue");
+        if (dbEl) dbEl.innerText = "(-∞ dBFS)";
       } else {
         ind.style.background = "#10b981";
         ind.style.boxShadow = "0 0 10px #10b981";

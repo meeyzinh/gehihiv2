@@ -1143,6 +1143,27 @@ class SerialBridgeManager:
         ts = time.strftime("%H:%M:%S")
         self.log_history.append({"time": ts, "text": text})
 
+    def check_connection(self) -> bool:
+        """Kiểm tra xem cổng phần cứng còn tồn tại và kết nối còn sống hay không"""
+        with self.lock:
+            if not self.connected or not self.ser:
+                self.connected = False
+                return False
+            try:
+                available = [p.device for p in serial.tools.list_ports.comports()]
+                if self.port not in available:
+                    self.connected = False
+                    if self.ser:
+                        try:
+                            self.ser.close()
+                        except Exception:
+                            pass
+                    self.ser = None
+                    return False
+            except Exception:
+                pass
+            return bool(self.connected and self.ser and self.ser.is_open)
+
     def _read_loop(self):
         while self.is_running:
             try:
@@ -1164,38 +1185,35 @@ class SerialBridgeManager:
                                 try:
                                     self.hw_info["mac"] = line.split("sta (")[-1].split(")")[0].strip().upper()
                                 except Exception: pass
-
-                            # Stream dữ liệu Microphone Peak thời gian thực tới WebSocket Mic Monitor
-                            if "AC Peak=" in line:
-                                try:
-                                    parts = line.split("AC Peak=")[-1].split()
-                                    if parts:
-                                        peak_val = int(parts[0])
-                                        lvl = round(min(1.0, peak_val / 16000.0), 3)
-                                        mic_monitor_manager.packet_index += 1
-                                        now_str = datetime.datetime.now().strftime("%H:%M:%S")
-                                        if MAIN_ASYNC_LOOP and MAIN_ASYNC_LOOP.is_running():
-                                            asyncio.run_coroutine_threadsafe(
-                                                mic_monitor_manager.broadcast({
-                                                    "type": "audio_packet",
-                                                    "peak": peak_val,
-                                                    "level": lvl,
-                                                    "packet_index": mic_monitor_manager.packet_index,
-                                                    "duration_ms": 60,
-                                                    "total_bytes": mic_monitor_manager.packet_index * 960,
-                                                    "timestamp": now_str,
-                                                    "message": f"Micro S3 - AC Peak: {peak_val} ({round(lvl*100, 1)}%)"
-                                                }),
-                                                MAIN_ASYNC_LOOP
-                                            )
-                                except Exception:
-                                    pass
                     else:
                         time.sleep(0.02)
                 else:
-                    time.sleep(0.2)
-            except Exception:
-                time.sleep(0.5)
+                    time.sleep(0.5)
+            except Exception as e:
+                # Phát hiện Robot ngắt kết nối (Rút cáp USB hoặc Tắt nguồn Robot)
+                with self.lock:
+                    self.connected = False
+                    if self.ser:
+                        try:
+                            self.ser.close()
+                        except Exception:
+                            pass
+                        self.ser = None
+                self._add_log(f"[HỆ THỐNG] Robot đã ngắt kết nối hoặc tắt nguồn (Cổng {self.port}).")
+                if MAIN_ASYNC_LOOP and MAIN_ASYNC_LOOP.is_running():
+                    try:
+                        asyncio.run_coroutine_threadsafe(
+                            mic_monitor_manager.broadcast({
+                                "type": "state_change",
+                                "state": "disconnected",
+                                "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+                                "message": "Robot đã ngắt kết nối hoặc tắt nguồn (Ngoại tuyến)"
+                            }),
+                            MAIN_ASYNC_LOOP
+                        )
+                    except Exception:
+                        pass
+                time.sleep(1.0)
 
     def get_logs(self):
         return list(self.log_history)
@@ -1279,18 +1297,19 @@ mic_monitor_manager = MicMonitorManager()
 
 
 def is_robot_online(agent: Optional[Any] = None) -> bool:
-    """Xác định trạng thái trực tuyến của robot đa kênh: Serial COM8 | WebSocket Client | MCP Bridge"""
+    """Xác định trạng thái trực tuyến THỰC TẾ của robot phần cứng (Serial COM8 hoặc WebSocket Wi-Fi)"""
     try:
-        if serial_manager.is_running and serial_manager.connected:
+        # 1. Kiểm tra cổng Serial phần cứng (USB COM8)
+        if serial_manager.is_running and serial_manager.check_connection():
             return True
+
+        # 2. Kiểm tra kết nối WebSocket thực tế từ robot (qua Wi-Fi)
         if len(robot_ws_manager.all_robots) > 0:
-            return True
-        bridge = globals().get("xiaozhi_mcp_bridge")
-        if bridge and getattr(bridge, "is_connected", False):
-            return True
-        if agent and getattr(agent, "mac_address", None):
-            mac_lower = str(agent.mac_address).lower().strip()
-            if mac_lower in robot_ws_manager.connected_macs:
+            if agent and getattr(agent, "mac_address", None):
+                mac_lower = str(agent.mac_address).lower().strip()
+                if mac_lower in robot_ws_manager.connected_macs:
+                    return True
+            else:
                 return True
     except Exception:
         pass
@@ -1342,25 +1361,52 @@ def format_device_dict(a: Agent) -> Dict[str, Any]:
 
 
 async def mic_monitor_heartbeat_loop():
-    """Gửi nhịp tim và mô phỏng sóng âm khi tab Mic Monitor mở"""
+    """Giám sát kết nối Robot và tự động kết nối lại khi robot bật nguồn"""
+    last_online_state = None
     while True:
         try:
-            await asyncio.sleep(1.2)
-            if mic_monitor_manager.active_websockets:
-                # Nếu không có âm thanh từ Serial trong 1.2s, gửi nhịp xung âm nền nhẹ
-                mic_monitor_manager.packet_index += 1
-                peak = random.randint(180, 420)
-                level = round(peak / 20000.0, 3)
+            await asyncio.sleep(2.0)
+            is_on = is_robot_online()
+
+            # Tự động tìm và kết nối lại cổng Serial nếu robot được bật nguồn trở lại
+            if not is_on and not serial_manager.connected:
+                try:
+                    available = [p.device for p in serial.tools.list_ports.comports()]
+                    if "COM8" in available or any("303A" in (p.hwid or "") for p in serial.tools.list_ports.comports()):
+                        serial_manager.auto_connect()
+                        is_on = is_robot_online()
+                except Exception:
+                    pass
+
+            # Nếu trạng thái thay đổi từ online sang offline hoặc ngược lại
+            if is_on != last_online_state:
+                last_online_state = is_on
                 now_str = datetime.datetime.now().strftime("%H:%M:%S")
+                if is_on:
+                    msg = "Robot ESP32 đã kết nối và trực tuyến!"
+                    state_val = "idle"
+                else:
+                    msg = "Robot ESP32 đã tắt nguồn hoặc ngắt kết nối (Offline)."
+                    state_val = "disconnected"
+
+                mic_monitor_manager.current_state["state"] = state_val
                 await mic_monitor_manager.broadcast({
-                    "type": "audio_packet",
-                    "peak": peak,
-                    "level": level,
-                    "packet_index": mic_monitor_manager.packet_index,
-                    "duration_ms": 60,
-                    "total_bytes": mic_monitor_manager.packet_index * 960,
+                    "type": "state_change",
+                    "state": state_val,
                     "timestamp": now_str,
-                    "message": f"Micro S3 sẵn sàng - Gói tin Opus #{mic_monitor_manager.packet_index} (Biên độ: {peak})"
+                    "message": msg
+                })
+
+                # Đồng thời phát danh sách thiết bị cập nhật lại cho Web UI
+                db = SessionLocal()
+                try:
+                    agents = db.query(Agent).all()
+                    out_devs = [format_device_dict(a) for a in agents]
+                finally:
+                    db.close()
+                await mic_monitor_manager.broadcast({
+                    "type": "device_list",
+                    "devices": out_devs
                 })
         except asyncio.CancelledError:
             break
@@ -2467,6 +2513,21 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             txt = p.get("text", "")
                             if txt:
                                 serial_manager._add_log(f"[ROBOT AI NÓI] {txt}")
+                                mic_monitor_manager.current_state["state"] = "speaking"
+                                asyncio.create_task(mic_monitor_manager.broadcast({
+                                    "type": "state_change",
+                                    "state": "speaking",
+                                    "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+                                    "message": f"Robot đang phát loa: \"{txt[:30]}...\""
+                                }))
+                        elif p_type == "tts" and p.get("state") in ["stop", "sentence_end"]:
+                            mic_monitor_manager.current_state["state"] = "idle"
+                            asyncio.create_task(mic_monitor_manager.broadcast({
+                                "type": "state_change",
+                                "state": "idle",
+                                "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+                                "message": "Sẵn sàng (chờ giọng nói)"
+                            }))
                     except Exception:
                         pass
                     try:
@@ -2508,6 +2569,14 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                         md = payload.get("mode", "manual")
                         print(f"[ROBOT MIC] Lắng nghe {st} (chế độ: {md})")
                         serial_manager._add_log(f"[MIC ROBOT] Đang lắng nghe giọng nói ({st})...")
+                        st_ui = "recording" if st == "start" else ("processing" if st in ["stop", "detect"] else "idle")
+                        mic_monitor_manager.current_state["state"] = st_ui
+                        asyncio.create_task(mic_monitor_manager.broadcast({
+                            "type": "state_change",
+                            "state": st_ui,
+                            "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+                            "message": f"Robot chuyển trạng thái lắng nghe: {st} ({md})"
+                        }))
                         if st == "start" and not is_ws_alive(upstream_ws):
                             await connect_upstream_ai()
                 except Exception:
@@ -2524,11 +2593,24 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
 
             elif "bytes" in msg_data and msg_data["bytes"]:
                 # Chuyển tiếp luồng âm thanh Mic INMP441 lên Upstream AI để nhận diện giọng nói!
+                raw_chunk = msg_data["bytes"]
+                mic_monitor_manager.packet_index += 1
+                asyncio.create_task(mic_monitor_manager.broadcast({
+                    "type": "audio_packet",
+                    "peak": 4500,
+                    "level": 0.35,
+                    "state": "recording",
+                    "packet_index": mic_monitor_manager.packet_index,
+                    "duration_ms": 60,
+                    "total_bytes": mic_monitor_manager.packet_index * len(raw_chunk),
+                    "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+                    "message": f"Gói âm thanh Mic Opus #{mic_monitor_manager.packet_index} ({len(raw_chunk)}B)"
+                }))
                 if not is_ws_alive(upstream_ws):
                     await connect_upstream_ai()
                 if is_ws_alive(upstream_ws):
                     try:
-                        await upstream_ws.send(msg_data["bytes"])
+                        await upstream_ws.send(raw_chunk)
                     except Exception:
                         pass
     except WebSocketDisconnect:
@@ -2773,14 +2855,14 @@ async def robot_status(device_id: Optional[str] = None):
     ws_count = len(robot_ws_manager.all_robots)
     online = is_robot_online()
     connected_macs = list(robot_ws_manager.connected_macs)
-    if serial_manager.connected and "14:c1:9f:c4:ee:d0" not in connected_macs:
+    if online and serial_manager.connected and "14:c1:9f:c4:ee:d0" not in connected_macs:
         connected_macs.append("14:c1:9f:c4:ee:d0")
     return {
         "connected": online,
         "clients_connected": ws_count,
-        "serial_connected": serial_manager.connected,
+        "serial_connected": bool(online and serial_manager.connected),
         "mcp_connected": getattr(globals().get("xiaozhi_mcp_bridge"), "is_connected", False),
-        "connected_macs": connected_macs,
+        "connected_macs": connected_macs if online else [],
         "device_id": device_id
     }
 
