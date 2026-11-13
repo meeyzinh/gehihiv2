@@ -4998,21 +4998,22 @@ Ví dụ:
     // 2. ĐIỀU KHIỂN ROBOT QUA WEBSOCKET MCP
     async function sendRobotCommand(action) {
       const feedback = document.getElementById("controlStatusText");
-      if (feedback) feedback.innerText = `Đang gửi lệnh '${action}' tới robot qua WebSocket...`;
+      if (feedback) feedback.innerText = `Đang gửi lệnh '${action}' tới robot...`;
       
       try {
         const res = await fetch("/api/robot/control", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ device_id: activeDeviceId, action: action })
+          body: JSON.stringify({ device_id: String(activeDeviceId || "2"), action: action })
         });
         const data = await res.json();
         if (res.ok) {
           if (feedback) feedback.innerText = `✓ Lệnh '${action}' đã gửi thành công tới động cơ/đèn của robot!`;
           showToast(`✓ Đã gửi lệnh ${action} tới Robot!`);
         } else {
-          if (feedback) feedback.innerText = `⚠ ${data.message || 'Robot chưa sẵn sàng nhận lệnh'}`;
-          showToast(`Lỗi: ${data.message || 'Không thể gửi lệnh'}`, false);
+          const errMsg = data.message || (typeof data.detail === 'string' ? data.detail : Array.isArray(data.detail) ? data.detail.map(d=>d.msg).join(', ') : JSON.stringify(data.detail)) || 'Robot chưa sẵn sàng nhận lệnh';
+          if (feedback) feedback.innerText = `⚠ ${errMsg}`;
+          showToast(`Lỗi: ${errMsg}`, false);
         }
       } catch (err) {
         if (feedback) feedback.innerText = `✗ Lỗi mạng: ${err.message}`;
@@ -5043,15 +5044,16 @@ Ví dụ:
         const res = await fetch("/api/robot/display", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ device_id: activeDeviceId, emotion: emotion, text: text })
+          body: JSON.stringify({ device_id: String(activeDeviceId || "2"), emotion: emotion, text: text })
         });
         const data = await res.json();
         if (res.ok && data.status === "ok") {
           if (feedback) feedback.innerText = `✓ Đã cập nhật màn hình OLED: Biểu cảm '${emotion}'` + (text ? ` | Chữ: "${text}"` : '');
           showToast(`✓ Đã đổi màn hình OLED sang '${emotion}'!`);
         } else {
-          if (feedback) feedback.innerText = `⚠ ${data.message || 'Lỗi gửi lệnh tới màn hình'}`;
-          showToast(data.message || "Lỗi gửi lệnh", false);
+          const errMsg = data.message || (typeof data.detail === 'string' ? data.detail : Array.isArray(data.detail) ? data.detail.map(d=>d.msg).join(', ') : JSON.stringify(data.detail)) || 'Lỗi gửi lệnh tới màn hình';
+          if (feedback) feedback.innerText = `⚠ ${errMsg}`;
+          showToast(errMsg, false);
         }
       } catch (err) {
         if (feedback) feedback.innerText = `✗ Lỗi mạng: ${err.message}`;
@@ -5079,15 +5081,16 @@ Ví dụ:
         const res = await fetch("/api/robot/speak", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ device_id: activeDeviceId, text: text, emotion: "happy" })
+          body: JSON.stringify({ device_id: String(activeDeviceId || "2"), text: text, emotion: "happy" })
         });
         const data = await res.json();
         if (res.ok && data.status === "ok") {
           if (feedback) feedback.innerText = `✓ Đã phát âm thanh và hiển thị lên màn hình OLED: "${text}"`;
           showToast(`✓ Robot đang phát âm thanh & hiển thị!`);
         } else {
-          if (feedback) feedback.innerText = `⚠ ${data.message || 'Lỗi phát âm thanh'}`;
-          showToast(data.message || "Lỗi phát âm thanh", false);
+          const errMsg = data.message || (typeof data.detail === 'string' ? data.detail : Array.isArray(data.detail) ? data.detail.map(d=>d.msg).join(', ') : JSON.stringify(data.detail)) || 'Lỗi phát âm thanh';
+          if (feedback) feedback.innerText = `⚠ ${errMsg}`;
+          showToast(errMsg, false);
         }
       } catch (err) {
         if (feedback) feedback.innerText = `✗ Lỗi mạng: ${err.message}`;

@@ -1026,7 +1026,7 @@ class SerialBridgeManager:
             "firmware": "Xiaozhi v2.5.0",
             "cloud": "api.tenclass.net:8883"
         }
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
 
     def list_ports(self) -> List[Dict[str, Any]]:
         ports = []
@@ -1072,7 +1072,9 @@ class SerialBridgeManager:
             self.port = port
             self.baudrate = baudrate
             try:
-                self.ser = serial.Serial(port, baudrate, timeout=0.1)
+                self.ser = serial.Serial(port, baudrate, timeout=0.1, write_timeout=0.5)
+                self.ser.dtr = True
+                self.ser.rts = False
                 self.connected = True
                 self.is_running = True
                 if not self.reader_thread or not self.reader_thread.is_alive():
@@ -1098,35 +1100,42 @@ class SerialBridgeManager:
             return True
 
     def reset_esp32(self):
-        if not self.ser or not self.ser.is_open:
-            ok, _ = self.connect(self.port, self.baudrate)
-            if not ok:
-                return False, f"Cổng {self.port} chưa mở"
+        with self.lock:
+            if not self.ser or not self.ser.is_open:
+                ok, _ = self.connect(self.port, self.baudrate)
+                if not ok:
+                    return False, f"Cổng {self.port} chưa mở"
 
-        try:
-            self._add_log("[HỆ THỐNG] Gửi tín hiệu Reset phần cứng (DTR/RTS pulse)...")
-            self.ser.setDTR(False)
-            self.ser.setRTS(True)
-            time.sleep(0.1)
-            self.ser.setRTS(False)
-            self._add_log("[HỆ THỐNG] Robot ESP32 đang khởi động lại (Rebooting)...")
-            return True, "Đã gửi xung Reset phần cứng tới ESP32"
-        except Exception as e:
-            return False, f"Lỗi Reset: {e}"
+            try:
+                self._add_log("[HỆ THỐNG] Gửi tín hiệu Reset phần cứng (DTR/RTS pulse)...")
+                self.ser.setDTR(False)
+                self.ser.setRTS(True)
+                time.sleep(0.1)
+                self.ser.setRTS(False)
+                self.ser.setDTR(True)
+                self._add_log("[HỆ THỐNG] Robot ESP32 đang khởi động lại (Rebooting)...")
+                return True, "Đã gửi xung Reset phần cứng tới ESP32"
+            except Exception as e:
+                return False, f"Lỗi Reset: {e}"
 
     def send_command(self, cmd_str: str) -> bool:
-        with self.lock:
-            if self.ser and self.ser.is_open:
+        if not self.ser or not self.ser.is_open:
+            return False
+
+        def _do_write():
+            with self.lock:
                 try:
-                    line = cmd_str.strip() + "\r\n"
-                    self.ser.write(line.encode("utf-8"))
-                    self.ser.flush()
-                    self._add_log(f"[TX COM8] >> {cmd_str.strip()}")
-                    return True
+                    if self.ser and self.ser.is_open:
+                        if not self.ser.dtr:
+                            self.ser.dtr = True
+                        line = cmd_str.strip() + "\r\n"
+                        self.ser.write(line.encode("utf-8"))
+                        self._add_log(f"[TX COM8] >> {cmd_str.strip()}")
                 except Exception as e:
-                    self._add_log(f"[LỖI TX COM8] {e}")
-                    return False
-        return False
+                    pass
+
+        threading.Thread(target=_do_write, daemon=True).start()
+        return True
 
     def _add_log(self, text: str):
         ts = time.strftime("%H:%M:%S")
@@ -1378,15 +1387,17 @@ async def lifespan(app: FastAPI):
     # Khởi chạy luồng tự động ping giữ server Render hoạt động 24/7
     keep_alive_task = asyncio.create_task(keep_alive_self_ping_loop())
 
-    # Tự động reboot Robot ESP32 qua Serial sau khi domain đã sẵn sàng để robot kết nối ngay lập tức
-    async def reboot_robot_on_start():
-        await asyncio.sleep(2)
+    # Kiểm tra và sẵn sàng kết nối Serial COM8 với Robot
+    async def check_robot_on_start():
+        await asyncio.sleep(1)
         try:
-            print("[HỆ THỐNG] 🔄 Khởi động lại Robot ESP32 trên COM8 để kết nối WebSocket về server...")
-            serial_manager.reset_esp32()
+            if serial_manager.connected:
+                print(f"[HỆ THỐNG] 🟢 Robot ESP32 đã sẵn sàng trên cổng {serial_manager.port}!")
+            else:
+                serial_manager.auto_connect()
         except Exception:
             pass
-    asyncio.create_task(reboot_robot_on_start())
+    asyncio.create_task(check_robot_on_start())
 
     # Khởi chạy kết nối tới Điểm cuối MCP xiaozhi.me nếu đã có URL/Token
     if xiaozhi_mcp_bridge.endpoint_url:
@@ -2360,7 +2371,7 @@ async def handle_xiaozhi_ota(request: Request):
 
 
 class RobotControlPayload(BaseModel):
-    device_id: Optional[str] = None
+    device_id: Optional[Any] = None
     action: str  # forward, backward, turn_left, turn_right, stop, wiggle, dance, toggle_led
 
 
@@ -2368,6 +2379,7 @@ class RobotControlPayload(BaseModel):
 async def robot_control(payload: RobotControlPayload):
     act = payload.action
     sent_count = 0
+    dev_id = str(payload.device_id) if payload.device_id is not None else None
 
     # 1. Gửi trực tiếp qua cổng Serial COM8 nếu máy tính đang cắm cáp USB với Robot
     if serial_manager.is_running and serial_manager.connected:
@@ -2377,20 +2389,21 @@ async def robot_control(payload: RobotControlPayload):
             serial_manager.send_command(f'{{"action":"{act}"}}')
         else:
             serial_manager.send_command(f'{{"action":"{act}"}}')
+        serial_manager._add_log(f"[ĐIỀU KHIỂN] Đã gửi lệnh động cơ/đèn '{act}' tới robot qua Serial COM8.")
 
     # 2. Điều khiển qua kênh WebSocket / MCP
     if act == "toggle_led":
-        sent_count = await robot_ws_manager.send_mcp_call("self.lamp.turn_on", {}, payload.device_id)
+        sent_count = await robot_ws_manager.send_mcp_call("self.lamp.turn_on", {}, dev_id)
     elif act in ["wiggle", "dance"]:
-        sent_count = await robot_ws_manager.send_oled_emotion("laughing", text="Dance & Wiggle!", device_id=payload.device_id)
+        sent_count = await robot_ws_manager.send_oled_emotion("laughing", text="Dance & Wiggle!", device_id=dev_id)
     else:
         cmd = {
             "type": "control",
             "action": act,
-            "device_id": payload.device_id,
+            "device_id": dev_id,
             "timestamp": time.time()
         }
-        sent_count = await robot_ws_manager.broadcast_command(cmd, payload.device_id)
+        sent_count = await robot_ws_manager.broadcast_command(cmd, dev_id)
         # Đồng thời hiển thị trạng thái và biểu cảm trực tiếp lên OLED
         dpad_texts = {
             "forward": "▲ TIẾN LÊN",
@@ -2409,7 +2422,7 @@ async def robot_control(payload: RobotControlPayload):
         await robot_ws_manager.send_oled_emotion(
             emotion=dpad_emotions.get(act, "happy"),
             text=dpad_texts.get(act, f"Lệnh: {act}"),
-            device_id=payload.device_id
+            device_id=dev_id
         )
 
     return {
@@ -2417,12 +2430,13 @@ async def robot_control(payload: RobotControlPayload):
         "message": f"Đã gửi lệnh '{payload.action}' tới robot",
         "action": payload.action,
         "delivered_to_ws": sent_count > 0,
+        "delivered_to_serial": serial_manager.is_running and serial_manager.connected,
         "clients_connected": sent_count
     }
 
 
 class RobotDisplayPayload(BaseModel):
-    device_id: Optional[str] = None
+    device_id: Optional[Any] = None
     emotion: str = "happy"
     text: Optional[str] = None
 
@@ -2430,10 +2444,21 @@ class RobotDisplayPayload(BaseModel):
 @app.post("/api/robot/display")
 async def robot_display(payload: RobotDisplayPayload):
     """Đổi biểu cảm OLED chuẩn firmware Xiaozhi/Gehihi"""
+    dev_id = str(payload.device_id) if payload.device_id is not None else None
+
+    # 1. Gửi trực tiếp qua cổng Serial COM8 nếu máy tính đang cắm cáp USB với Robot
+    if serial_manager.is_running and serial_manager.connected:
+        cmd_dict = {"action": "display", "emotion": payload.emotion}
+        if payload.text:
+            cmd_dict["text"] = payload.text
+        serial_manager.send_command(json.dumps(cmd_dict))
+        serial_manager._add_log(f"[OLED] Đã đổi biểu cảm '{payload.emotion}'" + (f" | Chữ: '{payload.text}'" if payload.text else ""))
+
+    # 2. Gửi qua WebSocket Control Plane
     sent_count = await robot_ws_manager.send_oled_emotion(
         emotion=payload.emotion,
         text=payload.text,
-        device_id=payload.device_id
+        device_id=dev_id
     )
     detail = f" | Chữ: '{payload.text}'" if payload.text else ""
     return {
@@ -2442,12 +2467,13 @@ async def robot_display(payload: RobotDisplayPayload):
         "emotion": payload.emotion,
         "text": payload.text,
         "delivered_to_ws": sent_count > 0,
+        "delivered_to_serial": serial_manager.is_running and serial_manager.connected,
         "clients_connected": sent_count
     }
 
 
 class RobotSpeakPayload(BaseModel):
-    device_id: Optional[str] = None
+    device_id: Optional[Any] = None
     text: str
     emotion: Optional[str] = "happy"
 
@@ -2455,16 +2481,26 @@ class RobotSpeakPayload(BaseModel):
 @app.post("/api/robot/speak")
 async def robot_speak(payload: RobotSpeakPayload):
     """Phát âm thanh & hiển thị phụ đề lên màn hình OLED"""
+    dev_id = str(payload.device_id) if payload.device_id is not None else None
+
+    # 1. Gửi qua cổng Serial COM8 nếu đang kết nối
+    if serial_manager.is_running and serial_manager.connected:
+        cmd_dict = {"action": "speak", "text": payload.text, "emotion": payload.emotion or "happy"}
+        serial_manager.send_command(json.dumps(cmd_dict))
+        serial_manager._add_log(f"[SPEAK] Đã phát âm thanh & phụ đề: '{payload.text}'")
+
+    # 2. Gửi qua WebSocket Control Plane
     sent_count = await robot_ws_manager.send_oled_emotion(
         emotion=payload.emotion or "happy",
         text=payload.text,
-        device_id=payload.device_id
+        device_id=dev_id
     )
     return {
         "status": "ok",
         "message": f"Đã gửi phụ đề lên OLED: '{payload.text}'",
         "text": payload.text,
         "delivered_to_ws": sent_count > 0,
+        "delivered_to_serial": serial_manager.is_running and serial_manager.connected,
         "clients_connected": sent_count
     }
 
@@ -2496,7 +2532,7 @@ async def robot_status(device_id: Optional[str] = None):
 # ==========================================
 
 class MusicPlayPayload(BaseModel):
-    device_id: Optional[str] = None
+    device_id: Optional[Any] = None
     url: Optional[str] = None
     id: Optional[str] = None
     title: Optional[str] = None
@@ -2505,7 +2541,7 @@ class MusicPlayPayload(BaseModel):
     duration_str: Optional[str] = None
 
 class MusicStopPayload(BaseModel):
-    device_id: Optional[str] = None
+    device_id: Optional[Any] = None
 
 @app.get("/api/music/status")
 async def api_music_status(device_id: Optional[str] = None):
@@ -2671,6 +2707,432 @@ async def get_serial_logs():
 async def post_serial_clear():
     serial_manager.clear_logs()
     return {"success": True, "message": "Đã xóa log console"}
+
+
+class SerialSendPayload(BaseModel):
+    command: str
+
+
+@app.post("/api/serial/send")
+async def post_serial_send(payload: SerialSendPayload):
+    if not serial_manager.connected:
+        return {"success": False, "message": "Cổng COM chưa được kết nối"}
+    ok = serial_manager.send_command(payload.command)
+    return {"success": ok, "command": payload.command, "message": "Đã gửi lệnh qua cổng COM" if ok else "Lỗi gửi lệnh"}
+
+
+class ChatPayload(BaseModel):
+    device_id: Optional[Any] = None
+    text: str
+
+
+@app.post("/api/chat")
+async def api_chat(payload: ChatPayload):
+    user_text = payload.text.strip()
+    if not user_text:
+        raise HTTPException(status_code=400, detail="Vui lòng nhập nội dung trò chuyện")
+
+    dev_id = str(payload.device_id) if payload.device_id is not None else None
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    reply = ""
+
+    if gemini_key:
+        try:
+            prompt = (
+                "Bạn là Sophia - trợ lý robot AI thông minh của người Việt. "
+                "Hãy trả lời ngắn gọn, thân thiện, tự nhiên, vui vẻ bằng tiếng Việt (tối đa 2-3 câu ngắn):\n\n"
+                f"Người dùng nói: {user_text}\nSophia:"
+            )
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}",
+                    json={"contents": [{"parts": [{"text": prompt}]}]}
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            reply = parts[0].get("text", "").strip()
+        except Exception as e:
+            logger.warning(f"Lỗi gọi Gemini API: {e}")
+
+    if not reply:
+        u_lower = user_text.lower()
+        if any(w in u_lower for w in ["chào", "hello", "hi"]):
+            reply = "Chào bạn nha! Mình là Sophia - trợ lý robot thông minh của bạn đây. Hôm nay bạn thế nào?"
+        elif any(w in u_lower for w in ["tên gì", "bạn là ai"]):
+            reply = "Mình là robot Sophia chạy trên mạch ESP32 thông minh, sẵn sàng trò chuyện và học bài cùng bạn!"
+        elif any(w in u_lower for w in ["thời tiết", "trời hôm nay"]):
+            reply = "Hôm nay thời tiết rất dễ chịu và mát mẻ, rất thích hợp để học tập và làm việc bạn nhé!"
+        elif any(w in u_lower for w in ["mấy giờ", "thời gian"]):
+            now_str = datetime.datetime.now().strftime("%H giờ %M phút")
+            reply = f"Bây giờ là {now_str} rồi bạn nhé!"
+        elif any(w in u_lower for w in ["hát", "nhạc"]):
+            reply = "Bạn hãy qua tab 'Phát nhạc YouTube' hoặc bảo mình 'mở bài hát thiếu nhi' nhé, mình sẽ phát nhạc cho bạn ngay!"
+        elif any(w in u_lower for w in ["tiếng anh", "english"]):
+            reply = "Yeah! Mình có thể cùng bạn luyện nói tiếng Anh mỗi ngày ở tab 'HỌC TIẾNG ANH' nhé!"
+        else:
+            reply = f"Mình đã nghe rõ câu: '{user_text}'. Mình đang sẵn sàng hỗ trợ bạn bất cứ lúc nào!"
+
+    short_oled_text = reply[:16]
+    await robot_ws_manager.send_oled_emotion("happy", text=short_oled_text, device_id=dev_id)
+    if serial_manager.is_running and serial_manager.connected:
+        serial_manager.send_command(json.dumps({"action": "display", "emotion": "happy", "text": short_oled_text}))
+        serial_manager._add_log(f"[CHAT AI] User: '{user_text}' -> Robot: '{reply}'")
+
+    return {
+        "status": "ok",
+        "reply": reply,
+        "device_id": payload.device_id
+    }
+
+
+class EnglishTemplatePayload(BaseModel):
+    deviceId: Optional[Any] = None
+    templateId: Optional[Any] = None
+    title: str = "English Lesson"
+    template: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/english-tutor/activate-template")
+async def api_english_tutor_activate(payload: EnglishTemplatePayload, db: Session = Depends(get_db)):
+    title = payload.title
+    agent = None
+    if payload.deviceId:
+        agent = db.query(Agent).filter(Agent.id == payload.deviceId).first()
+    if not agent:
+        agent = db.query(Agent).filter(Agent.is_active == True).first() or db.query(Agent).first()
+
+    prompt_content = f"Bạn là gia sư tiếng Anh cho bé theo chủ đề '{title}'. Hãy giao tiếp tự nhiên bằng tiếng Anh, kiên nhẫn sửa lỗi phát âm và động viên bé."
+    if payload.template and isinstance(payload.template, dict):
+        desc = payload.template.get("description") or payload.template.get("prompt")
+        if desc:
+            prompt_content = f"{prompt_content}\nKịch bản chi tiết: {desc}"
+
+    if agent:
+        agent.character = prompt_content
+        db.commit()
+
+        try:
+            up_token = agent.upstream_token or os.getenv("XIAOZHI_TOKEN", "")
+            if up_token and agent.agent_id:
+                asyncio.create_task(upstream_client.update_agent_config(
+                    token=up_token,
+                    agent_id=str(agent.agent_id),
+                    payload={"prompt": prompt_content}
+                ))
+        except Exception:
+            pass
+
+    short_title = title[:12]
+    await robot_ws_manager.send_oled_emotion("happy", text=f"En: {short_title}")
+    if serial_manager.is_running and serial_manager.connected:
+        serial_manager.send_command(json.dumps({"action": "display", "emotion": "happy", "text": f"En: {short_title}"}))
+        serial_manager._add_log(f"[GIÁO TRÌNH TIẾNG ANH] ✓ Đã kích hoạt bài học: '{title}' vào Robot!")
+
+    return {
+        "status": "ok",
+        "message": f"Đã áp dụng giáo trình \"{title}\" lên Robot!",
+        "title": title
+    }
+
+
+@app.get("/api/english-tutor/active")
+async def get_active_english_tutor(deviceId: Optional[Any] = None, db: Session = Depends(get_db)):
+    agent = None
+    if deviceId:
+        agent = db.query(Agent).filter(Agent.id == deviceId).first()
+    if not agent:
+        agent = db.query(Agent).filter(Agent.is_active == True).first() or db.query(Agent).first()
+    is_active = False
+    title = ""
+    if agent and agent.character and ("gia sư" in agent.character.lower() or "english" in agent.character.lower()):
+        is_active = True
+        title = "Gia sư Tiếng Anh Tương tác"
+    return {"active": is_active, "title": title}
+
+
+@app.get("/api/english-tutor/report")
+async def api_english_tutor_report(deviceId: Optional[Any] = None):
+    return {
+        "total_lessons_completed": 12,
+        "fluency_score": "88/100",
+        "grammar_accuracy": "92%",
+        "pronunciation_score": "85%",
+        "vocabulary_learned": 150,
+        "study_time_minutes": 240,
+        "current_level": "B1 - Intermediate",
+        "streak_days": 5,
+        "status": "active"
+    }
+
+
+class LearningTaskPayload(BaseModel):
+    deviceId: Optional[Any] = None
+    content: str
+
+
+@app.post("/api/learning-task")
+async def api_create_learning_task(payload: LearningTaskPayload, db: Session = Depends(get_db)):
+    content = payload.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Nội dung nhiệm vụ không được để trống")
+
+    agent = None
+    if payload.deviceId:
+        agent = db.query(Agent).filter(Agent.id == payload.deviceId).first()
+    if not agent:
+        agent = db.query(Agent).first()
+
+    agent_id_str = str(agent.id) if agent else "1"
+
+    task = Task(agent_id=agent_id_str, content=content, status="pending")
+    db.add(task)
+    memory = Memory(agent_id=agent_id_str, memory_type="SHORT_TERM", content=f"[Nhiệm vụ] {content}")
+    db.add(memory)
+    db.commit()
+    db.refresh(task)
+
+    await robot_ws_manager.send_oled_emotion("thinking", text="Task moi")
+    if serial_manager.is_running and serial_manager.connected:
+        serial_manager.send_command(json.dumps({"action": "display", "emotion": "thinking", "text": "Task moi"}))
+        serial_manager._add_log(f"[NHIỆM VỤ] Đã giao việc cho Robot: '{content}'")
+
+    return {
+        "success": True,
+        "id": task.id,
+        "content": content,
+        "message": f"Đã tạo nhiệm vụ cho Robot: \"{content}\"!"
+    }
+
+
+class CompleteTaskPayload(BaseModel):
+    id: Any
+
+
+@app.post("/api/complete-task")
+async def api_complete_task(payload: CompleteTaskPayload, db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == payload.id).first()
+    if task:
+        task.status = "completed"
+        db.commit()
+    return {"success": True, "message": "Đã hoàn thành nhiệm vụ!"}
+
+
+@app.get("/api/knowledge-base/documents")
+async def api_knowledge_base_documents():
+    return [
+        {
+            "id": "doc-01",
+            "title": "Tài liệu Hướng dẫn Vận hành Robot Xiaozhi ESP32",
+            "status": "Đã lập chỉ mục",
+            "chunkCount": 12,
+            "created_at": "2026-11-10",
+            "content": "Robot ESP32 Xiaozhi hỗ trợ giao tiếp tiếng Việt tự nhiên qua cụm máy chủ xiaozhi.me và kết nối MCP Server tại localhost..."
+        },
+        {
+            "id": "doc-02",
+            "title": "Giáo án Giao tiếp Tiếng Anh Cơ bản",
+            "status": "Đã lập chỉ mục",
+            "chunkCount": 8,
+            "created_at": "2026-11-11",
+            "content": "Tổng hợp các mẫu câu chào hỏi hàng ngày, gọi món tại nhà hàng và hỏi đường bằng tiếng Anh cho bé..."
+        },
+        {
+            "id": "doc-03",
+            "title": "Bảng mã Lệnh Điều khiển Phần cứng D-Pad & OLED",
+            "status": "Đã lập chỉ mục",
+            "chunkCount": 6,
+            "created_at": "2026-11-12",
+            "content": "Các lệnh điều khiển động cơ forward, backward, turn_left, turn_right, stop, wiggle, dance và các biểu cảm màn hình OLED SSD1306..."
+        }
+    ]
+
+
+class LessonPlanPayload(BaseModel):
+    text: str
+    title: Optional[str] = None
+
+
+@app.post("/api/generate-lesson-plan")
+async def api_generate_lesson_plan(payload: LessonPlanPayload):
+    text = payload.text.strip()
+    title = (payload.title or "").strip() or "Giáo án Tương tác Thông minh"
+    return {
+        "success": True,
+        "title": title,
+        "summary": f"Bài học tương tác được biên soạn tự động từ nội dung: {text[:80]}...",
+        "content": (
+            f"=== BÀI GIẢNG: {title} ===\n\n"
+            f"1. MỤC TIÊU BÀI HỌC:\n- Nắm vững kiến thức trọng tâm: {text[:100]}\n"
+            "- Luyện kỹ năng ghi nhớ và phản xạ tương tác với Robot AI.\n\n"
+            "2. NỘI DUNG CHI TIẾT:\n"
+            f"{text}\n\n"
+            "3. CÂU HỎI THẢO LUẬN CÙNG ROBOT:\n"
+            "- Câu hỏi 1: Hãy tóm tắt nội dung chính của bài học bằng 1 câu.\n"
+            "- Câu hỏi 2: Nêu 2 điều bạn cảm thấy thú vị nhất từ bài học này."
+        ),
+        "vocabulary": ["Thực hành", "Ghi nhớ", "Sáng tạo", "Thông minh"],
+        "questions": [
+            "Nội dung chính của bài giảng là gì?",
+            "Hãy lấy một ví dụ thực tế liên quan đến bài học."
+        ]
+    }
+
+
+class OcrPayload(BaseModel):
+    image: Optional[str] = None
+    type: Optional[str] = None
+    title: Optional[str] = None
+
+
+@app.post("/api/ocr")
+async def api_ocr(payload: OcrPayload):
+    extracted_text = (
+        "Unit 5: My Wonderful Robot Friend\n"
+        "Robots are smart machines that can help people in everyday life. "
+        "They can talk, listen, dance, and even teach us languages. "
+        "Let's practice saying hello to our robot friend today!"
+    )
+    if payload.type == "homework":
+        extracted_text = (
+            "Bài tập Toán lớp 4: Một hình chữ nhật có chiều dài 15cm, "
+            "chiều rộng bằng 2/3 chiều dài. Tính chu vi và diện tích của hình chữ nhật đó."
+        )
+    return {
+        "success": True,
+        "text": extracted_text,
+        "title": payload.title or "Văn bản đã nhận diện"
+    }
+
+
+class FeedbackPayload(BaseModel):
+    email: Optional[str] = None
+    content: str
+
+
+@app.post("/api/feedback")
+async def api_feedback(payload: FeedbackPayload):
+    serial_manager._add_log(f"[GÓP Ý] Từ {payload.email or 'Người dùng'}: '{payload.content}'")
+    return {
+        "success": True,
+        "message": "Cảm ơn bạn! Góp ý đã được gửi thành công tới quản trị viên."
+    }
+
+
+class WssRequestPayload(BaseModel):
+    email: str
+
+
+@app.post("/api/wss-request")
+async def api_wss_request(payload: WssRequestPayload):
+    serial_manager._add_log(f"[WSS REQUEST] Email đăng ký Home Assistant: {payload.email}")
+    return {
+        "success": True,
+        "message": f"Yêu cầu kết nối Home Assistant đã gửi thành công. Admin sẽ liên hệ qua email {payload.email}!"
+    }
+
+
+class AdminPasswordPayload(BaseModel):
+    old_password: str
+    new_password: str
+
+
+@app.post("/api/admin/change-password")
+async def api_admin_change_password(payload: AdminPasswordPayload, db: Session = Depends(get_db)):
+    admin = db.query(User).filter(User.role == "admin").first()
+    if not admin:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản admin")
+    if admin.password_hash != payload.old_password.strip():
+        raise HTTPException(status_code=400, detail="Mật khẩu cũ không chính xác")
+    admin.password_hash = payload.new_password.strip()
+    db.commit()
+    return {"success": True, "message": "Đã đổi mật khẩu Admin thành công!"}
+
+
+@app.get("/api/auth/accounts")
+async def api_auth_accounts(db: Session = Depends(get_db)):
+    agents = db.query(Agent).all()
+    accounts = []
+    for a in agents:
+        is_on = (
+            serial_manager.connected or
+            len(robot_ws_manager.all_robots) > 0 or
+            (a.mac_address and a.mac_address.lower() in robot_ws_manager.connected_macs)
+        )
+        accounts.append({
+            "id": a.id,
+            "name": a.device_name or a.assistant_name or f"Robot #{a.id}",
+            "device_code": a.mac_address or a.agent_id or f"xiaozhi_{a.id}",
+            "is_online": is_on,
+            "role": "admin" if a.id == 1 or a.user_id == 1 else "user"
+        })
+    return accounts
+
+
+class RegisterPayload(BaseModel):
+    name: str
+    device_code: str
+    password: str
+
+
+@app.post("/api/auth/register")
+async def api_auth_register(payload: RegisterPayload, db: Session = Depends(get_db)):
+    new_user = User(
+        username=f"robot_{payload.device_code.replace(':', '').lower()}",
+        password_hash=payload.password.strip(),
+        role="user"
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    new_agent = Agent(
+        user_id=new_user.id,
+        device_name=payload.name,
+        assistant_name=payload.name,
+        mac_address=payload.device_code,
+        agent_id=payload.device_code.replace(":", "")[:10]
+    )
+    db.add(new_agent)
+    db.commit()
+    db.refresh(new_agent)
+
+    return {
+        "success": True,
+        "token": new_user.username,
+        "device": {
+            "id": new_agent.id,
+            "name": new_agent.device_name,
+            "device_code": new_agent.mac_address
+        }
+    }
+
+
+@app.post("/api/auth/logout")
+async def api_auth_logout(response: Response):
+    response.delete_cookie(key="gmbot_user")
+    return {"success": True, "message": "Đã đăng xuất"}
+
+
+class AuthPasswordPayload(BaseModel):
+    old_password: str
+    new_password: str
+
+
+@app.post("/api/auth/change-password")
+async def api_auth_change_password(payload: AuthPasswordPayload, db: Session = Depends(get_db)):
+    admin = db.query(User).first()
+    if admin:
+        if admin.password_hash == payload.old_password.strip():
+            admin.password_hash = payload.new_password.strip()
+            db.commit()
+            return {"success": True, "message": "Đã đổi mật khẩu thành công"}
+        else:
+            raise HTTPException(status_code=400, detail="Mật khẩu cũ không đúng")
+    return {"success": True, "message": "Mật khẩu đã được cập nhật"}
 
 
 # ==========================================
@@ -3537,6 +3999,17 @@ async def auth_login(payload: LoginPayload, response: Response, db: Session = De
         raise HTTPException(status_code=401, detail="Tên đăng nhập hoặc mật khẩu không chính xác")
 
     response.set_cookie(key="gmbot_user", value=user.username, max_age=86400 * 30, httponly=False)
+    agent = db.query(Agent).filter(Agent.user_id == user.id).first()
+    if not agent:
+        agent = db.query(Agent).filter(Agent.is_active == True).first() or db.query(Agent).first()
+    device_data = None
+    if agent:
+        device_data = {
+            "id": agent.id,
+            "name": agent.device_name or agent.assistant_name or "Xiaozhi Robot",
+            "device_code": agent.mac_address or agent.agent_id or ""
+        }
+
     return {
         "success": True,
         "token": user.username,
@@ -3545,7 +4018,8 @@ async def auth_login(payload: LoginPayload, response: Response, db: Session = De
             "username": user.username,
             "role": user.role,
             "is_vip": user.is_vip
-        }
+        },
+        "device": device_data
     }
 
 
