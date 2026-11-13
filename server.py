@@ -1947,9 +1947,10 @@ async def resolve_audio_stream_direct(target_url: str) -> Tuple[Optional[str], O
     if not vid:
         return None, None, None
 
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
     for inst in INVIDIOUS_APIS:
         try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
+            async with httpx.AsyncClient(timeout=6.0, headers=headers) as client:
                 r = await client.get(f"{inst}/api/v1/videos/{vid}")
                 if r.status_code == 200:
                     d = r.json()
@@ -1965,7 +1966,8 @@ async def resolve_audio_stream_direct(target_url: str) -> Tuple[Optional[str], O
                         if stream_url:
                             print(f"[AUDIO RESOLVER] ✓ Đã trích xuất link stream từ Invidious ({inst}): {title[:25] if title else vid}")
                             return stream_url, title, thumb
-        except Exception:
+        except Exception as ex:
+            print(f"[AUDIO RESOLVER] Invidious {inst} err: {ex}")
             continue
     return None, None, None
 
@@ -3319,6 +3321,31 @@ async def api_music_info(id: str = Query(...)):
         "duration_str": dur,
         "error": err_str if not audio_stream_url else None
     }
+
+
+@app.get("/api/music/debug")
+async def api_music_debug(id: str = "ZEFjgndKTmA"):
+    debug_info = {}
+    vid = extract_video_id(id)
+    debug_info["vid"] = vid
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    for inst in INVIDIOUS_APIS:
+        try:
+            async with httpx.AsyncClient(timeout=5.0, headers=headers) as client:
+                r = await client.get(f"{inst}/api/v1/videos/{vid}")
+                info = {"status": r.status_code}
+                if r.status_code == 200:
+                    d = r.json()
+                    formats = d.get("adaptiveFormats", [])
+                    audio_formats = [f for f in formats if "audio" in f.get("type", "")]
+                    info["audio_streams"] = len(audio_formats)
+                    info["title"] = d.get("title")
+                else:
+                    info["body_preview"] = r.text[:100]
+                debug_info[inst] = info
+        except Exception as e:
+            debug_info[inst] = {"error": f"{type(e).__name__}: {str(e)}"}
+    return debug_info
 
 
 # ==========================================
