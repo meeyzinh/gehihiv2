@@ -1506,7 +1506,7 @@ def execute_mcp_tool(name: str, args: Dict[str, Any]) -> str:
 
 RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "https://gehihiv2.onrender.com")
 RENDER_OTA_REGISTER_URL = os.getenv("RENDER_OTA_REGISTER_URL", f"{RENDER_EXTERNAL_URL.rstrip('/')}/xiaozhi/tunnel/register")
-PUBLIC_TUNNEL_URL = os.getenv("CLOUDFLARE_TUNNEL_URL", "https://manner-initiative-toys-egg.trycloudflare.com")
+PUBLIC_TUNNEL_URL = os.getenv("CLOUDFLARE_TUNNEL_URL", "")
 
 class CloudflareTunnelManager:
     def __init__(self, local_port: int = 8000):
@@ -2710,6 +2710,25 @@ async def websocket_mic_monitor_endpoint(websocket: WebSocket):
 
 ACTIVE_TUNNEL_URL: Optional[str] = None
 TUNNEL_LAST_PING: float = 0.0
+TUNNEL_CACHE_FILE: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "active_tunnel.json")
+
+def save_tunnel_cache(url: str):
+    try:
+        with open(TUNNEL_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump({"url": url, "updated_at": time.time()}, f)
+    except Exception:
+        pass
+
+def load_tunnel_cache() -> Optional[str]:
+    try:
+        if os.path.exists(TUNNEL_CACHE_FILE):
+            with open(TUNNEL_CACHE_FILE, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if time.time() - d.get("updated_at", 0) < 300:
+                    return d.get("url")
+    except Exception:
+        pass
+    return None
 
 class TunnelRegisterPayload(BaseModel):
     tunnel_url: str
@@ -2722,6 +2741,7 @@ async def register_tunnel(payload: TunnelRegisterPayload):
     if t_url:
         ACTIVE_TUNNEL_URL = t_url
         TUNNEL_LAST_PING = time.time()
+        save_tunnel_cache(t_url)
         print(f"[TUNNEL ROUTER] ✓ Đã đăng ký Tunnel thành công: {ACTIVE_TUNNEL_URL}")
         return {"success": True, "tunnel_url": ACTIVE_TUNNEL_URL}
     return {"success": False, "message": "Tunnel URL trống"}
@@ -2729,10 +2749,11 @@ async def register_tunnel(payload: TunnelRegisterPayload):
 @app.get("/xiaozhi/tunnel/status")
 @app.get("/gehihi/tunnel/status")
 async def get_tunnel_status():
-    is_alive = bool(ACTIVE_TUNNEL_URL and (time.time() - TUNNEL_LAST_PING < 120))
+    cached = load_tunnel_cache()
+    current = cached or (ACTIVE_TUNNEL_URL if (time.time() - TUNNEL_LAST_PING < 300) else None)
     return {
-        "active_tunnel": ACTIVE_TUNNEL_URL if is_alive else None,
-        "is_alive": is_alive,
+        "active_tunnel": current,
+        "is_alive": bool(current),
         "last_ping_ago": int(time.time() - TUNNEL_LAST_PING) if TUNNEL_LAST_PING else -1,
         "public_tunnel_url": PUBLIC_TUNNEL_URL,
         "tunnel_manager_url": getattr(tunnel_manager, "public_url", None)
@@ -2752,7 +2773,11 @@ async def handle_xiaozhi_ota(request: Request):
     host = request.headers.get("host", "localhost:8000")
 
     ws_url = None
-    if ACTIVE_TUNNEL_URL and (time.time() - TUNNEL_LAST_PING < 120):
+    cached_tunnel = load_tunnel_cache()
+    if cached_tunnel:
+        clean_tunnel = cached_tunnel.replace("https://", "wss://").replace("http://", "ws://")
+        ws_url = f"{clean_tunnel}/ws/device"
+    elif ACTIVE_TUNNEL_URL and (time.time() - TUNNEL_LAST_PING < 300):
         clean_tunnel = ACTIVE_TUNNEL_URL.replace("https://", "wss://").replace("http://", "ws://")
         ws_url = f"{clean_tunnel}/ws/device"
     elif getattr(tunnel_manager, "public_url", None):
@@ -2764,7 +2789,7 @@ async def handle_xiaozhi_ota(request: Request):
                 for line in f:
                     if line.startswith("PUBLIC_WEBSOCKET_URL="):
                         val = line.split("=", 1)[1].strip()
-                        if val:
+                        if val and "manner-initiative" not in val:
                             ws_url = val
                             break
         except Exception:
