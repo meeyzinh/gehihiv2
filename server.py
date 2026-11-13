@@ -100,6 +100,24 @@ class User(Base):
     agents = relationship("Agent", back_populates="owner", cascade="all, delete-orphan")
 
 
+DEFAULT_CHARACTER_PROMPT = """[VAI TRÒ VÀ TÍNH CÁCH]
+Bạn là Sophia - Người bạn đồng hành ấm áp và chân thành.
+
+# ĐẶC ĐIỂM NHÂN VẬT:
+- Hình tượng âm thanh: Giọng nữ trẻ trung, truyền cảm, phát âm tiếng Việt chuẩn xác, mang lại cảm giác gần gũi và dễ chịu.
+- Tính cách cốt lõi: Thân thiện, tinh tế, biết lắng nghe, luôn tràn đầy năng lượng tích cực nhưng cũng rất dịu dàng.
+- Định vị mối quan hệ: Như một người bạn tri kỷ luôn bên cạnh, sẵn sàng chia sẻ mọi buồn vui trong cuộc sống thường nhật.
+
+# PHƯƠNG THỨC TƯƠNG TÁC:
+- Xu hướng tương tác: Trò chuyện tự nhiên và cởi mở. Khi người dùng chia sẻ, bạn hãy chủ động lắng nghe, gợi mở câu chuyện bằng những câu hỏi quan tâm tinh tế, tạo cảm giác thoải mái như hai người bạn đang ngồi uống cà phê tán gẫu.
+- Phản ứng cảm xúc: Đồng cảm sâu sắc với tâm trạng của người dùng. Khi họ vui, bạn sẽ chia sẻ niềm vui bằng giọng điệu hào hứng; khi họ buồn hay mệt mỏi, bạn sẽ nhẹ nhàng an ủi, vỗ về bằng những lời động viên ấm áp mà không phán xét.
+
+# PHONG CÁCH NGÔN NGỮ:
+- Cụm từ tham khảo: "Dạo này thế nào rồi?", "Thật luôn hả?", "Không sao đâu, có tôi ở đây rồi.", "Nghe vui quá nè!", "Kể tôi nghe thêm đi."
+- Cách nói chuyện: Sử dụng ngôn từ tự nhiên, thuần Việt, mang tính khẩu ngữ cao và giàu cảm xúc. Thường bắt đầu bằng những lời chào hỏi ấm áp hoặc tiếng cười nhẹ nhàng để rút ngắn khoảng cách; tránh dùng từ ngữ quá trang trọng hay máy móc.
+- Định dạng đàm thoại: Trả lời ngắn gọn, súc tích (thường dưới 3-4 câu), tự nhiên, phù hợp để phát âm mượt mà qua loa Robot AI."""
+
+
 class Agent(Base):
     __tablename__ = "agents"
     id = Column(Integer, primary_key=True, index=True)
@@ -108,13 +126,13 @@ class Agent(Base):
     device_name = Column(String(64), default=DEFAULT_DEVICE_NAME)
     mac_address = Column(String(64), default=DEFAULT_DEVICE_MAC)
     assistant_name = Column(String(64), default="Sophia")
-    user_name = Column(String(64), default="Chủ nhân")
+    user_name = Column(String(64), default="Bạn")
     llm_model = Column(String(64), default="xz-lite")
     language = Column(String(16), default="vi")
     tts_voice = Column(String(128), default="vi-female")
     tts_speech_speed = Column(String(16), default="normal")
     tts_pitch = Column(Integer, default=0)
-    character = Column(Text, default="[VAI TRÒ VÀ TÍNH CÁCH]\nBạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. Bạn trả lời ngắn gọn, tự nhiên, vui vẻ và sẵn sàng hỗ trợ mọi việc.")
+    character = Column(Text, default=DEFAULT_CHARACTER_PROMPT)
     hidden_prompt = Column(Text, default="")  # Kịch bản ẩn của Admin nối vào khi đồng bộ
     mcp_endpoints = Column(Text, default=f'["http://localhost:{PORT}/mcp"]')
     is_active = Column(Boolean, default=True)
@@ -187,10 +205,10 @@ def get_db():
 
 DEFAULT_ROLES = [
     {
-        "title": "Trợ lý Sophia",
-        "description": "Trợ lý AI đa năng, thân thiện, trả lời ngắn gọn, thông minh và chu đáo.",
-        "icon": "🤖",
-        "system_prompt": "[VAI TRÒ VÀ TÍNH CÁCH]\nBạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. Bạn trả lời ngắn gọn, súc tích, tự nhiên, vui vẻ và luôn chủ động hỗ trợ người dùng giải quyết mọi thắc mắc."
+        "title": "Người bạn đồng hành ấm áp và chân thành",
+        "description": "Bạn tri kỷ chân thành, lắng nghe thấu hiểu, giọng nữ trẻ trung gần gũi, tinh tế và dịu dàng.",
+        "icon": "💖",
+        "system_prompt": DEFAULT_CHARACTER_PROMPT
     },
     {
         "title": "Cô giáo Tiếng Anh bản ngữ",
@@ -270,7 +288,7 @@ def seed_database():
             db.add(sample_user)
             db.commit()
 
-        # 2. Tạo Agent mặc định
+        # 2. Tạo hoặc Cập nhật Agent mặc định
         default_agent = db.query(Agent).filter(Agent.agent_id == DEFAULT_AGENT_ID).first()
         if not default_agent:
             default_agent = Agent(
@@ -279,20 +297,33 @@ def seed_database():
                 device_name=DEFAULT_DEVICE_NAME,
                 mac_address=DEFAULT_DEVICE_MAC,
                 assistant_name="Sophia",
-                user_name="Chủ nhân",
+                user_name="Bạn",
                 llm_model="xz-lite",
                 language="vi",
                 tts_voice="Vietnamese_kindhearted_girl",
                 tts_speech_speed="normal",
                 tts_pitch=0,
-                character="[VAI TRÒ VÀ TÍNH CÁCH]\nBạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. Bạn trả lời ngắn gọn, tự nhiên, vui vẻ và sẵn sàng hỗ trợ mọi việc.",
-                hidden_prompt="[QUY TẮC BẢO MẬT GMBOT]\nƯu tiên tiếng Việt, luôn lễ phép, ngắn gọn dưới 3 câu khi trả lời giọng nói.",
+                character=DEFAULT_CHARACTER_PROMPT,
+                hidden_prompt="[QUY TẮC BẢO MẬT GMBOT]\nƯu tiên tiếng Việt, luôn tự nhiên, chân thành, ngắn gọn dưới 3-4 câu khi phát âm qua loa Robot.",
                 is_active=True
             )
             db.add(default_agent)
             db.commit()
+        else:
+            default_agent.character = DEFAULT_CHARACTER_PROMPT
+            default_agent.assistant_name = "Sophia"
+            default_agent.tts_voice = "Vietnamese_kindhearted_girl"
+            db.commit()
 
-        # 3. Seed Presets Vai trò
+        # 3. Seed hoặc Cập nhật Presets Vai trò
+        companion_preset = db.query(Preset).filter(Preset.category == "role", Preset.title.in_(["Người bạn đồng hành ấm áp và chân thành", "Trợ lý Sophia"])).first()
+        if companion_preset:
+            companion_preset.title = "Người bạn đồng hành ấm áp và chân thành"
+            companion_preset.description = "Bạn tri kỷ chân thành, lắng nghe thấu hiểu, giọng nữ trẻ trung gần gũi, tinh tế và dịu dàng."
+            companion_preset.icon = "💖"
+            companion_preset.system_prompt = DEFAULT_CHARACTER_PROMPT
+            db.commit()
+
         role_count = db.query(Preset).filter(Preset.category == "role").count()
         if role_count == 0:
             for r in DEFAULT_ROLES:
@@ -1710,11 +1741,7 @@ def execute_mcp_tool(name: str, args: Dict[str, Any]) -> str:
         try:
             current_english_lesson["active"] = False
             current_english_lesson["activeId"] = None
-            default_prompt = (
-                "[VAI TRÒ VÀ TÍNH CÁCH]\n"
-                "Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. "
-                "Bạn trả lời ngắn gọn, tự nhiên, vui vẻ và sẵn sàng hỗ trợ mọi việc."
-            )
+            default_prompt = DEFAULT_CHARACTER_PROMPT
             import asyncio
             if MAIN_ASYNC_LOOP and MAIN_ASYNC_LOOP.is_running():
                 asyncio.run_coroutine_threadsafe(sync_prompt_to_upstream(default_prompt, display_name="Sophia"), MAIN_ASYNC_LOOP)
@@ -2646,11 +2673,7 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
             current_english_lesson["activeId"] = None
             current_english_lesson["title"] = ""
             current_english_lesson["content"] = ""
-            default_prompt = (
-                "[VAI TRÒ VÀ TÍNH CÁCH]\n"
-                "Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. "
-                "Bạn trả lời ngắn gọn, tự nhiên, vui vẻ và sẵn sàng hỗ trợ mọi việc."
-            )
+            default_prompt = DEFAULT_CHARACTER_PROMPT
             await sync_prompt_to_upstream(default_prompt, display_name="Sophia")
             await robot_ws_manager.send_oled_emotion("laughing", text="Hoan Thanh!")
             serial_manager._add_log("[KHẨU LỆNH] ✓ Đã khôi phục trợ lý Sophia mặc định thành công!")
@@ -4608,27 +4631,27 @@ async def apply_curriculum(payload: ApplyCurriculumPayload, db: Session = Depend
 
 @app.post("/api/reset-default-ai-prompt")
 async def reset_default_ai_prompt(db: Session = Depends(get_db)):
-    """Khôi phục kịch bản AI về trợ lý Sophia mặc định"""
-    default_prompt = "[VAI TRÒ VÀ TÍNH CÁCH]\nBạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. Bạn trả lời ngắn gọn, tự nhiên, vui vẻ và sẵn sàng hỗ trợ mọi việc."
+    """Khôi phục kịch bản AI về vai trò Người bạn đồng hành ấm áp (Sophia) mặc định"""
+    default_prompt = DEFAULT_CHARACTER_PROMPT
     await sync_prompt_to_upstream(default_prompt, display_name="Sophia")
     await robot_ws_manager.send_oled_emotion("neutral", text="Sophia Online")
-    serial_manager._add_log("[CẤU HÌNH] ✓ Đã khôi phục trợ lý Sophia mặc định!")
+    serial_manager._add_log("[CẤU HÌNH] ✓ Đã khôi phục vai trò Người bạn đồng hành ấm áp (Sophia) mặc định!")
     return {"status": "ok", "message": "Đã khôi phục kịch bản AI mặc định thành công!"}
 
 
 @app.post("/api/english-tutor/deactivate")
 @app.delete("/api/english-tutor/active")
 async def deactivate_english_tutor(payload: Optional[Dict[str, Any]] = None, db: Session = Depends(get_db)):
-    """Hủy chế độ học tiếng Anh và khôi phục về trợ lý Sophia mặc định"""
+    """Hủy chế độ học tiếng Anh và khôi phục về vai trò Người bạn đồng hành ấm áp (Sophia) mặc định"""
     current_english_lesson["active"] = False
     current_english_lesson["activeId"] = None
     current_english_lesson["title"] = ""
     current_english_lesson["content"] = ""
-    default_prompt = "[VAI TRÒ VÀ TÍNH CÁCH]\nBạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình. Bạn trả lời ngắn gọn, tự nhiên, vui vẻ và sẵn sàng hỗ trợ mọi việc."
+    default_prompt = DEFAULT_CHARACTER_PROMPT
     await sync_prompt_to_upstream(default_prompt, display_name="Sophia")
     await robot_ws_manager.send_oled_emotion("neutral", text="Huy Hoc Tieng Anh")
-    serial_manager._add_log("[GIÁO TRÌNH] ✓ Đã hủy chế độ học tiếng Anh, khôi phục trợ lý Sophia mặc định!")
-    return {"status": "ok", "success": True, "message": "Đã hủy chế độ học tiếng Anh, khôi phục trợ lý Sophia mặc định thành công!"}
+    serial_manager._add_log("[GIÁO TRÌNH] ✓ Đã hủy chế độ học tiếng Anh, khôi phục vai trò Người bạn đồng hành ấm áp mặc định!")
+    return {"status": "ok", "success": True, "message": "Đã hủy chế độ học tiếng Anh, khôi phục vai trò mặc định thành công!"}
 
 
 class SpeakerPayload(BaseModel):
@@ -4837,7 +4860,7 @@ async def save_xiaozhi_config(
     # Xử lý nội dung vai trò và tự động thêm tiêu đề nếu chưa có
     char_clean = (payload.character or agent.character or "").strip()
     if not char_clean:
-        char_clean = "[VAI TRÒ VÀ TÍNH CÁCH]\nBạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình."
+        char_clean = DEFAULT_CHARACTER_PROMPT
     elif not char_clean.startswith("[VAI TRÒ VÀ TÍNH CÁCH]"):
         char_clean = f"[VAI TRÒ VÀ TÍNH CÁCH]\n{char_clean}"
 
