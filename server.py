@@ -1103,22 +1103,38 @@ class SerialBridgeManager:
 
     def reset_esp32(self):
         with self.lock:
-            if not self.ser or not self.ser.is_open:
-                ok, _ = self.connect(self.port, self.baudrate)
-                if not ok:
-                    return False, f"Cổng {self.port} chưa mở"
+            # Tạm đóng serial port để esptool có thể điều khiển chân RTS
+            if self.ser and self.ser.is_open:
+                try:
+                    self.ser.close()
+                except Exception:
+                    pass
+                self.ser = None
+                self.connected = False
 
-            try:
-                self._add_log("[HỆ THỐNG] Gửi tín hiệu Reset phần cứng (DTR/RTS pulse)...")
-                self.ser.setDTR(False)
-                self.ser.setRTS(True)
-                time.sleep(0.1)
-                self.ser.setRTS(False)
-                self.ser.setDTR(True)
-                self._add_log("[HỆ THỐNG] Robot ESP32 đang khởi động lại (Rebooting)...")
-                return True, "Đã gửi xung Reset phần cứng tới ESP32"
-            except Exception as e:
-                return False, f"Lỗi Reset: {e}"
+            # Dùng esptool để Hard Reset ESP32-S3 qua chân RTS
+            esptool_py = "C:/Users/Welcome/.espressif/python_env/idf6.1_py3.14_env/Scripts/python.exe"
+            reset_success = False
+            if os.path.exists(esptool_py):
+                try:
+                    res = subprocess.run(
+                        [esptool_py, "-m", "esptool", "-p", self.port, "--after", "hard_reset", "chip_id"],
+                        capture_output=True, text=True, timeout=5.0
+                    )
+                    if res.returncode == 0:
+                        reset_success = True
+                except Exception:
+                    pass
+
+            # Kết nối lại Serial sau khi reset
+            time.sleep(0.5)
+            self.connect(self.port, self.baudrate)
+            if reset_success:
+                self._add_log("[HỆ THỐNG] ✓ Đã Hard Reset Robot ESP32 qua chân RTS phần cứng thành công!")
+                return True, "Đã khởi động lại Robot ESP32 thành công!"
+            else:
+                self._add_log("[HỆ THỐNG] Đã gửi xung Reset tới ESP32.")
+                return True, "Đã gửi xung Reset"
 
     def send_command(self, cmd_str: str) -> bool:
         if not self.ser or not self.ser.is_open:
@@ -1929,27 +1945,29 @@ async def stream_music_to_robots(audio_url: str, track_info: dict):
     ACTIVE_MUSIC_STATE["is_playing"] = True
     ACTIVE_MUSIC_STATE["track"] = track_info
 
-    session_id = str(uuid.uuid4())
+    session_id = str(uuid.uuid4())[:8]
     raw_title = track_info.get("title", "Bài hát yêu thích")
     title_clean = raw_title.split("-")[0].split("|")[0].strip()[:24]
-    print(f"[YOUTUBE MUSIC] ▶ Bắt đầu stream tới Robot: '{title_clean}'")
+    print(f"[YOUTUBE MUSIC] ▶ Bắt đầu stream tới Robot ({len(robot_ws_manager.all_robots)} robot online): '{title_clean}'")
 
     # 1. Báo hiển thị OLED & khởi tạo luồng âm thanh theo đúng thứ tự firmware yêu cầu
     for ws in list(robot_ws_manager.all_robots):
         try:
-            await ws.send_json({"type": "llm", "emotion": "happy"})
+            sess = robot_ws_manager.sessions.get(ws, session_id)
+            await ws.send_json({"type": "llm", "emotion": "happy", "session_id": sess})
             await asyncio.sleep(0.01)
             await ws.send_json({
                 "type": "tts",
                 "state": "sentence_start",
                 "text": f"🎶 {title_clean}",
-                "session_id": session_id
+                "session_id": sess
             })
             await asyncio.sleep(0.01)
-            await ws.send_json({"type": "tts", "state": "start", "session_id": session_id})
+            await ws.send_json({"type": "tts", "state": "start", "session_id": sess})
         except Exception as e:
             print(f"[YOUTUBE MUSIC] Lỗi gửi tín hiệu khởi tạo tới robot: {e}")
 
+    sample_rate = 16000  # Chuẩn âm thanh 16kHz của MAX98357A trên bo mạch RobotMiniS3
     ffmpeg_exe = get_ffmpeg_cmd()
     cmd = [
         ffmpeg_exe,
@@ -1960,7 +1978,7 @@ async def stream_music_to_robots(audio_url: str, track_info: dict):
         "-f", "s16le",
         "-acodec", "pcm_s16le",
         "-ac", "1",
-        "-ar", "24000",
+        "-ar", str(sample_rate),
         "pipe:1"
     ]
 
@@ -1976,9 +1994,9 @@ async def stream_music_to_robots(audio_url: str, track_info: dict):
         if not opuslib_next:
             raise RuntimeError("opuslib_next is not installed")
 
-        encoder = opuslib_next.Encoder(24000, 1, opuslib_next.APPLICATION_AUDIO)
-        frame_samples = 1440  # 60ms tại 24000Hz (24000 * 0.060)
-        frame_bytes = frame_samples * 2  # 2880 bytes
+        encoder = opuslib_next.Encoder(sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
+        frame_samples = int(sample_rate * 0.060)  # 960 samples cho 60ms tại 16000Hz
+        frame_bytes = frame_samples * 2  # 1920 bytes
 
         frame_idx = 0
         next_frame_time = time.monotonic()
@@ -2030,7 +2048,8 @@ async def stream_music_to_robots(audio_url: str, track_info: dict):
         # Báo kết thúc phiên phát âm thanh trên robot
         for ws in list(robot_ws_manager.all_robots):
             try:
-                await ws.send_json({"type": "tts", "state": "stop", "session_id": session_id})
+                sess = robot_ws_manager.sessions.get(ws, session_id)
+                await ws.send_json({"type": "tts", "state": "stop", "session_id": sess})
             except Exception:
                 pass
 
@@ -2041,8 +2060,10 @@ async def stream_music_to_robots(audio_url: str, track_info: dict):
         # Khôi phục trạng thái lắng nghe cho robot
         for ws in list(robot_ws_manager.all_robots):
             try:
-                await ws.send_json({"type": "listen", "state": "start", "mode": "auto"})
+                sess = robot_ws_manager.sessions.get(ws, session_id)
+                await ws.send_json({"type": "listen", "state": "start", "mode": "auto", "session_id": sess})
             except Exception:
+                pass
                 pass
 
 async def resolve_and_stream_music(target_url: str, track_info: dict = None):
@@ -2371,14 +2392,14 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
             )
             print(f"[VOICE PROXY] ✓ Đã mở kênh Upstream AI ({upstream_url}) cho robot '{dev_mac}'")
 
-            # Gửi bắt tay hello lên upstream với tần số chuẩn 24000 Hz
+            # Gửi bắt tay hello lên upstream với tần số chuẩn 16000 Hz
             await upstream_ws.send(json.dumps({
                 "type": "hello",
                 "version": 1,
                 "transport": "websocket",
                 "audio_params": {
                     "format": "opus",
-                    "sample_rate": 24000,
+                    "sample_rate": 16000,
                     "channels": 1,
                     "frame_duration": 60
                 }
@@ -2403,7 +2424,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
     except Exception:
         pass
 
-    # 2. Bắt tay Hello duy nhất với Robot (sample_rate 24000 Hz chuẩn không cần resample)
+    # 2. Bắt tay Hello duy nhất với Robot (sample_rate 16000 Hz chuẩn theo bo mạch RobotMiniS3)
     try:
         await websocket.send_json({
             "type": "hello",
@@ -2412,7 +2433,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
             "session_id": session_id,
             "audio_params": {
                 "format": "opus",
-                "sample_rate": 24000,
+                "sample_rate": 16000,
                 "channels": 1,
                 "frame_duration": 60
             }
@@ -2595,16 +2616,28 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                 # Chuyển tiếp luồng âm thanh Mic INMP441 lên Upstream AI để nhận diện giọng nói!
                 raw_chunk = msg_data["bytes"]
                 mic_monitor_manager.packet_index += 1
+                peak_val = 2500
+                try:
+                    if opuslib_next:
+                        if not hasattr(websocket_robot_endpoint, "_opus_dec"):
+                            websocket_robot_endpoint._opus_dec = opuslib_next.Decoder(16000, 1)
+                        pcm_chunk = websocket_robot_endpoint._opus_dec.decode(raw_chunk, 960)
+                        shorts = struct.unpack(f"{len(pcm_chunk)//2}h", pcm_chunk)
+                        peak_val = max(abs(s) for s in shorts)
+                except Exception:
+                    peak_val = min(32767, int(len(raw_chunk) * 110))
+
+                lvl = min(1.0, round(peak_val / 32767.0, 3))
                 asyncio.create_task(mic_monitor_manager.broadcast({
                     "type": "audio_packet",
-                    "peak": 4500,
-                    "level": 0.35,
+                    "peak": peak_val,
+                    "level": lvl,
                     "state": "recording",
                     "packet_index": mic_monitor_manager.packet_index,
                     "duration_ms": 60,
                     "total_bytes": mic_monitor_manager.packet_index * len(raw_chunk),
                     "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
-                    "message": f"Gói âm thanh Mic Opus #{mic_monitor_manager.packet_index} ({len(raw_chunk)}B)"
+                    "message": f"Gói âm thanh Mic Opus #{mic_monitor_manager.packet_index} ({len(raw_chunk)}B | Peak: {peak_val})"
                 }))
                 if not is_ws_alive(upstream_ws):
                     await connect_upstream_ai()
@@ -2672,8 +2705,38 @@ async def websocket_mic_monitor_endpoint(websocket: WebSocket):
 
 
 # ==========================================
-# CÁC ENDPOINT OTA FIRMWARE & ĐIỀU HƯỚNG WEBSOCKET
+# CÁC ENDPOINT ĐIỀU HƯỚNG TUNNEL & OTA FIRMWARE
 # ==========================================
+
+ACTIVE_TUNNEL_URL: Optional[str] = None
+TUNNEL_LAST_PING: float = 0.0
+
+class TunnelRegisterPayload(BaseModel):
+    tunnel_url: str
+
+@app.post("/xiaozhi/tunnel/register")
+@app.post("/gehihi/tunnel/register")
+async def register_tunnel(payload: TunnelRegisterPayload):
+    global ACTIVE_TUNNEL_URL, TUNNEL_LAST_PING
+    t_url = payload.tunnel_url.strip().rstrip("/")
+    if t_url:
+        ACTIVE_TUNNEL_URL = t_url
+        TUNNEL_LAST_PING = time.time()
+        print(f"[TUNNEL ROUTER] ✓ Đã đăng ký Tunnel thành công: {ACTIVE_TUNNEL_URL}")
+        return {"success": True, "tunnel_url": ACTIVE_TUNNEL_URL}
+    return {"success": False, "message": "Tunnel URL trống"}
+
+@app.get("/xiaozhi/tunnel/status")
+@app.get("/gehihi/tunnel/status")
+async def get_tunnel_status():
+    is_alive = bool(ACTIVE_TUNNEL_URL and (time.time() - TUNNEL_LAST_PING < 120))
+    return {
+        "active_tunnel": ACTIVE_TUNNEL_URL if is_alive else None,
+        "is_alive": is_alive,
+        "last_ping_ago": int(time.time() - TUNNEL_LAST_PING) if TUNNEL_LAST_PING else -1,
+        "public_tunnel_url": PUBLIC_TUNNEL_URL,
+        "tunnel_manager_url": getattr(tunnel_manager, "public_url", None)
+    }
 
 @app.get("/xiaozhi/ota/")
 @app.post("/xiaozhi/ota/")
@@ -2681,12 +2744,39 @@ async def websocket_mic_monitor_endpoint(websocket: WebSocket):
 @app.post("/gehihi/ota/")
 async def handle_xiaozhi_ota(request: Request):
     """
-    Xử lý yêu cầu OTA cho Robot ESP32 theo Mô hình Wrapper thông minh (Control Plane + MCP):
-    Cung cấp địa chỉ WebSocket cụm máy chủ gốc xiaozhi.me để robot kết nối luồng âm thanh
-    (ASR, LLM, TTS) trực tiếp, đạt 100% chất lượng giọng nữ chuẩn và hoàn toàn miễn phí!
+    Xử lý yêu cầu OTA cho Robot ESP32:
+    Cung cấp địa chỉ WebSocket chuẩn xác để robot kết nối vào server (Render hoặc Local qua Tunnel)
+    để điều khiển D-Pad, đổi biểu cảm OLED, truyền âm thanh Mic và phát nhạc YouTube ra loa robot.
     """
-    # Mặc định theo mô hình Wrapper thông minh: Robot kết nối thẳng tới wss://api.tenclass.net/xiaozhi/v1/
-    ws_url = CURRENT_UPSTREAM_WS_URL or "wss://api.tenclass.net/xiaozhi/v1/"
+    global ACTIVE_TUNNEL_URL, TUNNEL_LAST_PING
+    host = request.headers.get("host", "localhost:8000")
+
+    ws_url = None
+    if ACTIVE_TUNNEL_URL and (time.time() - TUNNEL_LAST_PING < 120):
+        clean_tunnel = ACTIVE_TUNNEL_URL.replace("https://", "wss://").replace("http://", "ws://")
+        ws_url = f"{clean_tunnel}/ws/device"
+    elif getattr(tunnel_manager, "public_url", None):
+        clean_cf = tunnel_manager.public_url.replace("https://", "wss://").replace("http://", "ws://")
+        ws_url = f"{clean_cf}/ws/device"
+    elif os.path.exists("CURRENT_ONLINE_URL.txt"):
+        try:
+            with open("CURRENT_ONLINE_URL.txt", "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("PUBLIC_WEBSOCKET_URL="):
+                        val = line.split("=", 1)[1].strip()
+                        if val:
+                            ws_url = val
+                            break
+        except Exception:
+            pass
+
+    if not ws_url:
+        proto = "wss" if ("trycloudflare.com" in host or request.url.scheme == "https") else "ws"
+        ws_url = f"{proto}://{host}/ws/device"
+
+    dev_id = request.headers.get("Device-Id") or request.headers.get("device-id") or "unknown"
+    print(f"[OTA ROUTER] Robot '{dev_id}' yêu cầu OTA -> Cấp phát WebSocket: {ws_url}")
+
     return {
         "server_time": {
             "timestamp": int(time.time() * 1000),
@@ -2723,13 +2813,25 @@ async def robot_control(payload: RobotControlPayload):
             serial_manager.send_command(f'{{"action":"{act}"}}')
         else:
             serial_manager.send_command(f'{{"action":"{act}"}}')
-        serial_manager._add_log(f"[ĐIỀU KHIỂN] Đã gửi lệnh động cơ/đèn '{act}' tới robot qua Serial COM8.")
+        serial_manager._add_log(f"[ĐIỀU KHIỂN] Đã gửi lệnh '{act}' tới robot qua Serial COM8.")
 
-    # 2. Điều khiển qua kênh WebSocket / MCP
+    # 2. Điều khiển qua kênh WebSocket / MCP chuẩn firmware bo mạch RobotMiniS3
     if act == "toggle_led":
-        sent_count = await robot_ws_manager.send_mcp_call("self.lamp.turn_on", {}, dev_id)
-    elif act in ["wiggle", "dance"]:
-        sent_count = await robot_ws_manager.send_oled_emotion("laughing", text="Dance & Wiggle!", device_id=dev_id)
+        sent_count = await robot_ws_manager.send_mcp_call("self.lamp.toggle", {}, dev_id)
+    elif act == "forward":
+        sent_count = await robot_ws_manager.send_mcp_call("self.robot.forward", {"speed": 80, "duration_ms": 1000}, dev_id)
+    elif act == "backward":
+        sent_count = await robot_ws_manager.send_mcp_call("self.robot.backward", {"speed": 80, "duration_ms": 1000}, dev_id)
+    elif act == "turn_left":
+        sent_count = await robot_ws_manager.send_mcp_call("self.robot.turn_left", {"speed": 80, "duration_ms": 600}, dev_id)
+    elif act == "turn_right":
+        sent_count = await robot_ws_manager.send_mcp_call("self.robot.turn_right", {"speed": 80, "duration_ms": 600}, dev_id)
+    elif act == "stop":
+        sent_count = await robot_ws_manager.send_mcp_call("self.robot.stop", {}, dev_id)
+    elif act == "wiggle":
+        sent_count = await robot_ws_manager.send_mcp_call("self.robot.wiggle", {}, dev_id)
+    elif act == "dance":
+        sent_count = await robot_ws_manager.send_mcp_call("self.robot.dance", {}, dev_id)
     else:
         cmd = {
             "type": "control",
@@ -2738,26 +2840,33 @@ async def robot_control(payload: RobotControlPayload):
             "timestamp": time.time()
         }
         sent_count = await robot_ws_manager.broadcast_command(cmd, dev_id)
-        # Đồng thời hiển thị trạng thái và biểu cảm trực tiếp lên OLED
-        dpad_texts = {
-            "forward": "▲ TIẾN LÊN",
-            "backward": "▼ LÙI LẠI",
-            "turn_left": "◄ RẼ TRÁI",
-            "turn_right": "► RẼ PHẢI",
-            "stop": "■ DỪNG LẠI"
-        }
-        dpad_emotions = {
-            "forward": "happy",
-            "backward": "shocked",
-            "turn_left": "wink",
-            "turn_right": "cool",
-            "stop": "neutral"
-        }
-        await robot_ws_manager.send_oled_emotion(
-            emotion=dpad_emotions.get(act, "happy"),
-            text=dpad_texts.get(act, f"Lệnh: {act}"),
-            device_id=dev_id
-        )
+
+    # 3. Đồng thời hiển thị trạng thái và biểu cảm trực tiếp lên OLED
+    dpad_texts = {
+        "forward": "▲ TIẾN LÊN",
+        "backward": "▼ LÙI LẠI",
+        "turn_left": "◄ RẼ TRÁI",
+        "turn_right": "► RẼ PHẢI",
+        "stop": "■ DỪNG LẠI",
+        "wiggle": "Lắc lư",
+        "dance": "Nhảy múa",
+        "toggle_led": "Đèn LED"
+    }
+    dpad_emotions = {
+        "forward": "happy",
+        "backward": "shocked",
+        "turn_left": "wink",
+        "turn_right": "cool",
+        "stop": "neutral",
+        "wiggle": "laughing",
+        "dance": "laughing",
+        "toggle_led": "happy"
+    }
+    await robot_ws_manager.send_oled_emotion(
+        emotion=dpad_emotions.get(act, "happy"),
+        text=dpad_texts.get(act, f"Lệnh: {act}"),
+        device_id=dev_id
+    )
 
     return {
         "status": "ok",
