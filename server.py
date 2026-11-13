@@ -17,13 +17,23 @@ from collections import deque
 from typing import Optional, List, Dict, Any, Tuple
 from contextlib import asynccontextmanager
 
+# Tự động nạp opus.dll & ffmpeg.exe từ thư mục ứng dụng cho Windows
+_app_dir = os.path.dirname(os.path.abspath(__file__))
+if _app_dir not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = f"{_app_dir};{os.environ.get('PATH', '')}"
+if hasattr(os, "add_dll_directory"):
+    try:
+        os.add_dll_directory(_app_dir)
+    except Exception:
+        pass
+
 try:
     import yt_dlp
 except ImportError:
     yt_dlp = None
 try:
     import opuslib_next
-except ImportError:
+except (ImportError, Exception):
     opuslib_next = None
 
 import websockets
