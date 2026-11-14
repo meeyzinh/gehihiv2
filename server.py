@@ -704,13 +704,14 @@ async def sync_prompt_to_upstream(prompt: str, display_name: str = "Sophia", voi
 
     # 5. Gửi OLED & Serial Log
     short_title = display_name[:14]
+    oled_text = f"En: {short_title}" if current_english_lesson.get("active") else (f"{short_title} Online" if short_title == "Sophia" else short_title)
     try:
-        await robot_ws_manager.send_oled_emotion("happy", text=f"En: {short_title}")
+        await robot_ws_manager.send_oled_emotion("happy", text=oled_text)
     except Exception:
         pass
     if serial_manager.is_running and serial_manager.connected:
         try:
-            serial_manager.send_command(json.dumps({"action": "display", "emotion": "happy", "text": f"En: {short_title}"}))
+            serial_manager.send_command(json.dumps({"action": "display", "emotion": "happy", "text": oled_text}))
         except Exception:
             pass
 
@@ -5416,8 +5417,14 @@ async def deactivate_english_tutor(payload: Optional[Dict[str, Any]] = None, db:
     current_english_lesson["content"] = ""
     default_prompt = DEFAULT_CHARACTER_PROMPT
     await sync_prompt_to_upstream(default_prompt, display_name="Sophia")
-    await robot_ws_manager.send_oled_emotion("neutral", text="Huy Hoc Tieng Anh")
     serial_manager._add_log("[GIÁO TRÌNH] ✓ Đã hủy chế độ học tiếng Anh, khôi phục vai trò Người bạn đồng hành ấm áp mặc định!")
+
+    # Phát lời chào thân mật trở lại vai trò Người bạn đồng hành ấm áp và chân thành
+    asyncio.create_task(play_tts_to_robots(
+        "Chào bạn nhé! Mình là Sophia, người bạn đồng hành ấm áp và chân thành của bạn đây. Dạo này thế nào rồi? Kể mình nghe với nhé!",
+        voice="vi-VN-HoaiMyNeural",
+        emotion="happy"
+    ))
 
     asyncio.create_task(mic_monitor_manager.broadcast({
         "type": "english_lesson_completed",
