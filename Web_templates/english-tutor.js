@@ -94,6 +94,7 @@ async function initializeEnglishTutorPage() {
         document.getElementById("app").hidden = false;
         document.getElementById("pageLoading").hidden = true;
         await refreshAllData();
+        connectEnglishTutorWebSocket();
     } catch (error) {
         document.getElementById("pageLoading").innerHTML = `
             <div style="max-width:560px;padding:22px;text-align:center;line-height:1.6;">
@@ -1382,4 +1383,119 @@ function escapeJsString(value) {
         .replace(/'/g, "\\'")
         .replace(/\r/g, "\\r")
         .replace(/\n/g, "\\n");
+}
+
+/* =========================================================
+ * REAL-TIME ROBOT INTERACTION & WEBSOCKET MONITOR
+ * ========================================================= */
+let tutorWs = null;
+
+function connectEnglishTutorWebSocket() {
+    if (tutorWs && (tutorWs.readyState === WebSocket.OPEN || tutorWs.readyState === WebSocket.CONNECTING)) {
+        return;
+    }
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${proto}//${window.location.host}/ws/mic-monitor`;
+    
+    try {
+        tutorWs = new WebSocket(wsUrl);
+    } catch (e) {
+        console.warn("[TUTOR WS] Lỗi khởi tạo WebSocket:", e);
+        return;
+    }
+
+    tutorWs.onopen = function() {
+        console.log("[TUTOR WS] ✓ Đã kết nối kênh giám sát Robot trực tiếp.");
+        const pill = document.getElementById("liveRobotStatusPill");
+        if (pill) {
+            pill.style.background = "#166534";
+            pill.style.color = "#86efac";
+            pill.textContent = "🟢 Robot Sẵn Sàng";
+        }
+    };
+
+    tutorWs.onmessage = function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            handleTutorWsMessage(data);
+        } catch (e) {
+            console.error("[TUTOR WS] Parse error:", e);
+        }
+    };
+
+    tutorWs.onclose = function() {
+        console.log("[TUTOR WS] Mất kết nối, tự kết nối lại sau 3s...");
+        const pill = document.getElementById("liveRobotStatusPill");
+        if (pill) {
+            pill.style.background = "#991b1b";
+            pill.style.color = "#fca5a5";
+            pill.textContent = "🔴 Mất kết nối Robot";
+        }
+        setTimeout(connectEnglishTutorWebSocket, 3000);
+    };
+
+    tutorWs.onerror = function() {
+        if (tutorWs) tutorWs.close();
+    };
+}
+
+function handleTutorWsMessage(data) {
+    const micText = document.getElementById("liveMicStateText");
+    const heroSpeech = document.getElementById("heroSpeech");
+
+    if (data.type === "stt_result" || (data.type === "english_tutor_chat" && data.speaker === "user")) {
+        const text = data.text || "";
+        if (micText) micText.textContent = `🎙️ Bé nói: "${text}"`;
+        if (heroSpeech) heroSpeech.textContent = `Bé: "${text}"`;
+        appendLiveChatMessage("user", text, data.timestamp);
+    } else if (data.type === "llm_reply" || (data.type === "english_tutor_chat" && data.speaker === "robot")) {
+        const reply = data.reply || data.text || "";
+        if (micText) micText.textContent = `🤖 Sophia: "${reply.slice(0, 45)}..."`;
+        if (heroSpeech) heroSpeech.textContent = reply;
+        appendLiveChatMessage("robot", reply, data.timestamp);
+    } else if (data.type === "state_change") {
+        if (micText && data.message) micText.textContent = `ℹ️ ${data.message}`;
+    } else if (data.type === "lesson_started") {
+        showToast(`✓ Đã kích hoạt bài học "${data.title}" trên Robot!`, "success");
+        refreshAllData();
+    } else if (data.type === "english_lesson_completed") {
+        showToast(`🎉 Bé đã hoàn thành bài học! Điểm số: ${data.score || 95}/100`, "success");
+        refreshAllData();
+    }
+}
+
+function appendLiveChatMessage(speaker, text, timestamp) {
+    const chatBox = document.getElementById("liveChatMessages");
+    if (!chatBox) return;
+
+    const placeholder = chatBox.querySelector(".empty-chat-placeholder");
+    if (placeholder) placeholder.remove();
+
+    const timeStr = timestamp || new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const isUser = speaker === "user";
+
+    const msgDiv = document.createElement("div");
+    msgDiv.style.display = "flex";
+    msgDiv.style.flexDirection = "column";
+    msgDiv.style.alignItems = isUser ? "flex-end" : "flex-start";
+    msgDiv.style.margin = "4px 0";
+
+    msgDiv.innerHTML = `
+        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 2px;">
+            ${isUser ? '👶 Bé (' + timeStr + ')' : '🤖 Sophia (' + timeStr + ')'}
+        </div>
+        <div style="max-width: 82%; padding: 8px 14px; border-radius: 12px; ${isUser ? 'background: #2563eb; color: white; border-bottom-right-radius: 2px;' : 'background: #1e293b; color: #f1f5f9; border: 1px solid rgba(255,255,255,0.1); border-bottom-left-radius: 2px;'}">
+            ${escapeHTML(text)}
+        </div>
+    `;
+
+    chatBox.appendChild(msgDiv);
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+function clearLiveChat() {
+    const chatBox = document.getElementById("liveChatMessages");
+    if (chatBox) {
+        chatBox.innerHTML = `<div class="empty-chat-placeholder" style="color: #64748b; font-style: italic; text-align: center; margin: auto;">Đã xóa hội thoại. Hãy nói "Hi Sophia" với Robot để bắt đầu luyện phản xạ tiếng Anh!</div>`;
+    }
 }

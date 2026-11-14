@@ -5616,16 +5616,22 @@ Ví dụ:
     // 7.1. ÁP DỤNG BÀI HỌC LÊN ROBOT
     async function applyCurriculumReal(id, name) {
       try {
+        let content = "";
+        if (typeof REAL_CURRICULUMS !== 'undefined' && Array.isArray(REAL_CURRICULUMS)) {
+          const found = REAL_CURRICULUMS.find(x => x.id === id);
+          if (found && found.content) content = found.content;
+        }
         const res = await fetch("/api/apply-curriculum", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ deviceId: activeDeviceId, curriculumId: id })
+          body: JSON.stringify({ deviceId: activeDeviceId, curriculumId: id, name: name, content: content })
         });
         const data = await res.json();
         if (res.ok) {
           showToast(`✓ Đã áp dụng bài học "${name}" lên Robot!`);
+          loadActiveEnglishTutor();
         } else {
-          showToast(`Lỗi: ${data.error || "Không thể áp dụng"}`, false);
+          showToast(`Lỗi: ${data.message || data.error || "Không thể áp dụng"}`, false);
         }
       } catch (e) {
         showToast("Lỗi kết nối máy chủ", false);
@@ -5687,7 +5693,7 @@ Ví dụ:
           showToast(`✓ Đã áp dụng giáo trình "${title}" lên Robot!`);
           loadActiveEnglishTutor();
         } else {
-          showToast(`Lỗi: ${data.error || "Không thể áp dụng"}`, false);
+          showToast(`Lỗi: ${data.message || data.error || "Không thể áp dụng"}`, false);
         }
       } catch (e) {
         showToast("Lỗi kết nối máy chủ", false);
@@ -5697,6 +5703,7 @@ Ví dụ:
     async function activateEnglishTutor() {
       const title = document.getElementById("englishTutorTitle")?.value.trim() || "Bài học tiếng Anh tùy chỉnh";
       const level = document.getElementById("englishTutorLevel")?.value || "starter";
+      const topic = document.getElementById("englishTutorTopic")?.value || "General";
       const words = document.getElementById("englishTutorWords")?.value.trim() || "";
       const phrases = document.getElementById("englishTutorPhrases")?.value.trim() || "";
       const note = document.getElementById("englishTutorNote")?.value.trim() || "";
@@ -5704,26 +5711,26 @@ Ví dụ:
       const wordsArr = words ? words.split(",").map(w => w.trim()).filter(Boolean) : [];
       const phrasesArr = phrases ? phrases.split("\n").map(p => p.trim()).filter(Boolean) : [];
 
-      const prompt = (
-        `# GIA SƯ TIẾNG ANH TỰ TẠO: ${title}\n` +
-        `Level: ${level}\n` +
-        `Từ vựng: ${wordsArr.join(", ")}\n` +
-        `Mẫu câu luyện nói:\n${phrasesArr.join("\n")}\n\n` +
-        `Ghi chú: ${note}\n\n` +
-        `Quy tắc: Hãy nói tiếng Anh chậm rãi, thân thiện, hỏi bé từng câu và khích lệ bé nói theo.`
-      );
-
       try {
-        const res = await fetch(`/api/devices/${activeDeviceId}`, {
-          method: "PUT",
+        const res = await fetch("/api/english-tutor/activate", {
+          method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: prompt, custom_prompt: true })
+          body: JSON.stringify({
+            deviceId: activeDeviceId,
+            title: title,
+            level: level,
+            topic: topic,
+            target_words: wordsArr,
+            target_phrases: phrasesArr,
+            tutor_note: note
+          })
         });
+        const data = await res.json();
         if (res.ok) {
           showToast(`✓ Đã kích hoạt giáo trình "${title}" lên Robot!`);
           loadActiveEnglishTutor();
         } else {
-          showToast("Lỗi kích hoạt", false);
+          showToast(`Lỗi: ${data.message || data.error || "Lỗi kích hoạt"}`, false);
         }
       } catch (e) {
         showToast("Lỗi kết nối máy chủ", false);
@@ -5739,11 +5746,17 @@ Ví dụ:
         if (res.ok) {
           const data = await res.json();
           if (data.active) {
+            const activeTitle = data.title || data.lesson?.title || (typeof data.active === 'object' ? data.active.title : "Bài học tiếng Anh");
+            const activeTopic = data.topic || data.lesson?.topic || (typeof data.active === 'object' ? data.active.topic : "General");
+            const activeLevel = (data.level || data.lesson?.level || (typeof data.active === 'object' ? data.active.level : "starter") || "starter").toUpperCase();
             box.innerHTML = `
               <div style="background:#07152b;padding:12px;border-radius:8px;border:1px solid #3b82f6;">
-                <strong style="color:#60a5fa;font-size:15px;">📘 ${data.active.title}</strong>
-                <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Chủ đề: ${data.active.topic} · Trình độ: ${(data.active.level||'').toUpperCase()}</div>
-                <div style="font-size:13px;color:#e2e8f0;margin-top:8px;">${data.active.scenario || data.active.tutor_note || 'Đang sẵn sàng hội thoại cùng bé!'}</div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <strong style="color:#60a5fa;font-size:15px;">📘 ${activeTitle}</strong>
+                  <span style="font-size:11px; background:#166534; color:#86efac; padding:2px 8px; border-radius:12px; font-weight:bold;">Đang chạy</span>
+                </div>
+                <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Chủ đề: ${activeTopic} · Trình độ: ${activeLevel}</div>
+                <div style="font-size:13px;color:#e2e8f0;margin-top:8px;">Hãy nói "Hi Sophia" với robot để bắt đầu học. Khi xong nói "học xong rồi" để lưu điểm.</div>
               </div>
             `;
           } else {
