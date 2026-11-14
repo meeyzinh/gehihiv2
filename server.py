@@ -1419,7 +1419,7 @@ class SerialBridgeManager:
                 self.connected = False
 
             # Dùng esptool để Hard Reset ESP32-S3 qua chân RTS
-            esptool_py = "C:/Users/Welcome/.espressif/python_env/idf6.1_py3.14_env/Scripts/python.exe"
+            esptool_py = sys.executable
             reset_success = False
             if os.path.exists(esptool_py):
                 try:
@@ -2230,6 +2230,7 @@ def stop_active_music():
     - Đặt trạng thái is_playing = False, is_preparing = False
     - Gửi tín hiệu ngắt âm thanh xuống firmware ESP32
     """
+    was_playing = bool(ACTIVE_MUSIC_STATE.get("is_playing"))
     ACTIVE_MUSIC_STATE["session_id"] = ACTIVE_MUSIC_STATE.get("session_id", 0) + 1
     ACTIVE_MUSIC_STATE["is_playing"] = False
     ACTIVE_MUSIC_STATE["is_preparing"] = False
@@ -2278,17 +2279,18 @@ def stop_active_music():
             pass
     ACTIVE_MUSIC_STATE["task"] = None
 
-    # Gửi tín hiệu ngắt tts tức thì tới toàn bộ robot để xóa bộ nhớ đệm âm thanh của ESP32
-    try:
-        loop = asyncio.get_running_loop()
-        if loop.is_running():
-            for ws in list(robot_ws_manager.all_robots):
-                try:
-                    loop.create_task(ws.send_json({"type": "tts", "state": "stop"}))
-                except Exception:
-                    pass
-    except Exception:
-        pass
+    # Gửi tín hiệu ngắt tts tức thì tới robot nếu trước đó đang phát nhạc
+    if was_playing:
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_running():
+                for ws in list(robot_ws_manager.all_robots):
+                    try:
+                        loop.create_task(ws.send_json({"type": "tts", "state": "stop"}))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
 INVIDIOUS_APIS = [
     "https://yt.chocolatemoo53.com",
@@ -2514,15 +2516,13 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, session_id: i
 
     sample_rate = 16000  # Chuẩn âm thanh 16kHz của MAX98357A trên bo mạch RobotMiniS3
 
-    # 1. Gửi lệnh ngắt buffer cũ và khởi tạo luồng âm thanh mới cho ESP32
+    # 1. Báo hiển thị OLED & khởi tạo luồng âm thanh chuẩn xác cho firmware ESP32
     for ws in list(robot_ws_manager.all_robots):
         try:
             sess = robot_ws_manager.sessions.get(ws, stream_uuid)
-            await ws.send_json({"type": "tts", "state": "stop", "session_id": sess})
-            await asyncio.sleep(0.02)
             await ws.send_json({"type": "llm", "emotion": "happy", "session_id": sess})
             await ws.send_json({"type": "tts", "state": "start", "session_id": sess, "sample_rate": sample_rate})
-            await asyncio.sleep(0.03)
+            await asyncio.sleep(0.04)
             await ws.send_json({
                 "type": "tts",
                 "state": "sentence_start",
@@ -2836,7 +2836,30 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
         return True
 
     # 0.2 Kiểm tra LỆNH PHÁT NHẠC / MỞ NHẠC YOUTUBE
-    play_prefixes = [
+    raw_prefixes = [
+        "hãy phát cho tôi bài hát", "hay phat cho toi bai hat",
+        "hãy phát cho tôi vài hát", "hay phat cho toi vai hat",
+        "hãy mở cho tôi bài hát", "hay mo cho toi bai hat",
+        "hãy mở cho tôi vài hát", "hay mo cho toi vai hat",
+        "hãy phát cho tôi bài", "hay phat cho toi bai",
+        "hãy phát cho tôi", "hay phat cho toi",
+        "hãy mở cho tôi bài", "hay mo cho toi bai",
+        "hãy mở cho tôi", "hay mo cho toi",
+        "hãy bật cho tôi bài", "hay bat cho toi bai",
+        "hãy bật cho tôi", "hay bat cho toi",
+        "phát cho tôi bài hát", "phat cho toi bai hat",
+        "phát cho tôi vài hát", "phat cho toi vai hat",
+        "phát cho tôi bài", "phat cho toi bai",
+        "phát cho tôi", "phat cho toi",
+        "mở cho tôi bài hát", "mo cho toi bai hat",
+        "mở cho tôi vài hát", "mo cho toi vai hat",
+        "mở cho tôi bài", "mo cho toi bai",
+        "mở cho tôi", "mo cho toi",
+        "bật cho tôi bài", "bat cho toi bai",
+        "bật cho tôi", "bat cho toi",
+        "cho tôi nghe bài", "cho toi nghe bai",
+        "cho tôi nghe", "cho toi nghe",
+        "cho nghe bài", "cho nghe bai",
         "mở bài hát", "mo bai hat", "mở bài", "mo bai",
         "bật bài hát", "bat bai hat", "bật bài", "bat bai",
         "phát bài hát", "phat bai hat", "phát bài", "phat bai",
@@ -2845,11 +2868,12 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
         "phát nhạc", "phat nhac", "nghe bài", "nghe bai",
         "nghe nhạc", "nghe nhac", "play music", "play song"
     ]
+    play_prefixes = sorted(raw_prefixes, key=len, reverse=True)
     for pfx in play_prefixes:
         if pfx in t_norm:
             idx = t_norm.find(pfx) + len(pfx)
             song_query = t_norm[idx:].strip()
-            for filler in ["trên youtube", "tren youtube", "trên mạng", "tren mang", "cho tôi", "cho toi", "cho bé", "cho be", "đi", "nào"]:
+            for filler in ["trên youtube", "tren youtube", "trên mạng", "tren mang", "cho tôi", "cho toi", "cho bé", "cho be", "đi", "nào", "bài hát", "bai hat", "vài hát", "vai hat", "bài", "bai"]:
                 song_query = song_query.replace(filler, "").strip()
             if not song_query:
                 song_query = "nhạc thiếu nhi vui nhộn"
@@ -3473,9 +3497,6 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             is_ai_thinking = False
                             last_activity_time = now_l
                             last_mic_audio_time = now_l
-                            if ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing") or ACTIVE_MUSIC_STATE.get("proc"):
-                                print("[ROBOT WS] 🎙 Bắt đầu lắng nghe người dùng -> Tự động ngắt phát nhạc!")
-                                stop_active_music()
                         elif st in ["stop"]:
                             # Người dùng ngưng nói, chuyển quyền cho AI suy nghĩ và trả lời
                             is_ai_thinking = True
