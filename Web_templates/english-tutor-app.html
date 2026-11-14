@@ -6438,13 +6438,18 @@ async function applyTemplate(templateId) {
     }
 
     try {
-        showToast("Đang áp dụng giáo trình...", "info");
+        const all = (state.lessonTemplates || []).concat(state.roleplayTemplates || []);
+        const templateObj = all.find(t => t.id === templateId);
+        const lTitle = templateObj ? templateObj.title : templateId;
+        showToast(`Đang áp dụng giáo trình "${lTitle}" lên Robot...`, "info");
         await apiFetch("/api/english-tutor/activate-template", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 deviceId: state.deviceId,
-                templateId
+                templateId,
+                title: lTitle,
+                template: templateObj
             })
         });
         await Promise.all([
@@ -6454,7 +6459,7 @@ async function applyTemplate(templateId) {
         buildRecommendation();
         renderDashboard();
         showEnglishSection("today");
-        showToast("Đã áp dụng bài học. Hãy gọi Sophia hoặc nói Xin chào để bắt đầu.", "success");
+        showToast(`🎉 Đã áp dụng bài học "${lTitle}"! Loa Robot đang cất tiếng chào và dạy bé...`, "success");
     } catch (error) {
         showToast(error.message, "error");
     }

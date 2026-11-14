@@ -671,7 +671,13 @@ async def sync_prompt_to_upstream(prompt: str, display_name: str = "Sophia", voi
             f"https://xiaozhi.me/api/agents/{agent_id}"
         ]
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        payload = {"character": prompt}
+        target_model = model_id or "qwen"
+        if target_model == "xz-lite":
+            target_model = "qwen"
+        payload = {
+            "character": prompt,
+            "llm_model": target_model
+        }
         async def _sync_xz(ep: str):
             try:
                 async with httpx.AsyncClient(timeout=3.0) as client:
@@ -1196,12 +1202,12 @@ class RobotConnectionManager:
         targets = []
         dev_key = device_id.lower().strip() if device_id else None
         if dev_key and dev_key in self.active_connections and self.active_connections[dev_key]:
-            targets = self.active_connections[dev_key]
+            targets = list(self.active_connections[dev_key])
         else:
-            targets = self.all_robots
+            targets = list(self.all_robots)
 
         sent_count = 0
-        for ws in list(targets):
+        for ws in targets:
             sess_id = self.sessions.get(ws) or (self.dev_sessions.get(dev_key) if dev_key else "") or f"sess-{int(time.time())}"
             try:
                 # 1. Đổi biểu cảm OLED sang nhắm mắt ngủ (sleepy)
@@ -1209,7 +1215,7 @@ class RobotConnectionManager:
                     "session_id": sess_id,
                     "type": "llm",
                     "emotion": "sleepy",
-                    "text": "Sophia zZz"
+                    "text": "Da tat robot"
                 })
                 # 2. Dừng lắng nghe mic
                 await ws.send_json({
@@ -1217,15 +1223,20 @@ class RobotConnectionManager:
                     "type": "listen",
                     "state": "stop"
                 })
-                # 3. Chuẩn Xiaozhi: Gửi goodbye để firmware đóng audio channel và chuyển về kDeviceStateIdle
-                await ws.send_json({
-                    "session_id": sess_id,
-                    "type": "goodbye"
-                })
                 sent_count += 1
-                print(f"[WS] 💤 Đã gửi lệnh CHẾ ĐỘ NGỦ (goodbye / standby) tới robot (Session: {sess_id})")
             except Exception as e:
                 print(f"[WS ERR] send_sleep_command error: {e}")
+
+        # Cho màn hình OLED hiển thị biểu cảm sleepy trước khi ngắt kênh Audio
+        await asyncio.sleep(0.35)
+
+        for ws in targets:
+            try:
+                # Đóng kết nối WebSocket -> Firmware kích hoạt OnAudioChannelClosed -> kDeviceStateIdle (Ngắt hoàn toàn mic lắng nghe, chỉ chờ WakeNet 'Sophia')
+                await ws.close(code=1000, reason="sleep")
+                print(f"[WS] 💤 Đã đóng Audio WebSocket để Robot vào Standby hoàn toàn (Tắt mic lắng nghe)")
+            except Exception:
+                pass
 
         # Đồng thời cập nhật trạng thái UI Mic Monitor
         mic_monitor_manager.current_state["state"] = "idle"
@@ -1233,7 +1244,7 @@ class RobotConnectionManager:
             "type": "state_change",
             "state": "idle",
             "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
-            "message": "Robot đã vào chế độ ngủ (Standby - Chờ 'Hi Sophia' hoặc 'Sophia')"
+            "message": "Robot đã tắt chế độ lắng nghe (Standby - Chờ gọi 'Sophia' để bật lại)"
         }))
         return sent_count
 
@@ -2200,16 +2211,93 @@ def load_english_templates_file() -> Dict[str, Any]:
             print(f"[ENGLISH TUTOR] Lỗi đọc templates json: {e}")
     return {"lessons": [], "roleplay": []}
 
-def find_english_template_by_id(template_id: str) -> Optional[Dict[str, Any]]:
+def find_english_template_by_id(template_id: Optional[str] = None, title: Optional[str] = None) -> Optional[Dict[str, Any]]:
     data = load_english_templates_file()
-    tid = str(template_id).strip()
-    for item in data.get("lessons", []):
-        if str(item.get("id")) == tid:
-            return item
-    for item in data.get("roleplay", []):
-        if str(item.get("id")) == tid:
-            return item
+    all_items = data.get("lessons", []) + data.get("roleplay", [])
+    tid = str(template_id).strip() if template_id else ""
+    t_title = str(title).strip().lower() if title else ""
+    if tid:
+        for item in all_items:
+            if str(item.get("id")).strip() == tid:
+                return item
+        for item in all_items:
+            it_title = str(item.get("title", "")).strip().lower()
+            if tid.lower() in it_title or it_title in tid.lower():
+                return item
+    if t_title:
+        for item in all_items:
+            it_title = str(item.get("title", "")).strip().lower()
+            if t_title in it_title or it_title in t_title:
+                return item
     return None
+
+async def play_tts_to_robots(text: str, voice: str = "en-US-AnaNeural", emotion: str = "happy"):
+    """
+    Phát âm thanh hướng dẫn giọng nói (TTS) chất lượng cao trực tiếp qua loa Robot:
+    - Sử dụng edge-tts sinh âm thanh chuẩn giọng bản ngữ (Ana/Jenny cho tiếng Anh, HoaiMy cho tiếng Việt).
+    - Giải mã PCM qua ffmpeg và mã hóa Opus 60ms frames gửi thẳng xuống loa Robot.
+    """
+    try:
+        import edge_tts
+        communicate = edge_tts.Communicate(text, voice)
+        mp3_bytes = b""
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                mp3_bytes += chunk["data"]
+
+        if not mp3_bytes:
+            return
+
+        ffmpeg_cmd = get_ffmpeg_cmd()
+        proc = await asyncio.create_subprocess_exec(
+            ffmpeg_cmd, "-hide_banner", "-loglevel", "error",
+            "-i", "pipe:0", "-f", "s16le", "-ar", "16000", "-ac", "1", "pipe:1",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+        pcm_bytes, _ = await proc.communicate(input=mp3_bytes)
+        if not pcm_bytes:
+            return
+
+        if opuslib_next:
+            encoder = opuslib_next.Encoder(16000, 1, opuslib_next.APPLICATION_VOIP)
+            chunk_size = 1920
+            # Thông báo trạng thái robot đang nói lên màn hình & mic monitor
+            serial_manager._add_log(f"[ROBOT NÓI] 🗣️ {text}")
+            await robot_ws_manager.send_oled_emotion(emotion, text=text[:16])
+            mic_monitor_manager.current_state["state"] = "speaking"
+            asyncio.create_task(mic_monitor_manager.broadcast({
+                "type": "state_change",
+                "state": "speaking",
+                "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+                "message": f"Robot Sophia: \"{text}\""
+            }))
+
+            for i in range(0, len(pcm_bytes), chunk_size):
+                chunk = pcm_bytes[i:i+chunk_size]
+                if len(chunk) < chunk_size:
+                    chunk = chunk + b"\x00" * (chunk_size - len(chunk))
+                encoded = encoder.encode(chunk, 960)
+                for ws in list(robot_ws_manager.all_robots):
+                    try:
+                        await ws.send_bytes(encoded)
+                    except Exception:
+                        pass
+                await asyncio.sleep(0.055)
+
+            # Kết thúc phát loa, chuyển về trạng thái sẵn sàng lắng nghe
+            mic_monitor_manager.current_state["state"] = "idle"
+            asyncio.create_task(mic_monitor_manager.broadcast({
+                "type": "state_change",
+                "state": "idle",
+                "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+                "message": "Sẵn sàng (chờ giọng nói bé)"
+            }))
+            # Bật mic lắng nghe phản hồi của bé
+            await robot_ws_manager.send_wake_up()
+    except Exception as e:
+        print(f"[PLAY TTS ROBOT ERR] {e}")
 
 def get_ffmpeg_cmd() -> str:
     local_ffmpeg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ffmpeg.exe")
@@ -2799,10 +2887,12 @@ async def start_music_playback(query_or_url: str, track_info: Optional[dict] = N
 async def handle_robot_voice_command(txt: str, dev_mac: str):
     """
     Bộ phân tích và điều phối Khẩu lệnh Giọng nói trực tiếp trên Robot:
-    - Nhận diện các lệnh hủy bài học / quay lại trợ lý Sophia mặc định
-    - Nhận diện các lệnh vào chế độ học tiếng Anh (bài học cụ thể hoặc mặc định)
-    - Nhận diện các lệnh chuyển đổi vai trò (Kể chuyện, Lập trình, Bạn tâm sự...)
-    Tự động cập nhật Database, đồng bộ Upstream AI (gehihi), và cập nhật OLED màn hình robot.
+    - 0.0 Nhận diện LỆNH ĐI NGỦ / TẮT ROBOT / STANDBY (Ưu tiên cao nhất) -> Thoát hoàn toàn lắng nghe, vào Standby
+    - 0.1 Nhận diện Lệnh dừng / tắt nhạc YouTube
+    - 0.2 Nhận diện Lệnh phát nhạc / mở nhạc YouTube
+    - 0.3 Nhận diện Lệnh hủy / dừng học tiếng Anh -> Khôi phục Sophia
+    - 0.4 Nhận diện Lệnh vào chế độ học tiếng Anh
+    - 0.5 Nhận diện Lệnh chuyển đổi vai trò nhân vật AI
     """
     if not txt or len(txt.strip()) < 3:
         return False
@@ -2812,15 +2902,74 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
         t_norm = t_norm.replace(ch, "")
     t_norm = " ".join(t_norm.split())
 
+    # =========================================================================
+    # 0.0 KIỂM TRA LỆNH ĐI NGỦ / TẮT ROBOT / STANDBY (ƯU TIÊN CAO NHẤT)
+    # Thoát hoàn toàn khỏi chế độ lắng nghe, tắt nhạc (nếu có), đưa Robot vào Standby
+    # Cho đến khi người dùng gọi "Sophia" / "Hi, Sophia" hoặc bấm nút mới vào lại chế độ lắng nghe.
+    # =========================================================================
+    words_list = t_norm.split()
+    words_count = len(words_list)
+    explicit_sleep_phrases = [
+        "bạn hãy tắt đi", "hay tat di", "bạn tắt đi", "tắt đi bạn", "hãy tắt đi",
+        "tắt đi nhé", "tắt đi nha", "bạn có thể tắt đi",
+        "tắt robot đi", "tat robot di", "hãy tắt robot đi", "hay tat robot di",
+        "tắt robot", "tat robot", "tắt máy", "tat may", "tắt nguồn", "tat nguon",
+        "sophia đi ngủ đi", "sophia di ngu di",
+        "hãy đi ngủ đi", "hay di ngu di",
+        "đi ngủ đi sophia", "di ngu di sophia",
+        "tạm biệt sophia", "tam biet sophia",
+        "vào chế độ ngủ", "vao che do ngu",
+        "vào chế độ chờ", "vao che do cho",
+        "nghỉ ngơi đi sophia", "nghi ngoi di sophia",
+        "dừng lắng nghe", "dung lang nghe", "ngừng lắng nghe", "ngung lang nghe",
+        "không nghe nữa", "khong nghe nua", "tắt mic", "tat mic"
+    ]
+    short_sleep_keywords = [
+        "tắt đi", "tat di",
+        "tắt robot", "tat robot",
+        "tắt máy", "tat may",
+        "tắt nguồn", "tat nguon",
+        "đi ngủ đi", "di ngu di",
+        "đi ngủ thôi", "di ngu thoi",
+        "ngủ đi", "ngu di",
+        "ngủ thôi", "ngu thoi",
+        "ngủ nhé", "ngu nhe",
+        "ngủ nha", "ngu nha",
+        "tắt máy đi", "tat may di",
+        "tạm biệt robot", "tam biet robot",
+        "tạm biệt", "tam biet",
+        "chào tạm biệt", "chao tam biet",
+        "bye bye", "goodbye",
+        "nghỉ ngơi đi", "nghi ngoi di",
+        "đừng nghe nữa", "dung nghe nua",
+        "ngừng nghe", "ngung nghe",
+        "im lặng đi", "im lang di",
+        "thôi không nói nữa", "thoi khong noi nua",
+        "standby", "sleep mode", "go to sleep"
+    ]
+    is_sleep_cmd = False
+    if any(p in t_norm for p in explicit_sleep_phrases):
+        is_sleep_cmd = True
+    elif words_count <= 5 and any(k in t_norm for k in short_sleep_keywords):
+        is_sleep_cmd = True
+
+    if is_sleep_cmd:
+        print(f"[VOICE COMMAND] 💤 Nhận lệnh ĐI NGỦ / TẮT ROBOT: '{txt}'")
+        serial_manager._add_log(f"[KHẨU LỆNH] 💤 '{txt}' -> Nhận lệnh ĐI NGỦ/TẮT ROBOT. Đưa Robot vào chế độ ngủ (Standby)...")
+        stop_active_music()
+        await robot_ws_manager.send_sleep_command(dev_mac)
+        serial_manager._add_log("[ROBOT] 💤 Robot đã nhắm mắt đi ngủ (Standby). Nói 'Hi Sophia' hoặc 'Sophia' hoặc bấm nút để đánh thức.")
+        return True
+
     # 0.1 Kiểm tra LỆNH DỪNG/TẮT NHẠC YOUTUBE
     stop_music_keywords = [
         "dừng nhạc", "dung nhac", "tắt nhạc", "tat nhac",
         "ngừng nhạc", "ngung nhac", "stop music", "dừng bài hát",
         "dung bai hat", "dừng bài", "dung bai", "tat bai hat",
         "tắt bài hát", "tắt bài", "tat bai", "dừng phát", "dung phat",
-        "thôi phát nhạc", "stop song", "dừng lại", "dung lai",
-        "ngưng nhạc", "ngung nhac", "im đi", "im di", "im lặng", "im lang",
-        "thôi đừng hát", "thôi hát", "thoi hat", "stop", "tắt đi", "tat di",
+        "thôi phát nhạc", "stop song",
+        "ngưng nhạc", "ngung nhac",
+        "thôi đừng hát", "thôi hát", "thoi hat",
         "dừng nghe", "dung nghe", "tắt loa", "tat loa", "ngưng hát", "ngung hat",
         "tắt nhạc cho tôi đi", "tat nhac cho toi di", "tắt nhạc đi", "tat nhac di",
         "dừng nhạc đi", "dung nhac di", "tắt bài đi", "tat bai di",
@@ -2885,56 +3034,6 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
                 await robot_ws_manager.send_oled_emotion("happy", text=f"Tim: {clean_name}")
                 serial_manager._add_log(f"[YOUTUBE MUSIC] ▶ Đang phát bài: '{song_query}' theo giọng nói!")
             return True
-
-    # 0.3 Kiểm tra LỆNH ĐI NGỦ / TẮT ROBOT / STANDBY
-    # Chỉ nhận lệnh đi ngủ khi câu nói là câu mệnh lệnh ngắn (dưới 6 từ) hoặc chứa cụm từ rõ ràng chỉ định robot
-    # Tránh tình trạng nhận diện nhầm từ các câu nói thông thường (như "suy nghĩ đi", "tắt điều hòa", "im lặng quá")
-    words_list = t_norm.split()
-    words_count = len(words_list)
-    explicit_sleep_phrases = [
-        "sophia đi ngủ đi", "sophia di ngu di",
-        "hãy đi ngủ đi", "hay di ngu di",
-        "đi ngủ đi sophia", "di ngu di sophia",
-        "tắt robot đi", "tat robot di",
-        "hãy tắt robot đi", "hay tat robot di",
-        "tạm biệt sophia", "tam biet sophia",
-        "vào chế độ ngủ", "vao che do ngu",
-        "vào chế độ chờ", "vao che do cho",
-        "nghỉ ngơi đi sophia", "nghi ngoi di sophia"
-    ]
-    short_sleep_keywords = [
-        "đi ngủ đi", "di ngu di",
-        "đi ngủ thôi", "di ngu thoi",
-        "ngủ đi", "ngu di",
-        "ngủ thôi", "ngu thoi",
-        "ngủ nhé", "ngu nhe",
-        "ngủ nha", "ngu nha",
-        "tắt robot", "tat robot",
-        "tắt máy đi", "tat may di",
-        "tạm biệt robot", "tam biet robot",
-        "tạm biệt", "tam biet",
-        "chào tạm biệt", "chao tam biet",
-        "bye bye", "goodbye",
-        "nghỉ ngơi đi", "nghi ngoi di",
-        "đừng nghe nữa", "dung nghe nua",
-        "ngừng nghe", "ngung nghe",
-        "im lặng đi", "im lang di",
-        "thôi không nói nữa", "thoi khong noi nua",
-        "standby", "sleep mode", "go to sleep"
-    ]
-    is_sleep_cmd = False
-    if any(p in t_norm for p in explicit_sleep_phrases):
-        is_sleep_cmd = True
-    elif words_count <= 5 and any(k in t_norm for k in short_sleep_keywords):
-        is_sleep_cmd = True
-
-    if is_sleep_cmd:
-        print(f"[VOICE COMMAND] 💤 Nhận lệnh ĐI NGỦ / TẮT ROBOT: '{txt}'")
-        serial_manager._add_log(f"[KHẨU LỆNH] 💤 '{txt}' -> Nhận lệnh ĐI NGỦ/TẮT ROBOT. Đưa Robot vào chế độ ngủ (Standby)...")
-        stop_active_music()
-        await robot_ws_manager.send_sleep_command(dev_mac)
-        serial_manager._add_log("[ROBOT] 💤 Robot đã nhắm mắt đi ngủ (Standby). Nói 'Hi Sophia' hoặc 'Sophia' hoặc bấm nút để đánh thức.")
-        return True
 
     # Danh sách từ khóa HỦY BÀI HỌC / THOÁT / QUAY VỀ SOPHIA (Chỉ khi đang học tiếng Anh)
     is_cancel = False
@@ -3279,16 +3378,12 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                         "session_id": sess,
                         "type": "llm",
                         "emotion": "sleepy",
-                        "text": "Sophia zZz"
+                        "text": "Da tat robot"
                     })
                     await websocket.send_json({
                         "session_id": sess,
                         "type": "listen",
                         "state": "stop"
-                    })
-                    await websocket.send_json({
-                        "session_id": sess,
-                        "type": "goodbye"
                     })
                 except Exception as e:
                     print(f"[AUTO SLEEP ERR] {e}")
@@ -3298,8 +3393,15 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     "type": "state_change",
                     "state": "idle",
                     "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
-                    "message": f"Robot đã vào chế độ ngủ (Standby sau {int(current_timeout)}s không có tương tác)"
+                    "message": f"Robot đã tắt chế độ lắng nghe (Standby sau {int(current_timeout)}s không có tương tác)"
                 }))
+
+                await asyncio.sleep(0.35)
+                try:
+                    await websocket.close(code=1000, reason="auto_sleep")
+                    break
+                except Exception:
+                    pass
 
     watchdog_task = asyncio.create_task(auto_sleep_watchdog())
 
@@ -4363,7 +4465,7 @@ async def api_english_tutor_activate_template(payload: EnglishTemplatePayload, d
     """Kích hoạt một bài học tiếng Anh từ danh mục giáo trình lên Robot ESP32"""
     raw_tid = payload.templateId if payload.templateId is not None else payload.template_id
     template_id = str(raw_tid).strip() if raw_tid else None
-    template_data = find_english_template_by_id(template_id) if template_id else None
+    template_data = find_english_template_by_id(template_id, title=payload.title) if (template_id or payload.title) else None
     if not template_data and payload.template and isinstance(payload.template, dict):
         template_data = payload.template
 
@@ -4446,11 +4548,21 @@ Ghi chú phương pháp: {tutor_note}
     }
 
     # Đồng bộ toàn diện: SQLite DB, xiaozhi.me Upstream, Gehihi Upstream, OLED & Serial
-    await sync_prompt_to_upstream(prompt_content, display_name=title)
+    await sync_prompt_to_upstream(prompt_content, display_name=title, model_id="qwen")
     short_title = title.split(":")[0].replace("Bài", "B.") if ":" in title else title
     await robot_ws_manager.send_oled_emotion("happy", text=f"En: {short_title[:16]}")
     await robot_ws_manager.send_wake_up()
     serial_manager._add_log(f"[GIÁO TRÌNH TIẾNG ANH] ✓ Đã kích hoạt bài học: '{title}' vào Robot!")
+
+    # Loa Robot chủ động phát lời chào và mở đầu bài học bằng tiếng Anh
+    words_preview = ", ".join(target_words[:3]) if (target_words and isinstance(target_words, list)) else ""
+    first_phrase = target_phrases[0] if (target_phrases and isinstance(target_phrases, list)) else ""
+    welcome_speech = f"Hello! Welcome to our English lesson: {title}."
+    if words_preview:
+        welcome_speech += f" Today we will learn: {words_preview}."
+    if first_phrase:
+        welcome_speech += f" Let's practice saying: {first_phrase}."
+    asyncio.create_task(play_tts_to_robots(welcome_speech, voice="en-US-AnaNeural"))
 
     asyncio.create_task(mic_monitor_manager.broadcast({
         "type": "lesson_started",
@@ -4549,11 +4661,21 @@ Ghi chú phương pháp: {note}
         "robot_turns": 0
     }
 
-    await sync_prompt_to_upstream(prompt_content, display_name=title)
+    await sync_prompt_to_upstream(prompt_content, display_name=title, model_id="qwen")
     short_title = title.split(":")[0].replace("Bài", "B.") if ":" in title else title
     await robot_ws_manager.send_oled_emotion("happy", text=f"En: {short_title[:16]}")
     await robot_ws_manager.send_wake_up()
     serial_manager._add_log(f"[GIÁO TRÌNH TIẾNG ANH] ✓ Đã bật bài học: '{title}' trên Robot!")
+
+    # Loa Robot chủ động phát lời chào và mở đầu bài học bằng tiếng Anh
+    words_preview = ", ".join(words[:3]) if words else ""
+    first_phrase = phrases[0] if phrases else ""
+    welcome_speech = f"Hello! Welcome to our English lesson: {title}."
+    if words_preview:
+        welcome_speech += f" Today we will learn: {words_preview}."
+    if first_phrase:
+        welcome_speech += f" Let's practice saying: {first_phrase}."
+    asyncio.create_task(play_tts_to_robots(welcome_speech, voice="en-US-AnaNeural"))
 
     asyncio.create_task(mic_monitor_manager.broadcast({
         "type": "lesson_started",

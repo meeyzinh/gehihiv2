@@ -3654,6 +3654,37 @@ Ví dụ:
       const item = all.find(x => x.id === id);
       if (item) {
         showPreviewTemplateDetail(item, type);
+
+        // Tự động điền dữ liệu giáo trình vào form "Tự tạo giáo trình tiếng Anh" phía dưới
+        const titleEl = document.getElementById("englishTutorTitle");
+        const levelEl = document.getElementById("englishTutorLevel");
+        const topicEl = document.getElementById("englishTutorTopic");
+        const wordsEl = document.getElementById("englishTutorWords");
+        const phrasesEl = document.getElementById("englishTutorPhrases");
+        const noteEl = document.getElementById("englishTutorNote");
+
+        if (titleEl) titleEl.value = item.title || "";
+        if (levelEl && item.level) levelEl.value = item.level.toLowerCase();
+        if (topicEl && item.topic) {
+          let exists = false;
+          for (let opt of topicEl.options) {
+            if (opt.value === item.topic) { exists = true; break; }
+          }
+          if (!exists) {
+            const newOpt = document.createElement("option");
+            newOpt.value = item.topic;
+            newOpt.text = item.topic;
+            topicEl.appendChild(newOpt);
+          }
+          topicEl.value = item.topic;
+        }
+        if (wordsEl) {
+          wordsEl.value = Array.isArray(item.target_words) ? item.target_words.join(", ") : (item.target_words || "");
+        }
+        if (phrasesEl) {
+          phrasesEl.value = Array.isArray(item.target_phrases) ? item.target_phrases.join("\n") : (item.target_phrases || "");
+        }
+        if (noteEl) noteEl.value = item.tutor_note || item.scenario || "";
       }
       renderPreviewEnglishTemplates();
     }
@@ -3678,6 +3709,13 @@ Ví dụ:
             Chủ đề: <strong style="color:#e2e8f0;">${t.topic || 'General'}</strong> · Chế độ: <strong style="color:#e2e8f0;">${isRoleplay ? 'Nhập vai luyện nói' : 'Bài học'}</strong>
           </div>
 
+          <!-- NÚT ÁP DỤNG NGAY Ở ĐẦU CARD -->
+          <div style="margin-bottom:14px;">
+            <button class="primary" onclick="applyEnglishTemplateReal('${t.id}', '${t.title.replace(/'/g, "\\'")}')" style="width:100%; padding:12px 16px; font-weight:bold; font-size:14px; border-radius:8px; background:linear-gradient(135deg, #2563eb, #1d4ed8); color:white; border:none; cursor:pointer; box-shadow:0 4px 14px rgba(37,99,235,0.45); display:flex; align-items:center; justify-content:center; gap:8px;">
+              <span>🚀</span> Áp dụng bài học này lên Robot ngay
+            </button>
+          </div>
+
           ${t.scenario ? `
             <div style="margin-bottom:12px; padding:10px; border-radius:8px; background:rgba(168,85,247,0.15); border:1px solid rgba(216,180,254,0.2); font-size:13px; line-height:1.5;">
               <strong style="color:#d8b4fe;">🎭 Tình huống:</strong><br>${t.scenario}
@@ -3698,11 +3736,11 @@ Ví dụ:
             </div>
           ` : ''}
 
-          <div style="display:flex; gap:10px;">
-            <button class="primary" onclick="applyEnglishTemplateReal('${t.id}', '${t.title.replace(/'/g, "\\'")}')" style="flex:1; padding:10px; font-weight:bold; border-radius:8px; background:#2563eb; color:white; border:none; cursor:pointer;">
-              🚀 Áp dụng bài này lên Robot
+          <div style="display:flex; gap:10px; margin-top:6px;">
+            <button class="primary" onclick="applyEnglishTemplateReal('${t.id}', '${t.title.replace(/'/g, "\\'")}')" style="flex:1; padding:11px; font-weight:bold; border-radius:8px; background:#2563eb; color:white; border:none; cursor:pointer;">
+              🚀 Áp dụng lên Robot
             </button>
-            <a href="english-tutor-app.html" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; font-weight:bold; font-size:12px; border-radius:8px; background:#1e293b; color:#93c5fd; border:1px solid rgba(147,197,253,0.3); text-decoration:none;">
+            <a href="static_web/english-tutor-app.html" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; font-weight:bold; font-size:12px; border-radius:8px; background:#1e293b; color:#93c5fd; border:1px solid rgba(147,197,253,0.3); text-decoration:none;">
               Mở App Full ↗
             </a>
           </div>
@@ -5885,6 +5923,7 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
       try {
         const all = (typeof PREVIEW_LESSONS !== 'undefined' ? PREVIEW_LESSONS : []).concat(typeof PREVIEW_ROLEPLAY !== 'undefined' ? PREVIEW_ROLEPLAY : []);
         const item = all.find(t => t.id === id);
+        showToast(`Đang kích hoạt bài học "${title}" lên Robot...`, true);
         const res = await fetch("/api/english-tutor/activate-template", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -5897,10 +5936,10 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
         });
         const data = await res.json();
         if (res.ok) {
-          showToast(`✓ Đã áp dụng giáo trình "${title}" lên Robot!`);
+          showToast(`🎉 Đã áp dụng bài học "${title}"! Loa Robot đang cất tiếng chào và dạy bé...`);
           loadActiveEnglishTutor();
         } else {
-          showToast(`Lỗi: ${data.error || "Không thể áp dụng"}`, false);
+          showToast(`Lỗi: ${data.message || data.error || "Không thể áp dụng"}`, false);
         }
       } catch (e) {
         showToast("Lỗi kết nối máy chủ", false);
@@ -5910,6 +5949,7 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
     async function activateEnglishTutor() {
       const title = document.getElementById("englishTutorTitle")?.value.trim() || "Bài học tiếng Anh tùy chỉnh";
       const level = document.getElementById("englishTutorLevel")?.value || "starter";
+      const topic = document.getElementById("englishTutorTopic")?.value || "General";
       const words = document.getElementById("englishTutorWords")?.value.trim() || "";
       const phrases = document.getElementById("englishTutorPhrases")?.value.trim() || "";
       const note = document.getElementById("englishTutorNote")?.value.trim() || "";
@@ -5917,26 +5957,28 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
       const wordsArr = words ? words.split(",").map(w => w.trim()).filter(Boolean) : [];
       const phrasesArr = phrases ? phrases.split("\n").map(p => p.trim()).filter(Boolean) : [];
 
-      const prompt = (
-        `# GIA SƯ TIẾNG ANH TỰ TẠO: ${title}\n` +
-        `Level: ${level}\n` +
-        `Từ vựng: ${wordsArr.join(", ")}\n` +
-        `Mẫu câu luyện nói:\n${phrasesArr.join("\n")}\n\n` +
-        `Ghi chú: ${note}\n\n` +
-        `Quy tắc: Hãy nói tiếng Anh chậm rãi, thân thiện, hỏi bé từng câu và khích lệ bé nói theo.`
-      );
+      showToast(`Đang kích hoạt bài học "${title}" lên Robot...`, true);
 
       try {
-        const res = await fetch(`/api/devices/${activeDeviceId}`, {
-          method: "PUT",
+        const res = await fetch("/api/english-tutor/activate", {
+          method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: prompt, custom_prompt: true })
+          body: JSON.stringify({
+            deviceId: activeDeviceId,
+            title: title,
+            level: level,
+            topic: topic,
+            target_words: wordsArr,
+            target_phrases: phrasesArr,
+            tutor_note: note
+          })
         });
+        const data = await res.json();
         if (res.ok) {
-          showToast(`✓ Đã kích hoạt giáo trình "${title}" lên Robot!`);
+          showToast(`🎉 Đã kích hoạt bài học "${title}"! Loa Robot đang cất tiếng chào và dạy bé...`);
           loadActiveEnglishTutor();
         } else {
-          showToast("Lỗi kích hoạt", false);
+          showToast(`Lỗi: ${data.message || data.error || "Không thể kích hoạt"}`, false);
         }
       } catch (e) {
         showToast("Lỗi kết nối máy chủ", false);
@@ -5952,15 +5994,21 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
         if (res.ok) {
           const data = await res.json();
           if (data.active) {
+            const activeTitle = data.title || data.lesson?.title || (typeof data.active === 'object' ? data.active.title : "Bài học tiếng Anh");
+            const activeTopic = data.topic || data.lesson?.topic || (typeof data.active === 'object' ? data.active.topic : "General");
+            const activeLevel = (data.level || data.lesson?.level || (typeof data.active === 'object' ? data.active.level : "starter") || "starter").toUpperCase();
             box.innerHTML = `
               <div style="background:#07152b;padding:12px;border-radius:8px;border:1px solid #3b82f6;">
-                <strong style="color:#60a5fa;font-size:15px;">📘 ${data.active.title}</strong>
-                <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Chủ đề: ${data.active.topic} · Trình độ: ${(data.active.level||'').toUpperCase()}</div>
-                <div style="font-size:13px;color:#e2e8f0;margin-top:8px;">${data.active.scenario || data.active.tutor_note || 'Đang sẵn sàng hội thoại cùng bé!'}</div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <strong style="color:#60a5fa;font-size:15px;">📘 ${activeTitle}</strong>
+                  <span style="background:#2563eb;color:white;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:bold;">${activeLevel}</span>
+                </div>
+                <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Chủ đề: <strong style="color:#e2e8f0;">${activeTopic}</strong></div>
+                <div style="font-size:13px;color:#4ade80;margin-top:8px;">🟢 Robot đang trong chế độ Gia sư tiếng Anh (Nói "Học xong rồi" để hoàn thành)</div>
               </div>
             `;
           } else {
-            box.innerHTML = `<div style="color:#94a3b8;font-size:13px;">Chưa áp dụng bài học tiếng Anh nào. Hãy chọn bài ở trên và bấm "Áp dụng bài này"!</div>`;
+            box.innerHTML = `<div style="color:#94a3b8;font-size:13px;">Chưa áp dụng bài học tiếng Anh nào. Hãy chọn bài ở danh mục phía trên và bấm <strong>"🚀 Áp dụng bài này lên Robot ngay"</strong>!</div>`;
           }
         }
       } catch (e) {

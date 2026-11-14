@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TRUNG TÂM QUẢN LÝ MEGABOT AI - Đầy đủ tất cả các trang Menu</title>
+  <title>TRUNG TÂM QUẢN LÝ GEHIHI AI - Cấu hình & Điều khiển Robot ESP32</title>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
 
@@ -1859,43 +1859,36 @@ body {
 
   <!-- SIDEBAR -->
   <div class="sidebar" id="sidebar">
-    <div class="logo">
-      <div style="font-size: 16px; font-weight: bold; padding-bottom: 8px;">MEGABOT AI</div>
-      <div class="user-box">
-        <div class="user-name" id="sidebarRobotName" style="font-size:15px;font-weight:bold;color:#f8fafc;">Ông Robot (ESP32-S3)</div>
-        <div class="user-device" id="sidebarRobotMac" style="font-size:12px;color:#94a3b8;font-family:monospace;">14:c1:9f:c4:ee:d0</div>
-        <div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:6px;">
-          <span class="status-dot connected" id="sidebarStatusDot" style="width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e;"></span>
-          <span id="sidebarStatusText" style="color:#4ade80;font-weight:600;">🟢 Trực tuyến</span>
+    <div class="logo" style="padding-bottom: 6px;">
+      <div class="user-box" style="margin-top: 0; background: rgba(15,23,42,0.6); padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
+          <span class="status-dot" id="sidebarStatusDot" style="width:8px;height:8px;border-radius:50%;background:#eab308;box-shadow:0 0 6px #eab308;"></span>
+          <span id="sidebarStatusText" style="color:#fde047;font-weight:600;">● Chờ kết nối</span>
         </div>
         <div style="margin-top: 6px; display:flex; align-items:center; gap:6px;">
-          <span class="badge" style="background:#1e40af;color:#bfdbfe;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:bold;">🤖 Robot Mini S3</span>
-          <span style="font-size:11px;color:#94a3b8;">Động cơ MX1616</span>
+          <span class="badge" id="sidebarRobotName" style="background:#1e40af;color:#bfdbfe;font-size:11px;padding:3px 8px;border-radius:8px;font-weight:bold;">🤖 Robot Sophia</span>
+          <span id="sidebarRobotMac" style="font-size:11.5px;color:#94a3b8;">ESP32-S3</span>
         </div>
       </div>
     </div>
 
     <div class="menu">
-      <div class="menu-item active" onclick="switchSection('deviceManager', this)" style="background: rgba(16,185,129,0.18); border: 1px solid #10b981; color: #a7f3d0; font-weight: 700; display: flex; align-items: center; justify-content: space-between;">
-        <span>👥 Quản lý tài khoản Robot</span>
-        <span style="font-size: 10px; background: #059669; color: white; padding: 1px 6px; border-radius: 4px;">CRUD</span>
-      </div>
-      <div class="menu-item" onclick="switchSection('devices', this)">📡 Tổng quan Robot đang chọn</div>
+      <div class="menu-item" onclick="switchSection('devices', this)">📊 Tổng quan Robot đang chọn</div>
       <div class="menu-item" onclick="switchSection('remoteControl', this)">🎮 Điều khiển D-Pad</div>
       <div class="menu-item" onclick="switchSection('micMonitor', this)">🎙️ Theo dõi Ghi âm Mic</div>
       <div class="menu-item" onclick="switchSection('youtubeMusic', this)">🎵 Phát nhạc YouTube Online</div>
       <div class="menu-item" onclick="switchSection('liveChat', this)">💬 Thử nghiệm Chat AI</div>
-      <div class="menu-item" onclick="switchSection('xiaozhiConfig', this)">⚙️ Cấu hình Megabot AI</div>
+      <div class="menu-item active" onclick="switchSection('xiaozhiConfig', this)">⚙️ Cấu hình Gehihi AI</div>
       <div class="menu-item" onclick="switchSection('aiRoleSelect', this)">🎭 Chọn vai trò cho AI</div>
       <div class="menu-item" onclick="switchSection('englishTutor', this)">📚 HỌC TIẾNG ANH</div>
-      <div class="menu-item" onclick="window.location.href='english-tutor-app.html'" style="font-size:12px; color:#60a5fa; padding-left:28px;">↳ Mở English Tutor App ↗</div>
+      <div class="menu-item" onclick="window.open('/static_web/english-tutor-app.html', '_blank')" style="font-size:12px; color:#60a5fa; padding-left:28px;">↳ Mở English Tutor App ↗</div>
       <div class="menu-item" onclick="switchSection('memory', this)">🧠 Bộ nhớ</div>
-      <div class="menu-item" onclick="switchSection('tasks', this)">📗 Tạo nhiệm vụ</div>
+      <div class="menu-item" onclick="switchSection('tasks', this)">📝 Tạo nhiệm vụ</div>
       <div class="menu-item" onclick="switchSection('curriculumSelect', this)">📖 Chọn Bài học</div>
       <div class="menu-item" onclick="switchSection('curriculumCreate', this)">✍️ Tự tạo bài học</div>
       <div class="menu-item" onclick="switchSection('photoLesson', this)">📷 Chụp ảnh tạo bài học</div>
-      <div class="menu-item" onclick="switchSection('photoHomework', this)">🎒 Chụp ảnh giải bài tập</div>
-      <div class="menu-item" onclick="switchSection('knowledgeBase', this)">📗 Cơ sở tri thức</div>
+      <div class="menu-item" onclick="switchSection('photoHomework', this)">📕 Chụp ảnh giải bài tập</div>
+      <div class="menu-item" onclick="switchSection('knowledgeBase', this)">🏢 Cơ sở tri thức</div>
 
       <div style="height: 1px; background: rgba(255,255,255,0.1); margin: 8px 0;"></div>
 
@@ -1916,26 +1909,26 @@ body {
   <!-- MAIN CONTENT -->
   <div class="main-content">
     <div class="topbar" style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-        <button class="menu-toggle" onclick="toggleSidebar()" style="background:#13294b; color:white; border:none; padding:8px 12px; border-radius:8px; cursor:pointer;">☰ Menu</button>
-        <div id="topServerPill" style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 20px; background: rgba(34,197,94,0.15); border: 1px solid #22c55e; color: #4ade80;">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e;"></span>
-          <span>Server Render: Trực tuyến (wss://)</span>
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <button class="menu-toggle" onclick="toggleSidebar()" style="background:#13294b; color:white; border:none; padding:8px 12px; border-radius:8px; cursor:pointer;">☰</button>
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: bold; padding: 4px 10px; border-radius: 20px; background: rgba(59,130,246,0.15); border: 1px solid #3b82f6; color: #60a5fa;">
+          <span>⚡ AI: Groq (Qwen 27B - Siêu tốc 460ms) v 9022ms</span>
         </div>
-        
-        <!-- BADGE ROBOT ĐANG QUẢN TRỊ TRÊN TOPBAR KÈM NÚT ĐỔI TÀI KHOẢN -->
-        <div id="topRobotAccountBadge" onclick="showAuthModal()" style="display: flex; align-items: center; gap: 8px; background: #0c1a32; border: 1px solid #3b82f6; padding: 5px 12px; border-radius: 20px; font-size: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3);" title="Bấm để đổi sang quản trị Robot khác">
-          <span style="font-size: 13px;">🤖</span>
-          <span style="color: #94a3b8;">Tài khoản:</span>
-          <strong id="topRobotNameDisplay" style="color: #38bdf8;">Ông Robot</strong>
-          <span id="topRobotPinDisplay" style="background: rgba(56,189,248,0.2); color: #7dd3fc; padding: 1px 6px; border-radius: 6px; font-family: monospace; font-size: 11px; font-weight: bold;">927184</span>
-          <span style="color: #94a3b8; font-size: 10px;">(Đổi ▾)</span>
+        <div id="topServerPill" style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: bold; padding: 4px 10px; border-radius: 20px; background: rgba(34,197,94,0.15); border: 1px solid #22c55e; color: #4ade80;">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e;"></span>
+          <span id="topServerStatusText">Server: Trực tuyến</span>
+        </div>
+        <div id="topRobotAccountBadge" onclick="showAuthModal()" style="display: flex; align-items: center; gap: 6px; background: #0c1a32; border: 1px solid #6366f1; padding: 4px 10px; border-radius: 20px; font-size: 12px; cursor: pointer; color:#c7d2fe;">
+          <span>🤖 Robot:</span>
+          <strong id="topRobotNameDisplay" style="color: #38bdf8;">Robot Sophia</strong>
+          <span id="topRobotPinDisplay" style="color: #93c5fd; font-family: monospace;">927184</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: bold; padding: 4px 10px; border-radius: 20px; background: rgba(16,185,129,0.15); border: 1px solid #10b981; color: #6ee7b7;">
+          <span>Tài khoản Robot:</span>
+          <strong style="color: #a7f3d0;">gehihi</strong>
         </div>
       </div>
       <div style="display: flex; align-items: center; gap: 8px;">
-        <button onclick="switchSection('deviceManager')" style="background: linear-gradient(135deg, #059669, #10b981); border: 1px solid #34d399; color: white; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(16,185,129,0.3);">
-          👥 Quản lý tài khoản
-        </button>
         <button class="primary" onclick="switchSection('remoteControl')" style="background: #1e3a8a; border: 1px solid #3b82f6; color: #93c5fd; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;">
           🎮 Lái Robot
         </button>
@@ -3278,138 +3271,143 @@ Ví dụ:
     </div>
 </div>
 
-<div class="card" id="xiaozhiConfigCard" style="display:none;">
-    <h3>⚙️ Cấu hình cho Megabot AI</h3>
+<div class="card" id="xiaozhiConfigCard" style="display:block;">
+    <h3 style="margin-top:0; font-size:19px; display:flex; align-items:center; gap:8px;">⚙️ Cấu hình cho Gehihi AI</h3>
 
-    <div class="voice-hint">
+    <div class="voice-hint" style="padding: 12px 14px; border-radius: 10px; background: rgba(59,130,246,0.10); border: 1px solid rgba(96,165,250,0.22); color: #dbeafe; font-size: 13px; line-height: 1.6; margin-bottom: 18px;">
         💡 <strong>Cách dùng:</strong><br>
-        Mục này dùng để Thay đổi tên Megabot, ngôn ngữ, giọng nói Nam-Nữ, vai trò tính cách, mô hình ngôn ngữ cho robot AI, nhận dạng giọng nói của người đang nói chuyện với robot. Bạn chỉ cần bấm
-        <span class="voice-keyword">Tải cấu hình hiện tại</span>,
+        Mục này dùng để Thay đổi tên Gehihi, ngôn ngữ, giọng nói Nam-Nữ, vai trò tính cách, mô hình ngôn ngữ cho robot AI, nhận dạng giọng nói của người đang nói chuyện với robot. Bạn chỉ cần bấm
+        <span class="voice-keyword" style="color: #4ade80; font-weight: bold;">Tải cấu hình hiện tại</span>,
         thay đổi thông tin rồi bấm
-        <span class="voice-keyword">Lưu cấu hình</span>. Sau đó khởi động lại robot AI để tải lên cấu hình mới.
+        <span class="voice-keyword" style="color: #4ade80; font-weight: bold;">Lưu cấu hình</span>. Sau đó khởi động lại robot AI để tải lên cấu hình mới.
     </div>
 
-    <div class="xiaozhi-config-tabs">
-        <button type="button" id="xiaozhiConfigTabGmbotBtn" class="xiaozhi-config-tab-btn active" onclick="switchXiaozhiConfigTab('megabot')">⚙️ Cấu hình Megabot</button>
-        <button type="button" id="xiaozhiConfigTabSpeakerBtn" class="xiaozhi-config-tab-btn" onclick="switchXiaozhiConfigTab('speaker')">👤 Nhận dạng người nói</button>
+    <div class="xiaozhi-config-tabs" style="display: flex; gap: 10px; margin-bottom: 18px;">
+        <button type="button" id="xiaozhiConfigTabGmbotBtn" class="xiaozhi-config-tab-btn active" onclick="switchXiaozhiConfigTab('gehihi')" style="flex:1; padding:10px 16px; border:none; background:#2563eb; color:white; font-size:14px; font-weight:600; border-radius:8px; cursor:pointer;">⚙️ Cấu hình Gehihi</button>
+        <button type="button" id="xiaozhiConfigTabSpeakerBtn" class="xiaozhi-config-tab-btn" onclick="switchXiaozhiConfigTab('speaker')" style="flex:1; padding:10px 16px; border:none; background:#1e1b4b; color:#c084fc; font-size:14px; font-weight:600; border-radius:8px; cursor:pointer; border:1px solid #4338ca;">👤 Nhận dạng người nói</button>
     </div>
 
-    <div id="xiaozhiConfigTabGmbot" class="xiaozhi-config-tab-content active">
-        <div style="margin-bottom:12px;">
-            <button class="secondary full-width" onclick="loadMyXiaozhiConfig(true)">🔄 Tải cấu hình hiện tại</button>
+    <div id="xiaozhiConfigTabGmbot" class="xiaozhi-config-tab-content active" style="display:block;">
+        <div style="margin-bottom:14px;">
+            <button class="secondary full-width" onclick="loadMyXiaozhiConfig(true)" style="width:100%; padding:10px 16px; background:#1e293b; color:#e2e8f0; border:1px solid #475569; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13.5px;">🔄 Tải cấu hình hiện tại</button>
         </div>
-    <div class="form-group">
-        <label>Tên của robot - mặc định là Sophia - có thể đổi thành tên bất kỳ</label>
-        <input id="xiaozhiAssistantName" maxlength="80" placeholder="Ví dụ: Sophia">
-    </div>
 
-    <div class="form-group">
-        <label>Chọn model AI phù hợp với nhu cầu của bạn</label>
-        <select id="xiaozhiLlmModel" onchange="onModelChange()"></select>
-        <div id="apiKeyGroup" style="margin-top: 10px; background: rgba(15,23,42,0.6); padding: 10px 12px; border-radius: 8px; border: 1px solid #334155;">
-            <label id="apiKeyLabel" style="font-size: 12px; color: #94a3b8; display: block; margin-bottom: 6px;">
-                🔑 API Key riêng (Tùy chọn - nếu để trống sẽ tự dùng Key từ hệ thống server/.env):
-            </label>
-            <input type="password" id="customApiKey" placeholder="Nhập API Key nếu bạn muốn dùng key riêng..." style="width: 100%; box-sizing: border-box;">
-            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
-                💡 <em>Để trống để dùng API Key cấu hình sẵn trên server Render / file .env.</em>
+        <div class="form-group" style="margin-bottom:16px;">
+            <label style="display:block; font-size:13.5px; font-weight:600; margin-bottom:6px; color:#e2e8f0;">Tên của robot - mặc định là Sophia - có thể đổi thành tên bất kỳ</label>
+            <input id="xiaozhiAssistantName" maxlength="80" placeholder="Ví dụ: Sophia" value="Robot Sophia" style="width:100%; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box;">
+        </div>
+
+        <div class="form-group" style="margin-bottom:16px;">
+            <label style="display:block; font-size:13.5px; font-weight:600; margin-bottom:6px; color:#e2e8f0;">Chọn model AI phù hợp với nhu cầu của bạn</label>
+            <select id="xiaozhiLlmModel" onchange="onModelChange()" style="width:100%; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box;"></select>
+            <div id="apiKeyGroup" style="margin-top: 10px; background: rgba(15,23,42,0.6); padding: 12px 14px; border-radius: 8px; border: 1px solid #334155;">
+                <label id="apiKeyLabel" style="font-size: 13px; color: #cbd5e1; display: block; margin-bottom: 6px;">
+                    🔑 <strong>Google Gemini API Key</strong> (Tùy chọn):
+                </label>
+                <input type="password" id="customApiKey" placeholder="Dán Gemini API Key (Lấy tại aistudio.google.com)" style="width: 100%; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box;">
+                <div style="font-size: 11.5px; color: #94a3b8; margin-top: 6px;">
+                    💡 <em>Để trống để dùng API Key cấu hình sẵn trên server Render / file .env.</em>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="form-group">
-        <label>Chọn ngôn ngữ nói của Megabot</label>
-        <select id="xiaozhiLanguage" onchange="onMyXiaozhiLanguageChange()">
-            <option value="">Đang tải ngôn ngữ...</option>
-        </select>
-    </div>
+        <div class="form-group" style="margin-bottom:16px;">
+            <label style="display:block; font-size:13.5px; font-weight:600; margin-bottom:6px; color:#e2e8f0;">Chọn ngôn ngữ nói của Gehihi</label>
+            <select id="xiaozhiLanguage" onchange="onMyXiaozhiLanguageChange()" style="width:100%; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box;">
+                <option value="vi">Tiếng Việt (Phong cách Gehihi)</option>
+                <option value="en">Tiếng Anh (English)</option>
+                <option value="zh">Tiếng Trung (中文)</option>
+                <option value="ja">Tiếng Nhật (日本語)</option>
+                <option value="ko">Tiếng Hàn (한국어)</option>
+            </select>
+        </div>
 
-    <div class="form-group">
-        <label>Chọn Giọng nói của Megabot</label>
-        <select id="xiaozhiTtsVoice">
-            <option value="">Đang tải giọng nói...</option>
-        </select>
+        <div class="form-group" style="margin-bottom:16px;">
+            <label style="display:block; font-size:13.5px; font-weight:600; margin-bottom:6px; color:#e2e8f0;">Chọn Giọng nói của Gehihi</label>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <select id="xiaozhiTtsVoice" style="flex:1; margin:0; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box;">
+                    <option value="">Đang tải giọng nói...</option>
+                </select>
+                <button type="button" class="primary" id="btnPreviewVoice" onclick="playVoiceDemo()" style="white-space:nowrap; padding:10px 16px; display:flex; align-items:center; gap:6px; background:#2563eb; color:white; border-radius:8px; font-weight:bold; border:none; cursor:pointer;">
+                    ▶ Nghe thử giọng
+                </button>
+                <button type="button" class="secondary" onclick="playVoiceDemo()" style="padding:10px 14px; display:flex; align-items:center; justify-content:center; background:#1e293b; color:white; border-radius:8px; border:1px solid #475569; cursor:pointer;" title="Nghe lại giọng mẫu">
+                    🔊
+                </button>
+            </div>
+            <input id="xiaozhiCustomTtsVoice" placeholder="Voice ID tùy chỉnh, chỉ dùng khi cần test" style="display:none;">
+        </div>
 
-        <input id="xiaozhiCustomTtsVoice" placeholder="Voice ID tùy chỉnh, chỉ dùng khi cần test" style="display:none;">
-    </div>
+        <div class="form-group" style="margin-bottom:16px;">
+            <label style="display:block; font-size:13.5px; font-weight:600; margin-bottom:6px; color:#e2e8f0;">Tốc độ nói</label>
+            <select id="xiaozhiTtsSpeed" style="width:100%; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box;">
+                <option value="normal" selected>Bình thường</option>
+                <option value="slow">Chậm</option>
+                <option value="fast">Nhanh</option>
+            </select>
+        </div>
 
-    <div class="form-group">
-        <label>Tốc độ nói</label>
-        <select id="xiaozhiTtsSpeed">
-            <option value="normal">Bình thường</option>
-            <option value="slow">Chậm</option>
-            <option value="fast">Nhanh</option>
-        </select>
-    </div>
+        <div class="form-group" style="margin-bottom:16px;">
+            <label style="display:block; font-size:13.5px; font-weight:600; margin-bottom:6px; color:#e2e8f0;">Cao độ giọng nói</label>
+            <select id="xiaozhiTtsPitch" style="width:100%; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box;">
+                <option value="-3">Rất trầm</option>
+                <option value="-2">Trầm</option>
+                <option value="-1">Hơi trầm</option>
+                <option value="0" selected>Bình thường</option>
+                <option value="1">Hơi cao</option>
+                <option value="2">Cao</option>
+                <option value="3">Rất cao</option>
+            </select>
+        </div>
 
-    <div class="form-group">
-        <label>Cao độ giọng nói</label>
-        <select id="xiaozhiTtsPitch">
-            <option value="-3">Rất trầm</option>
-            <option value="-2">Trầm</option>
-            <option value="-1">Hơi trầm</option>
-            <option value="0" selected>Bình thường</option>
-            <option value="1">Hơi cao</option>
-            <option value="2">Cao</option>
-            <option value="3">Rất cao</option>
-        </select>
-    </div>
+        <div class="form-group" style="margin-bottom:16px;">
+            <label style="display:block; font-size:13.5px; font-weight:600; margin-bottom:6px; color:#e2e8f0;"> Mô tả Vai trò - tính cách của Gehihi AI - LƯU Ý: Nếu đổi ngôn ngữ của AI thì phần mô tả phải viết bằng đúng ngôn ngữ đã chọn . Bắt buộc giữ lại dòng: [VAI TRÒ VÀ TÍNH CÁCH]</label>
+            <textarea id="xiaozhiCharacter" style="min-height:220px; width:100%; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box; font-family:inherit;" placeholder="Nhập mô tả vai trò và tính cách..." oninput="handleXiaozhiCharacterInput(); updateXiaozhiCharacterCounter()"></textarea>
+            <div id="xiaozhiCharacterCounter" class="helper-note" style="color:#94a3b8; font-size:12px; margin-top:4px;">0 / 7305 ký tự</div>
+        </div>
 
-    <div class="form-group">
-        <label> Mô tả Vai trò - tính cách của Megabot AI - LƯU Ý: Nếu đổi ngôn ngữ của AI thì phần mô tả phải viết bằng đúng ngôn ngữ đã chọn . Bắt buộc giữ lại dòng: [VAI TRÒ VÀ TÍNH CÁCH]</label>
-        <textarea id="xiaozhiCharacter" style="min-height:220px;" placeholder="Nhập mô tả vai trò và tính cách..." oninput="handleXiaozhiCharacterInput(); updateXiaozhiCharacterCounter()"></textarea>
-
-<div id="xiaozhiCharacterCounter" class="helper-note"></div>
-    </div>
-
-        <div class="action-row" style="margin-top:12px;">
-            <button class="primary" onclick="saveMyXiaozhiConfig()">💾 Lưu cấu hình</button>
-            <button class="secondary" onclick="resetDefaultAiPrompt('xiaozhiConfig')">↩️ Quay trở lại cấu hình AI mặc định</button>
+        <div class="action-row" style="margin-top:14px; display:flex; gap:10px;">
+            <button class="primary" style="flex:1; padding:10px 18px; border-radius:8px; background:#2563eb; color:white; font-weight:bold; border:none; cursor:pointer;" onclick="saveMyXiaozhiConfig()">💾 Lưu cấu hình</button>
+            <button class="secondary" style="flex:1; padding:10px 18px; border-radius:8px; background:#374151; color:white; font-weight:bold; border:none; cursor:pointer;" onclick="resetDefaultAiPrompt('xiaozhiConfig')">↩️ Quay trở lại cấu hình AI mặc định</button>
         </div>
         <div id="xiaozhiConfigMessage" style="margin-top:12px;"></div>
     </div>
 
-    <div id="xiaozhiConfigTabSpeaker" class="xiaozhi-config-tab-content">
+    <div id="xiaozhiConfigTabSpeaker" class="xiaozhi-config-tab-content" style="display:none;">
         <div id="xiaozhiSpeakerSection">
-            <div class="xiaozhi-speaker-header">
+            <div class="xiaozhi-speaker-header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:14px; margin-bottom:14px;">
                 <div class="xiaozhi-speaker-header-info">
-                    <h3 style="margin:0 0 4px;">Nhận dạng người nói</h3>
-                    <div class="helper-note">Sau khi thêm người nói ở phần này, robot sẽ phân biệt được ai đang trò chuyện với mình để xưng hô và giao tiếp chính xác. Bấm "Làm mới" để tải cuộc trò chuyện mới nhất, sau đó bấm "Thêm người nói". Có thể thêm tối đa 5 người.</div>
+                    <h3 style="margin:0 0 4px; font-size:16px; color:#ffffff;">Nhận dạng người nói</h3>
+                    <div class="helper-note" style="color:#94a3b8; font-size:12.5px; line-height:1.5;">Sau khi thêm người nói ở phần này, robot sẽ phân biệt được ai đang trò chuyện với mình để xưng hô và giao tiếp chính xác. Bấm "Làm mới" để tải cuộc trò chuyện mới nhất, sau đó bấm "Thêm người nói". Có thể thêm tối đa 5 người.</div>
                 </div>
-                <div class="xiaozhi-speaker-header-actions">
-                    <button class="secondary" type="button" onclick="loadMyXiaozhiSpeakers(true)">Làm mới</button>
-                    <button class="primary" type="button" id="xiaozhiAddSpeakerButton" onclick="openMyXiaozhiSpeakerEditor()">+ Thêm người nói</button>
+                <div class="xiaozhi-speaker-header-actions" style="display:flex; gap:8px; flex-shrink:0;">
+                    <button class="secondary" type="button" onclick="loadMyXiaozhiSpeakers(true)" style="padding:8px 14px; font-size:12px; border-radius:8px; background:#1e293b; color:#e2e8f0; border:1px solid #475569; cursor:pointer;">Làm mới</button>
+                    <button class="primary" type="button" id="xiaozhiAddSpeakerButton" onclick="openMyXiaozhiSpeakerEditor()" style="padding:8px 14px; font-size:12px; border-radius:8px; background:#2563eb; color:white; border:none; cursor:pointer; font-weight:bold;">+ Thêm người nói</button>
                 </div>
             </div>
 
-        <div id="xiaozhiSpeakerEditor" class="card" style="display:none;margin:14px 0;padding:16px;">
-            <h4 id="xiaozhiSpeakerEditorTitle" style="margin-top:0;">Thêm người nói</h4>
-            <input id="xiaozhiSpeakerId" type="hidden">
-            <div class="form-group">
-                <label>Tên người nói</label>
-                <input id="xiaozhiSpeakerName" maxlength="32" placeholder="Ví dụ: Bố, Mẹ, bé Gạo...">
+            <div id="xiaozhiSpeakerEditor" class="card" style="display:none;margin:14px 0;padding:16px; background:#0f2140; border:1px solid #334155; border-radius:8px;">
+                <h4 id="xiaozhiSpeakerEditorTitle" style="margin-top:0; color:#f8fafc;">Thêm người nói</h4>
+                <input id="xiaozhiSpeakerId" type="hidden">
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label style="display:block; font-size:13px; color:#e2e8f0; margin-bottom:4px;">Tên người nói</label>
+                    <input id="xiaozhiSpeakerName" maxlength="32" placeholder="Ví dụ: Bố, Mẹ, bé Gạo..." style="width:100%; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box;">
+                </div>
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label style="display:block; font-size:13px; color:#e2e8f0; margin-bottom:4px;">Mô tả</label>
+                    <textarea id="xiaozhiSpeakerDescription" maxlength="400" rows="3" placeholder="Ví dụ: Đây là bố Vương, là bố của bé Gạo" style="width:100%; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box;"></textarea>
+                </div>
+                <div class="action-row" style="display:flex; gap:10px;">
+                    <button class="primary" type="button" onclick="saveMyXiaozhiSpeakerFromEditor()" style="padding:8px 16px; border-radius:8px; background:#2563eb; color:white; font-weight:bold; border:none; cursor:pointer;">Lưu người nói</button>
+                    <button class="secondary" type="button" onclick="closeMyXiaozhiSpeakerEditor()" style="padding:8px 16px; border-radius:8px; background:#374151; color:white; font-weight:bold; border:none; cursor:pointer;">Hủy</button>
+                </div>
             </div>
-            <div class="form-group">
-                <label>Mô tả</label>
-                <textarea id="xiaozhiSpeakerDescription" maxlength="400" rows="3" placeholder="Ví dụ: Đây là bố Vương, là bố của bé Gạo"></textarea>
-            </div>
-            <div class="form-group">
-                <label>Chọn giọng nói</label>
-                <select id="xiaozhiSpeakerEmbedding"></select>
-                <div class="helper-note">Bấm chọn một đoạn hội thoại. Nếu chưa có hội thoại, hãy nói chuyện với robot, sau đó nói "Tạm biệt" để robot tự kết thúc trò chuyện thì giọng nói của bạn mới được lưu vào server giọng nói. Sau đó bấm "Làm mới" để tải lại giọng nói. Bấm "Nghe mẫu" để nghe lại giọng nói. Chọn mẫu giọng nói là một câu hoàn chỉnh dài, nói rõ ràng, thì robot sẽ nhận dạng người nói chính xác hơn.</div>
-            </div>
-            <div class="action-row">
-                <button class="primary" type="button" onclick="saveMyXiaozhiSpeaker()">Lưu người nói</button>
-                <button class="secondary" type="button" onclick="closeMyXiaozhiSpeakerEditor()">Hủy</button>
-                <button class="secondary" type="button" onclick="previewSelectedMyXiaozhiEmbedding()">Nghe mẫu</button>
-            </div>
-        </div>
 
-        <div id="xiaozhiSpeakerMessage" style="margin-top:12px;"></div>
-        <div id="xiaozhiSpeakerList" style="margin-top:12px;">Đang tải...</div>
+            <div id="xiaozhiSpeakerMessage" style="margin-top:12px;"></div>
+            <div id="xiaozhiSpeakerList" style="margin-top:12px;">Đang tải danh sách người nói...</div>
         </div>
     </div>
-</div>
+</div></div>
     </div>
   </div>
 
@@ -3479,6 +3477,11 @@ Ví dụ:
 
     // Mặc định hiển thị trang Thiết bị
     window.addEventListener('DOMContentLoaded', () => {
+      const wsProto = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+      const topServerStatusEl = document.getElementById('topServerStatusText');
+      if (topServerStatusEl) {
+        topServerStatusEl.innerText = `Server: Trực tuyến (${wsProto}${window.location.host})`;
+      }
       switchSection('devices', document.querySelector('.sidebar .menu-item'));
     });
   </script>
@@ -3651,6 +3654,37 @@ Ví dụ:
       const item = all.find(x => x.id === id);
       if (item) {
         showPreviewTemplateDetail(item, type);
+
+        // Tự động điền dữ liệu giáo trình vào form "Tự tạo giáo trình tiếng Anh" phía dưới
+        const titleEl = document.getElementById("englishTutorTitle");
+        const levelEl = document.getElementById("englishTutorLevel");
+        const topicEl = document.getElementById("englishTutorTopic");
+        const wordsEl = document.getElementById("englishTutorWords");
+        const phrasesEl = document.getElementById("englishTutorPhrases");
+        const noteEl = document.getElementById("englishTutorNote");
+
+        if (titleEl) titleEl.value = item.title || "";
+        if (levelEl && item.level) levelEl.value = item.level.toLowerCase();
+        if (topicEl && item.topic) {
+          let exists = false;
+          for (let opt of topicEl.options) {
+            if (opt.value === item.topic) { exists = true; break; }
+          }
+          if (!exists) {
+            const newOpt = document.createElement("option");
+            newOpt.value = item.topic;
+            newOpt.text = item.topic;
+            topicEl.appendChild(newOpt);
+          }
+          topicEl.value = item.topic;
+        }
+        if (wordsEl) {
+          wordsEl.value = Array.isArray(item.target_words) ? item.target_words.join(", ") : (item.target_words || "");
+        }
+        if (phrasesEl) {
+          phrasesEl.value = Array.isArray(item.target_phrases) ? item.target_phrases.join("\n") : (item.target_phrases || "");
+        }
+        if (noteEl) noteEl.value = item.tutor_note || item.scenario || "";
       }
       renderPreviewEnglishTemplates();
     }
@@ -3675,6 +3709,13 @@ Ví dụ:
             Chủ đề: <strong style="color:#e2e8f0;">${t.topic || 'General'}</strong> · Chế độ: <strong style="color:#e2e8f0;">${isRoleplay ? 'Nhập vai luyện nói' : 'Bài học'}</strong>
           </div>
 
+          <!-- NÚT ÁP DỤNG NGAY Ở ĐẦU CARD -->
+          <div style="margin-bottom:14px;">
+            <button class="primary" onclick="applyEnglishTemplateReal('${t.id}', '${t.title.replace(/'/g, "\\'")}')" style="width:100%; padding:12px 16px; font-weight:bold; font-size:14px; border-radius:8px; background:linear-gradient(135deg, #2563eb, #1d4ed8); color:white; border:none; cursor:pointer; box-shadow:0 4px 14px rgba(37,99,235,0.45); display:flex; align-items:center; justify-content:center; gap:8px;">
+              <span>🚀</span> Áp dụng bài học này lên Robot ngay
+            </button>
+          </div>
+
           ${t.scenario ? `
             <div style="margin-bottom:12px; padding:10px; border-radius:8px; background:rgba(168,85,247,0.15); border:1px solid rgba(216,180,254,0.2); font-size:13px; line-height:1.5;">
               <strong style="color:#d8b4fe;">🎭 Tình huống:</strong><br>${t.scenario}
@@ -3695,11 +3736,11 @@ Ví dụ:
             </div>
           ` : ''}
 
-          <div style="display:flex; gap:10px;">
-            <button class="primary" onclick="applyEnglishTemplateReal('${t.id}', '${t.title.replace(/'/g, "\\'")}')" style="flex:1; padding:10px; font-weight:bold; border-radius:8px; background:#2563eb; color:white; border:none; cursor:pointer;">
-              🚀 Áp dụng bài này lên Robot
+          <div style="display:flex; gap:10px; margin-top:6px;">
+            <button class="primary" onclick="applyEnglishTemplateReal('${t.id}', '${t.title.replace(/'/g, "\\'")}')" style="flex:1; padding:11px; font-weight:bold; border-radius:8px; background:#2563eb; color:white; border:none; cursor:pointer;">
+              🚀 Áp dụng lên Robot
             </button>
-            <a href="english-tutor-app.html" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; font-weight:bold; font-size:12px; border-radius:8px; background:#1e293b; color:#93c5fd; border:1px solid rgba(147,197,253,0.3); text-decoration:none;">
+            <a href="static_web/english-tutor-app.html" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; font-weight:bold; font-size:12px; border-radius:8px; background:#1e293b; color:#93c5fd; border:1px solid rgba(147,197,253,0.3); text-decoration:none;">
               Mở App Full ↗
             </a>
           </div>
@@ -4312,30 +4353,36 @@ Ví dụ:
 
     function updateSidebarRobotInfo(devices) {
       if (!devices || devices.length === 0) return;
-      let dev = devices.find(d => d.id === activeDeviceId || d.device_code === activeDeviceId);
+      let dev = devices.find(d => d.id === activeDeviceId || d.device_code === activeDeviceId || d.agent_id === activeDeviceId);
       if (!dev) {
         dev = devices.find(d => d.is_online) || devices[0];
         if (dev) {
           activeDeviceId = dev.id;
+          const devName = dev.name || dev.assistant_name || dev.device_name || "Robot Sophia";
+          const devPin = dev.device_code || dev.agent_id || "927184";
           localStorage.setItem("megabot_active_robot_id", dev.id);
-          localStorage.setItem("megabot_active_robot_name", dev.name);
-          localStorage.setItem("megabot_active_robot_code", dev.device_code || "");
+          localStorage.setItem("megabot_active_robot_name", devName);
+          localStorage.setItem("megabot_active_robot_code", devPin);
         }
       }
       if (!dev) return;
       
+      const devName = dev.name || dev.assistant_name || dev.device_name || "Robot Sophia";
+      const devPin = dev.device_code || dev.agent_id || "927184";
+      const devMac = dev.device_mac || dev.mac_address || "14:c1:9f:c4:ee:d0";
+
       const nameEl = document.getElementById("sidebarRobotName");
       const macEl = document.getElementById("sidebarRobotMac");
       const dotEl = document.getElementById("sidebarStatusDot");
       const textEl = document.getElementById("sidebarStatusText");
 
-      if (nameEl) nameEl.innerText = `${dev.name} (ESP32-S3)`;
-      if (macEl) macEl.innerText = `PIN: ${dev.device_code || '927184'} (${dev.device_mac || 'ESP32'})`;
+      if (nameEl) nameEl.innerText = `${devName} (ESP32-S3)`;
+      if (macEl) macEl.innerText = `PIN: ${devPin} (${devMac})`;
       
-      const isOnline = dev.is_online === true;
+      const isOnline = dev.is_online === true || dev.is_online === "true" || dev.online === true;
       if (dotEl) {
         dotEl.style.background = isOnline ? "#22c55e" : "#94a3b8";
-        dotEl.style.boxShadow = isOnline ? "0 0 6px #22c55e" : "none";
+        dotEl.style.boxShadow = isOnline ? "0 0 8px #22c55e" : "none";
       }
       if (textEl) {
         textEl.innerText = isOnline ? "🟢 Trực tuyến" : "⚪ Chờ kết nối";
@@ -4343,16 +4390,20 @@ Ví dụ:
       }
 
       const activeBadge = document.getElementById("activeControlDeviceBadge");
-      if (activeBadge) activeBadge.innerText = `Robot: ${dev.name}`;
+      if (activeBadge) activeBadge.innerText = `Robot: ${devName}`;
 
       const topName = document.getElementById("topRobotNameDisplay");
-      if (topName) topName.innerText = dev.name;
+      if (topName) topName.innerText = devName;
       const topPin = document.getElementById("topRobotPinDisplay");
-      if (topPin) topPin.innerText = dev.device_code || '927184';
+      if (topPin) topPin.innerText = devPin;
     }
 
     function updateDeviceProfileDashboard(dev) {
       if (!dev) return;
+      const devName = dev.name || dev.assistant_name || dev.device_name || "Robot Sophia";
+      const devPin = dev.device_code || dev.agent_id || "927184";
+      const devMac = dev.device_mac || dev.mac_address || "14:c1:9f:c4:ee:d0";
+
       const titleEl = document.getElementById("dashRobotTitle");
       const pinSubEl = document.getElementById("dashRobotPinSubtitle");
       const nameEl = document.getElementById("dashRobotName");
@@ -4366,19 +4417,19 @@ Ví dụ:
       const volEl = document.getElementById("dashRobotVolume");
       const speedEl = document.getElementById("dashRobotSpeed");
 
-      if (titleEl) titleEl.innerText = `Hồ sơ Quản trị ${dev.name}`;
-      if (pinSubEl) pinSubEl.innerText = dev.device_code || '927184';
-      if (nameEl) nameEl.innerText = dev.name;
-      if (codeEl) codeEl.innerText = dev.device_code || '927184';
-      if (macEl) macEl.innerText = dev.device_mac || 'ESP32';
+      if (titleEl) titleEl.innerText = `Hồ sơ Quản trị ${devName}`;
+      if (pinSubEl) pinSubEl.innerText = devPin;
+      if (nameEl) nameEl.innerText = devName;
+      if (codeEl) codeEl.innerText = devPin;
+      if (macEl) macEl.innerText = devMac;
       
       if (avatarEl) {
-        avatarEl.innerText = dev.initial || (dev.name ? dev.name[0] : 'R');
+        avatarEl.innerText = dev.initial || devName[0] || 'R';
         avatarEl.style.background = dev.badge_color || '#ffe4e6';
         avatarEl.style.color = dev.initial_color || '#e11d48';
       }
 
-      const isOnline = dev.is_online === true;
+      const isOnline = dev.is_online === true || dev.is_online === "true" || dev.online === true;
       if (statusBadge) {
         statusBadge.style.background = isOnline ? 'rgba(34,197,94,0.18)' : 'rgba(148,163,184,0.12)';
         statusBadge.style.borderColor = isOnline ? '#22c55e' : '#64748b';
@@ -4388,9 +4439,9 @@ Ví dụ:
         statusText.innerText = isOnline ? '🟢 Trực tuyến (WebSocket Live)' : '⚪ Ngoại tuyến (Chờ kết nối)';
       }
 
-      if (modelEl) modelEl.innerText = dev.model || dev.model_id || 'Gemini 3.1 Flash Lite';
-      if (voiceEl) voiceEl.innerText = dev.voice_name || (dev.voice || '').split('-').pop().replace('Neural', '') || 'Hoài My';
-      if (volEl) volEl.innerText = `Mức ${dev.volume || 7} / 10`;
+      if (modelEl) modelEl.innerText = dev.model || dev.model_id || dev.llm_model || 'Gemini 3.1 Flash Lite';
+      if (voiceEl) voiceEl.innerText = dev.voice_name || (dev.voice || dev.tts_voice || '').split('-').pop().replace('Neural', '') || 'Hoài My';
+      if (volEl) volEl.innerText = `Mức ${dev.volume !== undefined ? dev.volume : 8} / 10`;
       
       const toy = dev.toy_settings || {};
       if (speedEl) speedEl.innerText = `Tốc độ: ${toy.speed || 80}% (Tránh vật cản: ${toy.auto_avoid ? 'Bật' : 'Tắt'})`;
@@ -4501,9 +4552,10 @@ Ví dụ:
       }
 
       grid.innerHTML = devices.map(d => {
-        const isOnline = d.is_online === true;
-        const isSelected = d.id === activeDeviceId || d.device_code === activeDeviceId;
-        const initial = d.initial || (d.name ? d.name[0] : "R").toUpperCase();
+        const devName = d.name || d.assistant_name || d.device_name || "Robot Sophia";
+        const isOnline = d.is_online === true || d.is_online === "true" || d.online === true;
+        const isSelected = d.id === activeDeviceId || d.device_code === activeDeviceId || d.agent_id === activeDeviceId;
+        const initial = d.initial || devName[0].toUpperCase();
         const badgeBg = d.badge_color || "#ffe4e6";
         const initialColor = d.initial_color || "#e11d48";
         const borderStyle = isSelected
@@ -4513,12 +4565,12 @@ Ví dụ:
           ? '0 0 20px rgba(56,189,248,0.35), 0 8px 24px rgba(0,0,0,0.5)'
           : '0 6px 18px rgba(0,0,0,0.3)';
 
-        const pinCode = d.device_code || '927184';
-        const macAddr = d.device_mac || 'ESP32';
-        const modelName = d.model || d.model_id || 'Gemini 3.1 Flash Lite';
-        const voiceShort = (d.voice_name || d.voice || 'Hoài My').split('-').pop().replace('Neural', '');
-        const volumeVal = d.volume !== undefined ? d.volume : 7;
-        const safeName = (d.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const pinCode = d.device_code || d.agent_id || '927184';
+        const macAddr = d.device_mac || d.mac_address || '14:c1:9f:c4:ee:d0';
+        const modelName = d.model || d.model_id || d.llm_model || 'Gemini 3.1 Flash Lite';
+        const voiceShort = (d.voice_name || d.voice || d.tts_voice || 'Hoài My').split('-').pop().replace('Neural', '');
+        const volumeVal = d.volume !== undefined ? d.volume : 8;
+        const safeName = devName.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
         return `
           <div style="background: linear-gradient(145deg, #0b1a33 0%, #081426 100%); border: ${borderStyle}; border-radius: 14px; padding: 18px; display: flex; flex-direction: column; justify-content: space-between; gap: 14px; box-shadow: ${shadowStyle}; position: relative; transition: all 0.2s ease;">
@@ -4531,7 +4583,7 @@ Ví dụ:
                 </div>
                 <div style="min-width: 0;">
                   <h4 style="margin: 0; font-size: 15.5px; font-weight: 800; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px;">
-                    ${d.name}
+                    ${devName}
                     ${isSelected ? '<span style="font-size: 10px; background: #0284c7; color: white; padding: 1px 7px; border-radius: 6px; font-weight: 700;">👑 Đang chọn</span>' : ''}
                   </h4>
                   <div style="font-size: 11.5px; color: #94a3b8; font-family: monospace; margin-top: 3px; display: flex; gap: 8px; flex-wrap: wrap;">
@@ -4850,9 +4902,10 @@ Ví dụ:
       }
 
       container.innerHTML = devices.map(d => {
-        const isOnline = d.is_online === true;
-        const isSelected = d.id === activeDeviceId || d.device_code === activeDeviceId;
-        const initial = d.initial || (d.name ? d.name[0] : "R");
+        const devName = d.name || d.assistant_name || d.device_name || "Robot Sophia";
+        const isOnline = d.is_online === true || d.is_online === "true" || d.online === true;
+        const isSelected = d.id === activeDeviceId || d.device_code === activeDeviceId || d.agent_id === activeDeviceId;
+        const initial = d.initial || devName[0].toUpperCase();
         const badgeBg = d.badge_color || "#1e3a8a";
         const initialColor = d.initial_color || "#38bdf8";
         const borderStyle = isSelected 
@@ -4873,9 +4926,9 @@ Ví dụ:
                 </div>
                 <div>
                   <h4 style="margin:0;font-size:15px;color:#f8fafc;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                    ${d.name}
+                    ${devName}
                     ${isSelected ? '<span style="font-size:10px;background:#0284c7;color:white;padding:1px 6px;border-radius:6px;font-weight:bold;">👑 Đang chọn</span>' : ''}
-                    ${d.name.startsWith("Robot AI (") ? `<span onclick="renameDeviceQuick('${d.id}', '${d.name.replace(/'/g, "\\'")}')" style="font-size:10px;background:rgba(234,179,8,0.2);color:#facc15;border:1px solid #ca8a04;padding:1px 6px;border-radius:4px;font-weight:bold;cursor:pointer;" title="Nhấn để đặt tên cho robot mới">✨ Mới kết nối - Đổi tên</span>` : ''}
+                    ${devName.startsWith("Robot AI (") ? `<span onclick="renameDeviceQuick('${d.id}', '${devName.replace(/'/g, "\\'")}')" style="font-size:10px;background:rgba(234,179,8,0.2);color:#facc15;border:1px solid #ca8a04;padding:1px 6px;border-radius:4px;font-weight:bold;cursor:pointer;" title="Nhấn để đặt tên cho robot mới">✨ Mới kết nối - Đổi tên</span>` : ''}
                   </h4>
                   <div style="font-size:11px;color:#38bdf8;margin-top:3px;font-family:monospace;font-weight:600;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                     <span>🔢 PIN: <strong style="background:rgba(56,189,248,0.15);padding:1px 6px;border-radius:4px;color:#7dd3fc;border:1px solid rgba(56,189,248,0.3);">${d.device_code || '927184'}</strong></span>
@@ -5000,21 +5053,28 @@ Ví dụ:
     // 2. ĐIỀU KHIỂN ROBOT QUA WEBSOCKET MCP
     async function sendRobotCommand(action) {
       const feedback = document.getElementById("controlStatusText");
-      if (feedback) feedback.innerText = `Đang gửi lệnh '${action}' tới robot qua WebSocket...`;
+      if (feedback) feedback.innerText = `Đang gửi lệnh '${action}' tới robot...`;
       
       try {
+        const targetDevId = (activeDeviceId && activeDeviceId !== 'ong-robot' && activeDeviceId !== '2') ? activeDeviceId : null;
         const res = await fetch("/api/robot/control", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ device_id: activeDeviceId, action: action })
+          body: JSON.stringify({ device_id: targetDevId, action: action })
         });
         const data = await res.json();
         if (res.ok) {
-          if (feedback) feedback.innerText = `✓ Lệnh '${action}' đã gửi thành công tới động cơ/đèn của robot!`;
-          showToast(`✓ Đã gửi lệnh ${action} tới Robot!`);
+          if (!data.delivered_to_ws && !data.delivered_to_serial) {
+            if (feedback) feedback.innerText = `⚠ Đã nhận lệnh '${action}', nhưng Robot đang ngoại tuyến (Offline)`;
+            showToast(`⚠ Chưa có Robot nào kết nối online`, false);
+          } else {
+            if (feedback) feedback.innerText = `✓ Lệnh '${action}' đã gửi thành công tới động cơ/đèn của robot!`;
+            showToast(`✓ Đã gửi lệnh ${action} tới Robot!`);
+          }
         } else {
-          if (feedback) feedback.innerText = `⚠ ${data.message || 'Robot chưa sẵn sàng nhận lệnh'}`;
-          showToast(`Lỗi: ${data.message || 'Không thể gửi lệnh'}`, false);
+          const errMsg = data.message || (typeof data.detail === 'string' ? data.detail : Array.isArray(data.detail) ? data.detail.map(d=>d.msg).join(', ') : JSON.stringify(data.detail)) || 'Robot chưa sẵn sàng nhận lệnh';
+          if (feedback) feedback.innerText = `⚠ ${errMsg}`;
+          showToast(`Lỗi: ${errMsg}`, false);
         }
       } catch (err) {
         if (feedback) feedback.innerText = `✗ Lỗi mạng: ${err.message}`;
@@ -5042,18 +5102,25 @@ Ví dụ:
       if (feedback) feedback.innerText = `Đang gửi biểu cảm '${emotion}' tới màn hình OLED robot...`;
 
       try {
+        const targetDevId = (activeDeviceId && activeDeviceId !== 'ong-robot' && activeDeviceId !== '2') ? activeDeviceId : null;
         const res = await fetch("/api/robot/display", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ device_id: activeDeviceId, emotion: emotion, text: text })
+          body: JSON.stringify({ device_id: targetDevId, emotion: emotion, text: text })
         });
         const data = await res.json();
         if (res.ok && data.status === "ok") {
-          if (feedback) feedback.innerText = `✓ Đã cập nhật màn hình OLED: Biểu cảm '${emotion}'` + (text ? ` | Chữ: "${text}"` : '');
-          showToast(`✓ Đã đổi màn hình OLED sang '${emotion}'!`);
+          if (!data.delivered_to_ws && !data.delivered_to_serial) {
+            if (feedback) feedback.innerText = `⚠ Đã nhận lệnh, nhưng Robot đang ngoại tuyến (Offline)`;
+            showToast(`⚠ Chưa có Robot nào kết nối online`, false);
+          } else {
+            if (feedback) feedback.innerText = `✓ Đã cập nhật màn hình OLED: Biểu cảm '${emotion}'` + (text ? ` | Chữ: "${text}"` : '');
+            showToast(`✓ Đã đổi màn hình OLED sang '${emotion}'!`);
+          }
         } else {
-          if (feedback) feedback.innerText = `⚠ ${data.message || 'Lỗi gửi lệnh tới màn hình'}`;
-          showToast(data.message || "Lỗi gửi lệnh", false);
+          const errMsg = data.message || (typeof data.detail === 'string' ? data.detail : Array.isArray(data.detail) ? data.detail.map(d=>d.msg).join(', ') : JSON.stringify(data.detail)) || 'Lỗi gửi lệnh tới màn hình';
+          if (feedback) feedback.innerText = `⚠ ${errMsg}`;
+          showToast(errMsg, false);
         }
       } catch (err) {
         if (feedback) feedback.innerText = `✗ Lỗi mạng: ${err.message}`;
@@ -5081,15 +5148,16 @@ Ví dụ:
         const res = await fetch("/api/robot/speak", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ device_id: activeDeviceId, text: text, emotion: "happy" })
+          body: JSON.stringify({ device_id: String(activeDeviceId || "2"), text: text, emotion: "happy" })
         });
         const data = await res.json();
         if (res.ok && data.status === "ok") {
           if (feedback) feedback.innerText = `✓ Đã phát âm thanh và hiển thị lên màn hình OLED: "${text}"`;
           showToast(`✓ Robot đang phát âm thanh & hiển thị!`);
         } else {
-          if (feedback) feedback.innerText = `⚠ ${data.message || 'Lỗi phát âm thanh'}`;
-          showToast(data.message || "Lỗi phát âm thanh", false);
+          const errMsg = data.message || (typeof data.detail === 'string' ? data.detail : Array.isArray(data.detail) ? data.detail.map(d=>d.msg).join(', ') : JSON.stringify(data.detail)) || 'Lỗi phát âm thanh';
+          if (feedback) feedback.innerText = `⚠ ${errMsg}`;
+          showToast(errMsg, false);
         }
       } catch (err) {
         if (feedback) feedback.innerText = `✗ Lỗi mạng: ${err.message}`;
@@ -5173,9 +5241,19 @@ Ví dụ:
     // 4. QUẢN LÝ CẤU HÌNH ROBOT (PROMPT, MODEL, VOICE, SPEED)
     async function loadMyXiaozhiConfig(notify = false) {
       try {
-        const res = await fetch(`/api/devices/${activeDeviceId}`);
-        if (!res.ok) return;
-        const dev = await res.json();
+        let dev = null;
+        if (activeDeviceId) {
+          const res = await fetch(`/api/devices/${activeDeviceId}`);
+          if (res.ok) dev = await res.json();
+        }
+        if (!dev) {
+          const res2 = await fetch("/api/my-xiaozhi-config");
+          if (res2.ok) {
+            const data2 = await res2.json();
+            dev = data2.agent;
+          }
+        }
+        if (!dev) return;
 
         const nameInput = document.getElementById("xiaozhiAssistantName");
         const charInput = document.getElementById("xiaozhiCharacter");
@@ -5183,32 +5261,39 @@ Ví dụ:
         const voiceSelect = document.getElementById("xiaozhiTtsVoice");
         const langSelect = document.getElementById("xiaozhiLanguage");
 
-        if (nameInput) nameInput.value = dev.name || "Sophia";
-        if (charInput) charInput.value = dev.prompt || "";
+        if (nameInput) nameInput.value = dev.assistant_name || dev.name || "Robot Sophia";
+        if (charInput) charInput.value = dev.character || dev.prompt || `[VAI TRÒ VÀ TÍNH CÁCH]
+Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn và luôn đồng hành cùng gia đình.`;
         
-        // Điền model options đa dạng (Gemini, ChatGPT, DeepSeek)
+        // Điền model options đa dạng
         if (modelSelect) {
           modelSelect.innerHTML = `
-            <optgroup label="🌟 Google Gemini">
-              <option value="gemini-3.8-flash">Gemini 3.8 Flash (Thông minh, phản hồi nhanh - Mặc định)</option>
+            <optgroup label="🚀 Mô hình Xiaozhi Gốc (Tương thích 100% Robot)">
+              <option value="xz-lite">Model cơ bản phù hợp với câu lệnh đơn giản (xz-lite)</option>
+              <option value="qwen">Qwen 3.5 - Model mạnh, đa năng phù hợp tiếng Việt (qwen)</option>
+              <option value="deepseek">Deepseek V4 mạnh mẽ - tương thích tốt tiếng Việt (deepseek)</option>
+              <option value="doubao">Doubao - model Trung Quốc, phản hồi nhanh (doubao)</option>
+              <option value="gpt-5">GPT 5 - ChatGPT5 - model mạnh, hội thoại tự nhiên (gpt-5)</option>
+            </optgroup>
+            <optgroup label="🌟 Google Gemini (API Riêng)">
+              <option value="gemini-3.8-flash">Google Gemini 3.8 Flash (Thông minh, phản hồi nhanh - Mặc định)</option>
               <option value="gemini-3.1-flash-lite-preview">Gemini 3.1 Flash Lite (Phản hồi cực nhanh ~1s)</option>
             </optgroup>
             <optgroup label="⚡ OpenAI (ChatGPT)">
               <option value="gpt-4o-mini">ChatGPT GPT-4o Mini (Phản hồi nhanh, rẻ, thông minh - Khuyên dùng)</option>
               <option value="gpt-4o">ChatGPT GPT-4o (Đỉnh cao trí tuệ)</option>
-              <option value="gpt-3.5-turbo">ChatGPT GPT-3.5 Turbo</option>
             </optgroup>
             <optgroup label="🧠 DeepSeek AI">
               <option value="deepseek-chat">DeepSeek V3 (deepseek-chat - Tiếng Việt siêu tự nhiên, siêu rẻ)</option>
               <option value="deepseek-reasoner">DeepSeek R1 (deepseek-reasoner - Suy luận logic sâu)</option>
             </optgroup>
           `;
-          modelSelect.value = dev.model_id || "gemini-3.8-flash";
+          modelSelect.value = dev.llm_model || dev.model_id || "xz-lite";
         }
 
         const apiKeyInput = document.getElementById("customApiKey");
         if (apiKeyInput) {
-          const m = dev.model_id || "";
+          const m = dev.llm_model || dev.model_id || "";
           if (m.startsWith("gpt-") || m.includes("openai")) {
             apiKeyInput.value = dev.openai_api_key || "";
           } else if (m.includes("deepseek")) {
@@ -5221,35 +5306,124 @@ Ví dụ:
 
         if (langSelect) {
           langSelect.innerHTML = `
-            <option value="vi">Tiếng Việt</option>
+            <option value="vi">Tiếng Việt (Phong cách Gehihi)</option>
             <option value="en">English (US)</option>
+            <option value="zh">Tiếng Trung (中文)</option>
+            <option value="ja">Tiếng Nhật (日本語)</option>
+            <option value="ko">Tiếng Hàn (한국어)</option>
+            <option value="yue">Tiếng Quảng Đông (粤语)</option>
+            <option value="ru">Tiếng Nga (Русский)</option>
+            <option value="fr">Tiếng Pháp (Français)</option>
+            <option value="de">Tiếng Đức (Deutsch)</option>
+            <option value="es">Tiếng Tây Ban Nha (Español)</option>
+            <option value="th">Tiếng Thái (ไทย)</option>
+            <option value="id">Tiếng Indonesia</option>
           `;
           langSelect.value = dev.language || "vi";
         }
 
-        if (voiceSelect) {
-          voiceSelect.innerHTML = `
-            <option value="vi-VN-HoaiMyNeural">🔊 Giọng nữ (Hoài My - Nữ miền Bắc)</option>
-            <option value="vi-VN-NamMinhNeural">🔊 Giọng nam (Nam Minh - Nam miền Bắc)</option>
-            <option value="vi-VN-MaiNgocNeural">🔊 Giọng nữ miền Nam (Mai Ngọc)</option>
-          `;
-          voiceSelect.value = dev.voice || "vi-VN-HoaiMyNeural";
-        }
+        populateVoiceOptions(dev.language || "vi", dev.tts_voice || dev.voice || "Vietnamese_kindhearted_girl");
 
         const speedSelect = document.getElementById("xiaozhiTtsSpeed");
         if (speedSelect) {
-          speedSelect.value = dev.voice_speed || dev.tts_speed || "normal";
+          speedSelect.value = dev.tts_speech_speed || dev.voice_speed || dev.tts_speed || "normal";
         }
 
         const pitchSelect = document.getElementById("xiaozhiTtsPitch");
         if (pitchSelect) {
-          pitchSelect.value = (dev.voice_pitch !== undefined && dev.voice_pitch !== null) ? String(dev.voice_pitch) : "0";
+          pitchSelect.value = (dev.tts_pitch !== undefined && dev.tts_pitch !== null) ? String(dev.tts_pitch) : ((dev.voice_pitch !== undefined && dev.voice_pitch !== null) ? String(dev.voice_pitch) : "0");
         }
 
         updateXiaozhiCharacterCounter();
         if (notify) showToast("✓ Đã tải cấu hình hiện tại của Robot!");
       } catch (e) {
         console.error("Lỗi tải cấu hình:", e);
+      }
+    }
+
+    const GMBOT_VOICE_DEMOS = {
+      "Vietnamese_kindhearted_girl": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/1e7cd75c-c97c-4b80-a70c-c1270c3fd18e.mp3",
+      "Vietnamese_Serene_Man": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/24b645aa-dccb-4dea-9ea1-6d23567733aa.mp3",
+      "vc_vietnamese_voice_003_1011_1004": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/tts_vc_vietnamese_voice_003_1011_1004.mp3",
+      "vc_vietnamese_voice_005_1011_1003": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/tts_vc_vietnamese_voice_005_1011_1003.mp3",
+      "vc_vietnamese_voice_001_1011_1003": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/tts_vc_vietnamese_voice_001_1011_1003.mp3",
+      "vi-VN-HoaiMyNeural": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/azure/vi-VN-HoaiMyNeural-4c9402f3ed76c975.wav",
+      "vi-VN-NamMinhNeural": "https://xiaozhi-voice-assistant.oss-cn-shenzhen.aliyuncs.com/tts/azure/vi-VN-NamMinhNeural-40b543977a45fc9e.wav"
+    };
+
+    function populateVoiceOptions(lang, selectedVoice) {
+      const voiceSelect = document.getElementById("xiaozhiTtsVoice");
+      if (!voiceSelect) return;
+
+      if (lang === "vi") {
+        voiceSelect.innerHTML = `
+          <option value="Vietnamese_kindhearted_girl">👩 Giọng nữ (Female Voice) - Dịu dàng, thân thiện (MiniMax)</option>
+          <option value="Vietnamese_Serene_Man">👨 Giọng nam (Male Voice) - Điềm đạm (MiniMax)</option>
+          <option value="vc_vietnamese_voice_003_1011_1004">👧 Giọng nữ Trẻ trung (ByteDance)</option>
+          <option value="vc_vietnamese_voice_005_1011_1003">👨 Giọng nam Chủ nhà (ByteDance)</option>
+          <option value="vc_vietnamese_voice_001_1011_1003">👦 Giọng nam Trẻ trung (ByteDance)</option>
+          <option value="vi-VN-HoaiMyNeural">👩 Giọng nữ Hoài My (Microsoft Azure)</option>
+          <option value="vi-VN-NamMinhNeural">👨 Giọng nam Nam Minh (Microsoft Azure)</option>
+          <option value="vi-VN-MaiNgocNeural">👩 Giọng nữ Miền Nam (Mai Ngọc)</option>
+        `;
+      } else if (lang === "en") {
+        voiceSelect.innerHTML = `
+          <option value="en-US-JennyNeural">👩 English Female (Jenny - Azure)</option>
+          <option value="en-US-GuyNeural">👨 English Male (Guy - Azure)</option>
+          <option value="English_friendly_person">👩 Friendly English (MiniMax)</option>
+        `;
+      } else if (lang === "zh") {
+        voiceSelect.innerHTML = `
+          <option value="zh-CN-XiaoxiaoNeural">👩 晓晓 (Xiaoxiao - Nữ chuẩn)</option>
+          <option value="zh-CN-YunxiNeural">👨 云希 (Yunxi - Nam trẻ trung)</option>
+        `;
+      } else {
+        voiceSelect.innerHTML = `
+          <option value="${selectedVoice || 'Vietnamese_kindhearted_girl'}">Mặc định theo hệ thống (${selectedVoice || 'vi'})</option>
+        `;
+      }
+
+      if (selectedVoice) {
+        voiceSelect.value = selectedVoice;
+      }
+    }
+
+    function onMyXiaozhiLanguageChange() {
+      const lang = document.getElementById("xiaozhiLanguage")?.value || "vi";
+      populateVoiceOptions(lang);
+    }
+
+    let currentDemoAudio = null;
+    function playVoiceDemo() {
+      const voiceVal = document.getElementById("xiaozhiTtsVoice")?.value || "";
+      const demoUrl = GMBOT_VOICE_DEMOS[voiceVal];
+
+      if (currentDemoAudio) {
+        currentDemoAudio.pause();
+        currentDemoAudio = null;
+      }
+
+      if (demoUrl) {
+        currentDemoAudio = new Audio(demoUrl);
+        currentDemoAudio.play().catch(e => {
+          console.warn("Không phát được file demo OSS, dùng fallback speech:", e);
+          browserSpeakFallback();
+        });
+        showToast("🔊 Đang phát thử giọng nói mẫu...");
+      } else {
+        browserSpeakFallback();
+      }
+
+      function browserSpeakFallback() {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance("Xin chào, em là robot Sophia. Em rất vui được đồng hành cùng gia đình!");
+          u.lang = "vi-VN";
+          window.speechSynthesis.speak(u);
+          showToast("🔊 Đang phát giọng đọc mẫu trình duyệt...");
+        } else {
+          showToast("Chưa có bản ghi âm thử cho giọng này", false);
+        }
       }
     }
 
@@ -5272,10 +5446,10 @@ Ví dụ:
     }
 
     async function saveMyXiaozhiConfig() {
-      const name = document.getElementById("xiaozhiAssistantName")?.value || "Ông Robot";
+      const name = document.getElementById("xiaozhiAssistantName")?.value || "Robot Sophia";
       const prompt = document.getElementById("xiaozhiCharacter")?.value || "";
-      const model = document.getElementById("xiaozhiLlmModel")?.value || "gemini-3.8-flash";
-      const voice = document.getElementById("xiaozhiTtsVoice")?.value || "vi-VN-HoaiMyNeural";
+      const model = document.getElementById("xiaozhiLlmModel")?.value || "xz-lite";
+      const voice = document.getElementById("xiaozhiTtsVoice")?.value || "Vietnamese_kindhearted_girl";
       const lang = document.getElementById("xiaozhiLanguage")?.value || "vi";
       const speed = document.getElementById("xiaozhiTtsSpeed")?.value || "normal";
       const pitch = document.getElementById("xiaozhiTtsPitch")?.value || "0";
@@ -5283,12 +5457,18 @@ Ví dụ:
 
       const payload = {
         name: name,
+        assistant_name: name,
         prompt: prompt,
+        character: prompt,
         model_id: model,
+        llm_model: model,
         voice: voice,
+        tts_voice: voice,
         language: lang,
         voice_speed: speed,
+        tts_speech_speed: speed,
         voice_pitch: pitch,
+        tts_pitch: pitch,
         custom_prompt: true,
         memory_enabled: true
       };
@@ -5301,20 +5481,53 @@ Ví dụ:
         payload.gemini_api_key = keyVal;
       }
 
+      const statusBox = document.getElementById("xiaozhiConfigMessage");
+      if (statusBox) statusBox.innerHTML = '<span style="color:#60a5fa;">⏳ Đang lưu cấu hình và đồng bộ lên robot...</span>';
+
       try {
-        const res = await fetch(`/api/devices/${activeDeviceId}`, {
+        // 1. Gửi tới /api/devices/
+        const targetId = activeDeviceId || "2";
+        const res = await fetch(`/api/devices/${targetId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
+
+        // 2. Gửi thêm tới /api/my-xiaozhi-config để đảm bảo đồng bộ upstream xiaozhi.me
+        try {
+          await fetch("/api/my-xiaozhi-config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              assistant_name: name,
+              character: prompt,
+              llm_model: model,
+              tts_voice: voice,
+              language: lang,
+              tts_speech_speed: speed,
+              tts_pitch: parseInt(pitch) || 0
+            })
+          });
+        } catch (e2) {
+          console.warn("Sync to upstream wrapper:", e2);
+        }
+
         if (res.ok) {
-          showToast(`✓ Đã lưu cấu hình mô hình (${model}) thành công!`);
+          const resData = await res.json();
+          const synced = resData.upstream_synced;
+          const msg = synced 
+            ? "✅ Đã lưu cấu hình và đồng bộ thời gian thực lên xiaozhi.me thành công!"
+            : "✅ Đã lưu cấu hình thành công vào hệ thống!";
+          showToast(msg);
+          if (statusBox) statusBox.innerHTML = `<div style="padding:10px 14px;background:rgba(34,197,94,0.15);border:1px solid #22c55e;border-radius:8px;color:#4ade80;font-weight:600;">${msg}</div>`;
           loadDevices();
         } else {
           showToast("Không thể lưu cấu hình", false);
+          if (statusBox) statusBox.innerHTML = '<span style="color:#ef4444;">❌ Lỗi khi lưu cấu hình.</span>';
         }
       } catch (err) {
         showToast(`Lỗi: ${err.message}`, false);
+        if (statusBox) statusBox.innerHTML = `<span style="color:#ef4444;">❌ Lỗi: ${err.message}</span>`;
       }
     }
 
@@ -5322,7 +5535,7 @@ Ví dụ:
       const textarea = document.getElementById("xiaozhiCharacter");
       const counter = document.getElementById("xiaozhiCharacterCounter");
       if (textarea && counter) {
-        counter.innerText = `${textarea.value.length} ký tự`;
+        counter.innerText = `${textarea.value.length} / 7305 ký tự`;
       }
     }
 
@@ -5336,20 +5549,57 @@ Ví dụ:
       const contentGmbot = document.getElementById("xiaozhiConfigTabGmbot");
       const contentSpeaker = document.getElementById("xiaozhiConfigTabSpeaker");
 
-      if (tab === "megabot") {
-        if (btnGmbot) btnGmbot.classList.add("active");
-        if (btnSpeaker) btnSpeaker.classList.remove("active");
-        if (contentGmbot) contentGmbot.classList.add("active");
-        if (contentSpeaker) contentSpeaker.classList.remove("active");
+      if (tab === "gehihi" || tab === "megabot") {
+        if (btnGmbot) {
+          btnGmbot.classList.add("active");
+          btnGmbot.style.background = "#2563eb";
+          btnGmbot.style.color = "white";
+        }
+        if (btnSpeaker) {
+          btnSpeaker.classList.remove("active");
+          btnSpeaker.style.background = "#1e1b4b";
+          btnSpeaker.style.color = "#c084fc";
+        }
+        if (contentGmbot) contentGmbot.style.display = "block";
+        if (contentSpeaker) contentSpeaker.style.display = "none";
       } else {
-        if (btnSpeaker) btnSpeaker.classList.add("active");
-        if (btnGmbot) btnGmbot.classList.remove("active");
-        if (contentSpeaker) contentSpeaker.classList.add("active");
-        if (contentGmbot) contentGmbot.classList.remove("active");
+        if (btnSpeaker) {
+          btnSpeaker.classList.add("active");
+          btnSpeaker.style.background = "#2563eb";
+          btnSpeaker.style.color = "white";
+        }
+        if (btnGmbot) {
+          btnGmbot.classList.remove("active");
+          btnGmbot.style.background = "#374151";
+          btnGmbot.style.color = "white";
+        }
+        if (contentSpeaker) contentSpeaker.style.display = "block";
+        if (contentGmbot) contentGmbot.style.display = "none";
         loadMyXiaozhiSpeakers();
       }
     }
 
+    function openMyXiaozhiSpeakerEditor() {
+      const editor = document.getElementById("xiaozhiSpeakerEditor");
+      if (editor) editor.style.display = "block";
+    }
+
+    function closeMyXiaozhiSpeakerEditor() {
+      const editor = document.getElementById("xiaozhiSpeakerEditor");
+      if (editor) editor.style.display = "none";
+    }
+
+    async function saveMyXiaozhiSpeakerFromEditor() {
+      const name = document.getElementById("xiaozhiSpeakerName")?.value?.trim();
+      const desc = document.getElementById("xiaozhiSpeakerDescription")?.value?.trim();
+      if (!name) {
+        alert("Vui lòng nhập tên người nói!");
+        return;
+      }
+      await saveMyXiaozhiSpeaker(name, desc || "");
+      closeMyXiaozhiSpeakerEditor();
+    }
+    
     // 5. QUẢN LÝ NGƯỜI NÓI (SPEAKERS)
     async function loadMyXiaozhiSpeakers() {
       const listEl = document.getElementById("xiaozhiSpeakerList");
@@ -5602,6 +5852,7 @@ Ví dụ:
       hideAuthModal();
 
       switchSection('deviceManager');
+      switchSection("xiaozhiConfig", document.querySelector(".sidebar .menu-item.active"));
       loadDevices();
       loadMyXiaozhiConfig();
       // Tự động làm mới trạng thái online mỗi 6 giây
@@ -5616,22 +5867,16 @@ Ví dụ:
     // 7.1. ÁP DỤNG BÀI HỌC LÊN ROBOT
     async function applyCurriculumReal(id, name) {
       try {
-        let content = "";
-        if (typeof REAL_CURRICULUMS !== 'undefined' && Array.isArray(REAL_CURRICULUMS)) {
-          const found = REAL_CURRICULUMS.find(x => x.id === id);
-          if (found && found.content) content = found.content;
-        }
         const res = await fetch("/api/apply-curriculum", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ deviceId: activeDeviceId, curriculumId: id, name: name, content: content })
+          body: JSON.stringify({ deviceId: activeDeviceId, curriculumId: id })
         });
         const data = await res.json();
         if (res.ok) {
           showToast(`✓ Đã áp dụng bài học "${name}" lên Robot!`);
-          loadActiveEnglishTutor();
         } else {
-          showToast(`Lỗi: ${data.message || data.error || "Không thể áp dụng"}`, false);
+          showToast(`Lỗi: ${data.error || "Không thể áp dụng"}`, false);
         }
       } catch (e) {
         showToast("Lỗi kết nối máy chủ", false);
@@ -5678,6 +5923,7 @@ Ví dụ:
       try {
         const all = (typeof PREVIEW_LESSONS !== 'undefined' ? PREVIEW_LESSONS : []).concat(typeof PREVIEW_ROLEPLAY !== 'undefined' ? PREVIEW_ROLEPLAY : []);
         const item = all.find(t => t.id === id);
+        showToast(`Đang kích hoạt bài học "${title}" lên Robot...`, true);
         const res = await fetch("/api/english-tutor/activate-template", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -5690,7 +5936,7 @@ Ví dụ:
         });
         const data = await res.json();
         if (res.ok) {
-          showToast(`✓ Đã áp dụng giáo trình "${title}" lên Robot!`);
+          showToast(`🎉 Đã áp dụng bài học "${title}"! Loa Robot đang cất tiếng chào và dạy bé...`);
           loadActiveEnglishTutor();
         } else {
           showToast(`Lỗi: ${data.message || data.error || "Không thể áp dụng"}`, false);
@@ -5711,6 +5957,8 @@ Ví dụ:
       const wordsArr = words ? words.split(",").map(w => w.trim()).filter(Boolean) : [];
       const phrasesArr = phrases ? phrases.split("\n").map(p => p.trim()).filter(Boolean) : [];
 
+      showToast(`Đang kích hoạt bài học "${title}" lên Robot...`, true);
+
       try {
         const res = await fetch("/api/english-tutor/activate", {
           method: "POST",
@@ -5727,10 +5975,10 @@ Ví dụ:
         });
         const data = await res.json();
         if (res.ok) {
-          showToast(`✓ Đã kích hoạt giáo trình "${title}" lên Robot!`);
+          showToast(`🎉 Đã kích hoạt bài học "${title}"! Loa Robot đang cất tiếng chào và dạy bé...`);
           loadActiveEnglishTutor();
         } else {
-          showToast(`Lỗi: ${data.message || data.error || "Lỗi kích hoạt"}`, false);
+          showToast(`Lỗi: ${data.message || data.error || "Không thể kích hoạt"}`, false);
         }
       } catch (e) {
         showToast("Lỗi kết nối máy chủ", false);
@@ -5753,14 +6001,14 @@ Ví dụ:
               <div style="background:#07152b;padding:12px;border-radius:8px;border:1px solid #3b82f6;">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                   <strong style="color:#60a5fa;font-size:15px;">📘 ${activeTitle}</strong>
-                  <span style="font-size:11px; background:#166534; color:#86efac; padding:2px 8px; border-radius:12px; font-weight:bold;">Đang chạy</span>
+                  <span style="background:#2563eb;color:white;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:bold;">${activeLevel}</span>
                 </div>
-                <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Chủ đề: ${activeTopic} · Trình độ: ${activeLevel}</div>
-                <div style="font-size:13px;color:#e2e8f0;margin-top:8px;">Hãy nói "Hi Sophia" với robot để bắt đầu học. Khi xong nói "học xong rồi" để lưu điểm.</div>
+                <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Chủ đề: <strong style="color:#e2e8f0;">${activeTopic}</strong></div>
+                <div style="font-size:13px;color:#4ade80;margin-top:8px;">🟢 Robot đang trong chế độ Gia sư tiếng Anh (Nói "Học xong rồi" để hoàn thành)</div>
               </div>
             `;
           } else {
-            box.innerHTML = `<div style="color:#94a3b8;font-size:13px;">Chưa áp dụng bài học tiếng Anh nào. Hãy chọn bài ở trên và bấm "Áp dụng bài này"!</div>`;
+            box.innerHTML = `<div style="color:#94a3b8;font-size:13px;">Chưa áp dụng bài học tiếng Anh nào. Hãy chọn bài ở danh mục phía trên và bấm <strong>"🚀 Áp dụng bài này lên Robot ngay"</strong>!</div>`;
           }
         }
       } catch (e) {
@@ -6980,7 +7228,11 @@ Ví dụ:
         bufEl.innerText = totalBytes > 1024 ? `${(totalBytes / 1024).toFixed(1)} KB` : `${totalBytes} B`;
       }
 
-      updateMicState("recording");
+      if (level > 0.15 || peak > 2500) {
+        updateMicState("recording");
+      } else {
+        updateMicState("idle");
+      }
     }
 
     function updateMicState(state) {
@@ -7008,6 +7260,14 @@ Ví dụ:
         ind.style.boxShadow = "none";
         txt.innerText = "⚪ ROBOT NGẮT KẾT NỐI (OFFLINE)";
         txt.style.color = "#9ca3af";
+        const bar = document.getElementById("micLevelBar");
+        if (bar) bar.style.width = "0%";
+        const waveBars = document.querySelectorAll("#micWaveBars .mic-wave-bar");
+        waveBars.forEach(b => b.style.height = "5%");
+        const peakEl = document.getElementById("micPeakValue");
+        if (peakEl) peakEl.innerText = "0";
+        const dbEl = document.getElementById("micDbValue");
+        if (dbEl) dbEl.innerText = "(-∞ dBFS)";
       } else {
         ind.style.background = "#10b981";
         ind.style.boxShadow = "0 0 10px #10b981";
