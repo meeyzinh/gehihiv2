@@ -3449,7 +3449,9 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     except Exception:
                         pass
                     try:
-                        await websocket.send_text(msg)
+                        # Khi đang phát nhạc: Chặn toàn bộ tin nhắn thoại/TTS/STT từ Upstream AI gửi xuống Robot để không ngắt quãng nhạc
+                        if not ACTIVE_MUSIC_STATE.get("is_playing"):
+                            await websocket.send_text(msg)
                     except Exception:
                         break
             except Exception as err:
@@ -3483,10 +3485,10 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                                 pass
                         continue
                     elif p_type == "abort":
-                        print(f"[ROBOT WS] ⏹ Robot gửi tín hiệu ABORT (Wake Word hoặc phím bấm) -> Ngắt phát nhạc!")
+                        print(f"[ROBOT WS] ⏹ Robot gửi tín hiệu ABORT (Từ khóa 'Sophia' hoặc phím bấm) -> Ngắt phát nhạc để lắng nghe!")
                         stop_active_music()
-                        serial_manager._add_log("[ROBOT] ⏹ Nhận tín hiệu Abort -> Đã ngắt âm thanh phát nhạc.")
-                        asyncio.create_task(robot_ws_manager.send_oled_emotion("neutral", text="Da tat nhac"))
+                        serial_manager._add_log("[ROBOT] ⏹ Nhận lệnh 'Sophia' -> Đã dừng nhạc và chuyển sang lắng nghe bạn.")
+                        asyncio.create_task(robot_ws_manager.send_oled_emotion("happy", text="Toi nghe day"))
                     elif p_type == "listen":
                         st = payload.get("state")
                         md = payload.get("mode", "manual")
@@ -3517,6 +3519,10 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     pass
 
                 # Chuyển tiếp lệnh text lên Upstream AI
+                # Khi đang phát nhạc: Không chuyển tiếp các sự kiện listen/mic lên Upstream AI để tránh AI phản hồi làm gián đoạn
+                if ACTIVE_MUSIC_STATE.get("is_playing") and p_type != "abort":
+                    continue
+
                 if not is_ws_alive(upstream_ws):
                     await connect_upstream_ai()
                 if is_ws_alive(upstream_ws):
@@ -3556,6 +3562,12 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
                     "message": f"Gói âm thanh Mic Opus #{mic_monitor_manager.packet_index} ({len(raw_chunk)}B | Peak: {peak_val})"
                 }))
+                # KHI ĐANG PHÁT NHẠC: Tuyệt đối KHÔNG chuyển tiếp âm thanh mic lên Upstream AI!
+                # Giúp robot phát nhạc liên tục, không bị tiếng ồn/tiếng nói xung quanh làm gián đoạn
+                # Chỉ khi người dùng gọi "Sophia" (phần cứng WakeNet gửi 'abort') hoặc bấm nút, robot mới dừng nhạc để lắng nghe.
+                if ACTIVE_MUSIC_STATE.get("is_playing"):
+                    continue
+
                 if not is_ws_alive(upstream_ws):
                     await connect_upstream_ai()
                 if is_ws_alive(upstream_ws):
