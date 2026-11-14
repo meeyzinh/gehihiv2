@@ -72,6 +72,7 @@ CURRENT_UPSTREAM_WS_URL = DEFAULT_UPSTREAM_WS_URL
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 SECRET_KEY = os.getenv("SECRET_KEY", "gmbot-control-plane-secret-key-local-2026")
+ROBOT_INACTIVITY_TIMEOUT = float(os.getenv("ROBOT_INACTIVITY_TIMEOUT", "45.0"))
 MAIN_ASYNC_LOOP: Optional[asyncio.AbstractEventLoop] = None
 
 DB_PATH = os.path.abspath("database.db")
@@ -2701,40 +2702,48 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
                 return True
 
     # 0.3 Kiểm tra LỆNH ĐI NGỦ / TẮT ROBOT / STANDBY
-    sleep_keywords = [
+    # Chỉ nhận lệnh đi ngủ khi câu nói là câu mệnh lệnh ngắn (dưới 6 từ) hoặc chứa cụm từ rõ ràng chỉ định robot
+    # Tránh tình trạng nhận diện nhầm từ các câu nói thông thường (như "suy nghĩ đi", "tắt điều hòa", "im lặng quá")
+    words_list = t_norm.split()
+    words_count = len(words_list)
+    explicit_sleep_phrases = [
+        "sophia đi ngủ đi", "sophia di ngu di",
+        "hãy đi ngủ đi", "hay di ngu di",
+        "đi ngủ đi sophia", "di ngu di sophia",
+        "tắt robot đi", "tat robot di",
+        "hãy tắt robot đi", "hay tat robot di",
+        "tạm biệt sophia", "tam biet sophia",
+        "vào chế độ ngủ", "vao che do ngu",
+        "vào chế độ chờ", "vao che do cho",
+        "nghỉ ngơi đi sophia", "nghi ngoi di sophia"
+    ]
+    short_sleep_keywords = [
         "đi ngủ đi", "di ngu di",
-        "ngủ đi", "ngu di",
         "đi ngủ thôi", "di ngu thoi",
+        "ngủ đi", "ngu di",
         "ngủ thôi", "ngu thoi",
         "ngủ nhé", "ngu nhe",
         "ngủ nha", "ngu nha",
-        "hãy đi ngủ đi", "hay di ngu di",
-        "tắt robot đi", "tat robot di",
         "tắt robot", "tat robot",
-        "hãy tắt robot đi", "hay tat robot di",
-        "hãy tắt robot", "hay tat robot",
         "tắt máy đi", "tat may di",
-        "tắt máy", "tat may",
-        "tắt đi", "tat di",
         "tạm biệt robot", "tam biet robot",
-        "tạm biệt sophia", "tam biet sophia",
         "tạm biệt", "tam biet",
         "chào tạm biệt", "chao tam biet",
-        "bye bye", "goodbye", "bye",
-        "vào chế độ ngủ", "vao che do ngu",
-        "chế độ ngủ", "che do ngu",
-        "vào chế độ chờ", "vao che do cho",
-        "chế độ chờ", "che do cho",
+        "bye bye", "goodbye",
         "nghỉ ngơi đi", "nghi ngoi di",
-        "nghỉ đi", "nghi di",
         "đừng nghe nữa", "dung nghe nua",
         "ngừng nghe", "ngung nghe",
         "im lặng đi", "im lang di",
-        "im lặng", "im lang",
         "thôi không nói nữa", "thoi khong noi nua",
         "standby", "sleep mode", "go to sleep"
     ]
-    if any(sk in t_norm for sk in sleep_keywords):
+    is_sleep_cmd = False
+    if any(p in t_norm for p in explicit_sleep_phrases):
+        is_sleep_cmd = True
+    elif words_count <= 5 and any(k in t_norm for k in short_sleep_keywords):
+        is_sleep_cmd = True
+
+    if is_sleep_cmd:
         print(f"[VOICE COMMAND] 💤 Nhận lệnh ĐI NGỦ / TẮT ROBOT: '{txt}'")
         serial_manager._add_log(f"[KHẨU LỆNH] 💤 '{txt}' -> Nhận lệnh ĐI NGỦ/TẮT ROBOT. Đưa Robot vào chế độ ngủ (Standby)...")
         stop_active_music()
@@ -2742,38 +2751,36 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
         serial_manager._add_log("[ROBOT] 💤 Robot đã nhắm mắt đi ngủ (Standby). Nói 'Hi Sophia' hoặc 'Sophia' hoặc bấm nút để đánh thức.")
         return True
 
-    # Danh sách từ khóa HỦY BÀI HỌC / THOÁT / QUAY VỀ SOPHIA
-    cancel_keywords = [
-        "hủy học tiếng anh", "huy hoc tieng anh",
-        "dừng học tiếng anh", "dung hoc tieng anh",
-        "ngừng học tiếng anh", "ngung hoc tieng anh",
-        "thoát học tiếng anh", "thoat hoc tieng anh",
-        "kết thúc học tiếng anh", "ket thuc hoc tieng anh",
-        "hủy bài học", "huy bai hoc",
-        "dừng bài học", "dung bai hoc",
-        "thoát bài học", "thoat bai hoc",
-        "ngừng bài học", "ngung bai hoc",
-        "kết thúc bài học", "ket thuc bai hoc",
-        "hủy tiếng anh", "huy tieng anh",
-        "dừng tiếng anh", "dung tieng anh",
-        "thoát tiếng anh", "thoat tieng anh",
-        "nghỉ học tiếng anh", "nghi hoc tieng anh",
-        "nghỉ học", "nghi hoc",
-        "hủy học", "huy hoc",
-        "dừng học", "dung hoc",
-        "thoát học", "thoat hoc",
-        "học xong rồi", "hoc xong roi",
-        "xong rồi", "xong roi",
-        "học xong", "hoc xong",
-        "quay lại sophia", "quay lai sophia",
-        "trở lại sophia", "tro lai sophia",
-        "trở về sophia", "tro ve sophia",
-        "về sophia", "ve sophia",
-        "chuyển về sophia", "chuyen ve sophia",
-        "bật sophia", "bat sophia",
-        "stop english", "cancel english", "exit english",
-        "quit english", "stop learning", "close lesson", "done"
-    ]
+    # Danh sách từ khóa HỦY BÀI HỌC / THOÁT / QUAY VỀ SOPHIA (Chỉ khi đang học tiếng Anh)
+    is_cancel = False
+    if current_english_lesson.get("active"):
+        explicit_cancel = [
+            "hủy học tiếng anh", "huy hoc tieng anh",
+            "dừng học tiếng anh", "dung hoc tieng anh",
+            "ngừng học tiếng anh", "ngung hoc tieng anh",
+            "thoát học tiếng anh", "thoat hoc tieng anh",
+            "kết thúc học tiếng anh", "ket thuc hoc tieng anh",
+            "hủy bài học", "huy bai hoc",
+            "dừng bài học", "dung bai hoc",
+            "thoát bài học", "thoat bai hoc",
+            "ngừng bài học", "ngung bai hoc",
+            "kết thúc bài học", "ket thuc bai hoc",
+            "hủy tiếng anh", "huy tieng anh",
+            "dừng tiếng anh", "dung tieng anh",
+            "thoát tiếng anh", "thoat tieng anh",
+            "nghỉ học tiếng anh", "nghi hoc tieng anh",
+            "học xong rồi", "hoc xong roi",
+            "quay lại sophia", "quay lai sophia",
+            "trở lại sophia", "tro lai sophia",
+            "trở về sophia", "tro ve sophia",
+            "stop english", "cancel english", "exit english",
+            "quit english", "stop learning", "close lesson"
+        ]
+        short_cancel = ["dừng học", "dung hoc", "thoát học", "thoat hoc", "học xong", "hoc xong", "xong rồi", "xong roi", "done"]
+        if any(k in t_norm for k in explicit_cancel):
+            is_cancel = True
+        elif words_count <= 4 and any(k in t_norm for k in short_cancel):
+            is_cancel = True
 
     # Danh sách từ khóa BẮT ĐẦU / VÀO HỌC TIẾNG ANH
     start_keywords = [
@@ -2789,7 +2796,6 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
         "start english", "learn english", "practice english"
     ]
 
-    is_cancel = any(k in t_norm for k in cancel_keywords)
     is_start = any(k in t_norm for k in start_keywords) and not is_cancel
 
     db = SessionLocal()
@@ -3045,24 +3051,43 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
         return
 
     last_activity_time = time.time()
-    is_listening = False
-    INACTIVITY_TIMEOUT = 12.0  # 12s im lặng -> tự động đưa Robot vào chế độ ngủ (Standby)
+    last_mic_audio_time = time.time()
+    is_listening = True
+    is_robot_speaking = False
+    is_ai_thinking = False
 
     # Task tự động đưa Robot vào chế độ ngủ (Standby) khi không có người tương tác
     async def auto_sleep_watchdog():
-        nonlocal is_listening, last_activity_time, session_id
+        nonlocal is_listening, last_activity_time, last_mic_audio_time, session_id, is_robot_speaking, is_ai_thinking
         while True:
             await asyncio.sleep(1.0)
+            
+            # 1. Nếu auto-sleep bị tắt (timeout <= 0), không bao giờ tự tắt chế độ lắng nghe
+            if ROBOT_INACTIVITY_TIMEOUT <= 0:
+                last_activity_time = time.time()
+                continue
+
+            # 2. Nếu đang phát nhạc YouTube, Robot luôn hoạt động
             if ACTIVE_MUSIC_STATE.get("is_playing"):
                 last_activity_time = time.time()
                 continue
 
-            idle_duration = time.time() - last_activity_time
-            if is_listening and idle_duration >= INACTIVITY_TIMEOUT:
-                print(f"[AUTO SLEEP] 💤 Đã qua {int(idle_duration)}s im lặng -> Chuyển Robot sang chế độ ngủ (Standby)!")
+            # 3. Khi Robot đang phát lời thoại (TTS), AI đang suy nghĩ, hoặc vừa có tiếng nói micro trong 3s qua:
+            # Luôn giữ trạng thái hoạt động, không bao giờ ngắt ngang khi đang nói chuyện
+            now = time.time()
+            if is_robot_speaking or is_ai_thinking or (now - last_mic_audio_time < 3.0):
+                last_activity_time = now
+                continue
+
+            # 4. Khi đang trong bài học tiếng Anh, cho phép thời gian suy nghĩ 90s; bình thường theo cấu hình (mặc định 45s)
+            current_timeout = 90.0 if current_english_lesson.get("active") else ROBOT_INACTIVITY_TIMEOUT
+
+            idle_duration = now - last_activity_time
+            if is_listening and idle_duration >= current_timeout:
+                print(f"[AUTO SLEEP] 💤 Sau {int(idle_duration)}s im lặng hoàn toàn -> Chuyển Robot sang chế độ ngủ (Standby)!")
                 serial_manager._add_log(f"[TỰ ĐỘNG NGỦ] 💤 Không có tương tác trong {int(idle_duration)}s -> Robot vào chế độ ngủ.")
                 is_listening = False
-                last_activity_time = time.time()
+                last_activity_time = now
                 sess = session_id or robot_ws_manager.sessions.get(websocket) or ""
                 try:
                     await websocket.send_json({
@@ -3088,7 +3113,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     "type": "state_change",
                     "state": "idle",
                     "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
-                    "message": "Robot đã vào chế độ ngủ (Standby - Chờ 'Hi Sophia' hoặc 'Sophia')"
+                    "message": f"Robot đã vào chế độ ngủ (Standby sau {int(current_timeout)}s không có tương tác)"
                 }))
 
     watchdog_task = asyncio.create_task(auto_sleep_watchdog())
@@ -3158,6 +3183,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             txt = p.get("text", "")
                             if txt:
                                 last_activity_time = time.time()
+                                is_ai_thinking = True
                                 print(f"[VOICE ASR] Người dùng nói: \"{txt}\"")
                                 serial_manager._add_log(f"[GIỌNG NÓI - BẠN] {txt}")
                                 mic_monitor_manager.current_state["last_text"] = txt
@@ -3185,6 +3211,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             txt = p.get("text", "")
                             emo = p.get("emotion", "happy")
                             last_activity_time = time.time()
+                            is_ai_thinking = False
                             if txt:
                                 print(f"[VOICE AI] Robot đáp: \"{txt}\" (Cảm xúc: {emo})")
                                 serial_manager._add_log(f"[ROBOT AI] {txt}")
@@ -3208,9 +3235,11 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                                         "text": txt,
                                         "timestamp": datetime.datetime.now().strftime("%H:%M:%S")
                                     }))
-                        elif p_type == "tts" and p.get("state") == "sentence_start":
+                        elif p_type == "tts" and p.get("state") in ["start", "sentence_start"]:
                             txt = p.get("text", "")
                             last_activity_time = time.time()
+                            is_robot_speaking = True
+                            is_ai_thinking = False
                             if txt:
                                 serial_manager._add_log(f"[ROBOT AI NÓI] {txt}")
                                 mic_monitor_manager.current_state["state"] = "speaking"
@@ -3221,7 +3250,10 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                                     "message": f"Robot đang phát loa: \"{txt[:30]}...\""
                                 }))
                         elif p_type == "tts" and p.get("state") in ["stop", "sentence_end"]:
-                            last_activity_time = time.time()
+                            now_t = time.time()
+                            last_activity_time = now_t
+                            is_robot_speaking = False
+                            is_listening = True
                             mic_monitor_manager.current_state["state"] = "idle"
                             asyncio.create_task(mic_monitor_manager.broadcast({
                                 "type": "state_change",
@@ -3273,14 +3305,20 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     elif p_type == "listen":
                         st = payload.get("state")
                         md = payload.get("mode", "manual")
+                        now_l = time.time()
                         if st in ["detect", "start"]:
                             is_listening = True
-                            last_activity_time = time.time()
+                            is_robot_speaking = False
+                            is_ai_thinking = False
+                            last_activity_time = now_l
+                            last_mic_audio_time = now_l
                             if ACTIVE_MUSIC_STATE.get("is_playing"):
                                 print("[ROBOT WS] 🎙 Bắt đầu lắng nghe người dùng -> Tự động ngắt phát nhạc!")
                                 stop_active_music()
                         elif st in ["stop"]:
-                            is_listening = False
+                            # Người dùng ngưng nói, chuyển quyền cho AI suy nghĩ và trả lời
+                            is_ai_thinking = True
+                            last_activity_time = now_l
                         print(f"[ROBOT MIC] Lắng nghe {st} (chế độ: {md})")
                         serial_manager._add_log(f"[MIC ROBOT] Đang lắng nghe giọng nói ({st})...")
                         st_ui = "recording" if st == "start" else ("processing" if st in ["stop", "detect"] else "idle")
@@ -3308,6 +3346,10 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
             elif "bytes" in msg_data and msg_data["bytes"]:
                 # Chuyển tiếp luồng âm thanh Mic INMP441 lên Upstream AI để nhận diện giọng nói!
                 raw_chunk = msg_data["bytes"]
+                now_b = time.time()
+                last_activity_time = now_b
+                last_mic_audio_time = now_b
+                is_listening = True
                 mic_monitor_manager.packet_index += 1
                 peak_val = 2500
                 try:
@@ -3728,6 +3770,37 @@ async def api_robot_sleep(payload: Optional[Dict[str, Any]] = None):
         "success": True,
         "message": "Robot đã vào chế độ ngủ (Standby - Chờ 'Hi Sophia' hoặc 'Sophia' hoặc bấm nút)",
         "sent_count": sent_count
+    }
+
+
+class InactivityTimeoutPayload(BaseModel):
+    timeout_seconds: float
+
+
+@app.get("/api/robot/settings/inactivity-timeout")
+async def get_inactivity_timeout():
+    """Lấy cấu hình thời gian im lặng trước khi tự động ngủ của Robot"""
+    return {
+        "status": "ok",
+        "inactivity_timeout": ROBOT_INACTIVITY_TIMEOUT,
+        "english_timeout": 90.0,
+        "is_disabled": ROBOT_INACTIVITY_TIMEOUT <= 0,
+        "description": "Thời gian (giây) im lặng hoàn toàn trước khi Robot chuyển sang Standby. 0 = Tắt tự động ngủ."
+    }
+
+
+@app.post("/api/robot/settings/inactivity-timeout")
+async def set_inactivity_timeout(payload: InactivityTimeoutPayload):
+    """Cập nhật thời gian im lặng tự động ngủ (truyền 0 để tắt tự động ngủ)"""
+    global ROBOT_INACTIVITY_TIMEOUT
+    ROBOT_INACTIVITY_TIMEOUT = max(0.0, float(payload.timeout_seconds))
+    msg = f"Đã cập nhật thời gian tự động ngủ thành {ROBOT_INACTIVITY_TIMEOUT}s." if ROBOT_INACTIVITY_TIMEOUT > 0 else "Đã tắt hoàn toàn tính năng tự động ngủ của Robot."
+    serial_manager._add_log(f"[CẤU HÌNH NGỦ] {msg}")
+    return {
+        "status": "ok",
+        "inactivity_timeout": ROBOT_INACTIVITY_TIMEOUT,
+        "is_disabled": ROBOT_INACTIVITY_TIMEOUT <= 0,
+        "message": msg
     }
 
 
