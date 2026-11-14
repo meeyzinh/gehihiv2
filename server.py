@@ -1788,13 +1788,7 @@ def execute_mcp_tool(name: str, args: Dict[str, Any]) -> str:
             import asyncio
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                async def _play_bg():
-                    tracks = await search_youtube_tracks(query, limit=1)
-                    if tracks:
-                        t = tracks[0]
-                        stop_active_music()
-                        ACTIVE_MUSIC_STATE["task"] = asyncio.create_task(resolve_and_stream_music(t["url"], t))
-                asyncio.create_task(_play_bg())
+                asyncio.create_task(start_music_playback(query, source="mcp"))
             res = f"Đang tìm kiếm và phát bài hát '{query}' từ YouTube trên Robot."
         except Exception as e:
             res = f"Lỗi phát nhạc YouTube: {e}"
@@ -2116,11 +2110,17 @@ POPULAR_CHILDREN_SONGS = [
 ]
 
 ACTIVE_MUSIC_STATE: Dict[str, Any] = {
+    "session_id": 0,
     "is_playing": False,
+    "is_preparing": False,
     "track": None,
     "stop_event": None,
     "task": None,
-    "proc": None
+    "proc": None,
+    "all_procs": set(),
+    "last_trigger_query": "",
+    "last_trigger_time": 0.0,
+    "last_trigger_source": ""
 }
 
 current_english_lesson: Dict[str, Any] = {
@@ -2221,19 +2221,74 @@ def get_ffmpeg_cmd() -> str:
     return "ffmpeg"
 
 def stop_active_music():
-    if ACTIVE_MUSIC_STATE.get("stop_event"):
-        ACTIVE_MUSIC_STATE["stop_event"].set()
+    """
+    Dừng triệt để toàn bộ luồng phát nhạc và giải phóng tài nguyên:
+    - Tăng session_id để mọi task đang resolve hoặc stream cũ lập tức hủy
+    - Set stop_event
+    - Kill triệt để tất cả tiến trình ffmpeg (proc chính và mọi proc phụ qua taskkill trên Windows)
+    - Cancel asyncio task
+    - Đặt trạng thái is_playing = False, is_preparing = False
+    - Gửi tín hiệu ngắt âm thanh xuống firmware ESP32
+    """
+    ACTIVE_MUSIC_STATE["session_id"] = ACTIVE_MUSIC_STATE.get("session_id", 0) + 1
+    ACTIVE_MUSIC_STATE["is_playing"] = False
+    ACTIVE_MUSIC_STATE["is_preparing"] = False
+    ACTIVE_MUSIC_STATE["track"] = None
+
+    ev = ACTIVE_MUSIC_STATE.get("stop_event")
+    if ev:
+        try:
+            ev.set()
+        except Exception:
+            pass
+        ACTIVE_MUSIC_STATE["stop_event"] = None
+
     proc = ACTIVE_MUSIC_STATE.get("proc")
     if proc:
         try:
             proc.kill()
         except Exception:
             pass
+        if os.name == 'nt' and getattr(proc, 'pid', None):
+            try:
+                subprocess.run(f"taskkill /F /T /PID {proc.pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
         ACTIVE_MUSIC_STATE["proc"] = None
+
+    all_p = ACTIVE_MUSIC_STATE.get("all_procs")
+    if all_p:
+        for p in list(all_p):
+            try:
+                p.kill()
+            except Exception:
+                pass
+            if os.name == 'nt' and getattr(p, 'pid', None):
+                try:
+                    subprocess.run(f"taskkill /F /T /PID {p.pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception:
+                    pass
+        ACTIVE_MUSIC_STATE["all_procs"] = set()
+
     task = ACTIVE_MUSIC_STATE.get("task")
     if task and not task.done():
-        task.cancel()
-    ACTIVE_MUSIC_STATE["is_playing"] = False
+        try:
+            task.cancel()
+        except Exception:
+            pass
+    ACTIVE_MUSIC_STATE["task"] = None
+
+    # Gửi tín hiệu ngắt tts tức thì tới toàn bộ robot để xóa bộ nhớ đệm âm thanh của ESP32
+    try:
+        loop = asyncio.get_running_loop()
+        if loop.is_running():
+            for ws in list(robot_ws_manager.all_robots):
+                try:
+                    loop.create_task(ws.send_json({"type": "tts", "state": "stop"}))
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
 INVIDIOUS_APIS = [
     "https://yt.chocolatemoo53.com",
@@ -2440,25 +2495,34 @@ async def search_youtube_tracks(q: str, limit: int = 12) -> List[Dict[str, Any]]
 
     return POPULAR_CHILDREN_SONGS[:limit]
 
-async def stream_music_to_robots(audio_url: str, track_info: dict, http_headers: Optional[dict] = None):
+async def stream_music_to_robots(audio_url: str, track_info: dict, session_id: int, http_headers: Optional[dict] = None):
+    # Nếu session_id đã bị hủy hoặc thay thế bởi yêu cầu mới trong lúc chuẩn bị, thoát ngay
+    if session_id != ACTIVE_MUSIC_STATE.get("session_id"):
+        print(f"[YOUTUBE MUSIC] ⏹ Session #{session_id} đã hết hạn trước khi stream (hiện tại #{ACTIVE_MUSIC_STATE.get('session_id')})")
+        return
+
     stop_event = asyncio.Event()
     ACTIVE_MUSIC_STATE["stop_event"] = stop_event
     ACTIVE_MUSIC_STATE["is_playing"] = True
+    ACTIVE_MUSIC_STATE["is_preparing"] = False
     ACTIVE_MUSIC_STATE["track"] = track_info
 
-    session_id = str(uuid.uuid4())[:8]
+    stream_uuid = str(uuid.uuid4())[:8]
     raw_title = track_info.get("title", "Bài hát yêu thích")
     title_clean = raw_title.split("-")[0].split("|")[0].strip()[:24]
-    print(f"[YOUTUBE MUSIC] ▶ Bắt đầu stream tới Robot ({len(robot_ws_manager.all_robots)} robot online): '{title_clean}'")
+    print(f"[YOUTUBE MUSIC] ▶ Bắt đầu stream tới Robot ({len(robot_ws_manager.all_robots)} robot online): '{title_clean}' (Session #{session_id})")
 
     sample_rate = 16000  # Chuẩn âm thanh 16kHz của MAX98357A trên bo mạch RobotMiniS3
-    # 1. Báo hiển thị OLED & khởi tạo luồng âm thanh theo đúng thứ tự firmware yêu cầu
+
+    # 1. Gửi lệnh ngắt buffer cũ và khởi tạo luồng âm thanh mới cho ESP32
     for ws in list(robot_ws_manager.all_robots):
         try:
-            sess = robot_ws_manager.sessions.get(ws, session_id)
+            sess = robot_ws_manager.sessions.get(ws, stream_uuid)
+            await ws.send_json({"type": "tts", "state": "stop", "session_id": sess})
+            await asyncio.sleep(0.02)
             await ws.send_json({"type": "llm", "emotion": "happy", "session_id": sess})
             await ws.send_json({"type": "tts", "state": "start", "session_id": sess, "sample_rate": sample_rate})
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.03)
             await ws.send_json({
                 "type": "tts",
                 "state": "sentence_start",
@@ -2467,6 +2531,7 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, http_headers:
             })
         except Exception as e:
             print(f"[YOUTUBE MUSIC] Lỗi gửi tín hiệu khởi tạo tới robot: {e}")
+
     ffmpeg_exe = get_ffmpeg_cmd()
     cmd = [
         ffmpeg_exe,
@@ -2489,12 +2554,16 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, http_headers:
 
     proc = None
     try:
+        if session_id != ACTIVE_MUSIC_STATE.get("session_id"):
+            return
+
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL
         )
         ACTIVE_MUSIC_STATE["proc"] = proc
+        ACTIVE_MUSIC_STATE.setdefault("all_procs", set()).add(proc)
 
         if not opuslib_next:
             raise RuntimeError("opuslib_next is not installed")
@@ -2506,7 +2575,7 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, http_headers:
         frame_idx = 0
         next_frame_time = time.monotonic()
 
-        while not stop_event.is_set():
+        while not stop_event.is_set() and session_id == ACTIVE_MUSIC_STATE.get("session_id"):
             try:
                 chunk = await proc.stdout.readexactly(frame_bytes)
             except (asyncio.IncompleteReadError, EOFError):
@@ -2525,8 +2594,8 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, http_headers:
                     pass
 
             frame_idx += 1
-            if frame_idx <= 7:
-                # Pre-buffer 7 frames (420ms) để buffer ESP32 đầy, không ngắt quãng
+            if frame_idx <= 5:
+                # Pre-buffer 5 frames (300ms) để buffer ESP32 đầy, không ngắt quãng
                 await asyncio.sleep(0.005)
                 next_frame_time = time.monotonic() + 0.058
             else:
@@ -2539,7 +2608,7 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, http_headers:
                     next_frame_time = time.monotonic()
 
     except asyncio.CancelledError:
-        print(f"[YOUTUBE MUSIC] ⏹ Stream bị hủy cho bài '{title_clean}'")
+        print(f"[YOUTUBE MUSIC] ⏹ Stream bị hủy cho bài '{title_clean}' (Session #{session_id})")
     except Exception as e:
         print(f"[YOUTUBE MUSIC] ⚠ Lỗi luồng phát nhạc: {e}")
     finally:
@@ -2548,35 +2617,50 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, http_headers:
                 proc.kill()
             except Exception:
                 pass
-        ACTIVE_MUSIC_STATE["proc"] = None
+            if os.name == 'nt' and getattr(proc, 'pid', None):
+                try:
+                    subprocess.run(f"taskkill /F /T /PID {proc.pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception:
+                    pass
+            all_p = ACTIVE_MUSIC_STATE.get("all_procs")
+            if all_p and isinstance(all_p, set):
+                all_p.discard(proc)
+            if ACTIVE_MUSIC_STATE.get("proc") == proc:
+                ACTIVE_MUSIC_STATE["proc"] = None
 
-        # Báo kết thúc phiên phát âm thanh trên robot
-        for ws in list(robot_ws_manager.all_robots):
-            try:
-                sess = robot_ws_manager.sessions.get(ws, session_id)
-                await ws.send_json({"type": "tts", "state": "sentence_end", "session_id": sess})
-                await ws.send_json({"type": "tts", "state": "stop", "session_id": sess})
-            except Exception:
-                pass
+        # Chỉ gửi thông báo kết thúc nếu session này vẫn là session hợp lệ mới nhất
+        if session_id == ACTIVE_MUSIC_STATE.get("session_id"):
+            for ws in list(robot_ws_manager.all_robots):
+                try:
+                    sess = robot_ws_manager.sessions.get(ws, stream_uuid)
+                    await ws.send_json({"type": "tts", "state": "sentence_end", "session_id": sess})
+                    await ws.send_json({"type": "tts", "state": "stop", "session_id": sess})
+                except Exception:
+                    pass
 
-        ACTIVE_MUSIC_STATE["is_playing"] = False
-        ACTIVE_MUSIC_STATE["stop_event"] = None
-        print(f"[YOUTUBE MUSIC] ✓ Đã dừng/hoàn thành bài: '{title_clean}'")
+            ACTIVE_MUSIC_STATE["is_playing"] = False
+            ACTIVE_MUSIC_STATE["is_preparing"] = False
+            ACTIVE_MUSIC_STATE["stop_event"] = None
+            print(f"[YOUTUBE MUSIC] ✓ Đã dừng/hoàn thành bài: '{title_clean}' (Session #{session_id})")
 
-        # Trả robot về trạng thái rảnh / standby bình thường (không cưỡng ép mở mic lắng nghe)
-        for ws in list(robot_ws_manager.all_robots):
-            try:
-                sess = robot_ws_manager.sessions.get(ws, session_id)
-                await ws.send_json({"type": "llm", "emotion": "happy", "text": "Da xong bai hat", "session_id": sess})
-            except Exception:
-                pass
+            # Trả robot về trạng thái rảnh / standby bình thường
+            for ws in list(robot_ws_manager.all_robots):
+                try:
+                    sess = robot_ws_manager.sessions.get(ws, stream_uuid)
+                    await ws.send_json({"type": "llm", "emotion": "happy", "text": "Da xong bai hat", "session_id": sess})
+                except Exception:
+                    pass
 
-async def resolve_and_stream_music(target_url: str, track_info: dict = None):
+async def resolve_and_stream_music(target_url: str, track_info: dict = None, session_id: int = 0):
     if track_info is None:
         track_info = {}
     audio_stream_url = target_url
     title = track_info.get("title", "")
     http_headers = None
+
+    if session_id != ACTIVE_MUSIC_STATE.get("session_id"):
+        print(f"[YOUTUBE MUSIC] ⏹ Hủy resolve bài hát vì session #{session_id} đã lỗi thời")
+        return
 
     # 1. Ưu tiên giải mã trực tiếp bằng yt-dlp (đặc biệt hiệu quả 100% trên Localhost với IP người dùng)
     if yt_dlp:
@@ -2610,6 +2694,11 @@ async def resolve_and_stream_music(target_url: str, track_info: dict = None):
         except Exception as e:
             print(f"[YOUTUBE MUSIC] yt-dlp extract error: {e}")
 
+    # Kiểm tra session_id sau khi await yt-dlp
+    if session_id != ACTIVE_MUSIC_STATE.get("session_id"):
+        print(f"[YOUTUBE MUSIC] ⏹ Session #{session_id} bị hủy trong lúc giải mã yt-dlp")
+        return
+
     # 2. Nếu yt-dlp chưa lấy được direct stream URL, thử fallback sang Invidious API
     if ("youtube.com" in audio_stream_url or "youtu.be" in audio_stream_url):
         inv_url, inv_title, inv_thumb = await resolve_audio_stream_direct(target_url)
@@ -2622,13 +2711,85 @@ async def resolve_and_stream_music(target_url: str, track_info: dict = None):
                 track_info["thumbnail"] = inv_thumb
             print(f"[YOUTUBE MUSIC] ✓ Invidious fallback trích xuất thành công: {title}")
 
+    if session_id != ACTIVE_MUSIC_STATE.get("session_id"):
+        print(f"[YOUTUBE MUSIC] ⏹ Session #{session_id} bị hủy sau Invidious fallback")
+        return
+
     # Nếu không trích xuất được direct stream URL từ YouTube (chặn IP hoặc lỗi), không chạy ffmpeg trên URL HTML
     if "youtube.com/watch" in audio_stream_url or "youtu.be/" in audio_stream_url:
         print(f"[YOUTUBE MUSIC] ⚠ Không thể lấy audio stream cho '{target_url}' (IP bị giới hạn hoặc URL chưa hỗ trợ)")
         serial_manager._add_log(f"[YOUTUBE MUSIC] ⚠ Không thể trích xuất stream cho: {title or target_url}")
+        ACTIVE_MUSIC_STATE["is_preparing"] = False
         return
 
-    await stream_music_to_robots(audio_stream_url, track_info, http_headers=http_headers)
+    await stream_music_to_robots(audio_stream_url, track_info, session_id, http_headers=http_headers)
+
+async def start_music_playback(query_or_url: str, track_info: Optional[dict] = None, source: str = "voice") -> bool:
+    """
+    Bộ điều phối phát nhạc tập trung duy nhất (Singleton Music Coordinator):
+    - Khử trùng lặp (Deduplication): Ngăn chặn cả giọng nói cục bộ và Xiaozhi MCP Tool gọi trùng nhau trong vòng 8 giây.
+    - Đảm bảo 1 thời điểm chỉ có 1 luồng phát duy nhất hoạt động.
+    - Triệt tiêu hoàn toàn lỗi 2 bài hát chồng lên nhau và lỗi tắt 1 bài còn 1 bài.
+    """
+    now = time.time()
+    clean_q = (query_or_url or "").strip().lower()
+    last_q = ACTIVE_MUSIC_STATE.get("last_trigger_query", "").strip().lower()
+    last_t = ACTIVE_MUSIC_STATE.get("last_trigger_time", 0.0)
+    last_src = ACTIVE_MUSIC_STATE.get("last_trigger_source", "")
+
+    # Nếu cùng query hoặc request đến trong vòng 6.0 giây từ nguồn khác (giọng nói vs Xiaozhi MCP) -> bỏ qua trùng lặp
+    is_duplicate = False
+    if now - last_t < 6.0 and source != last_src:
+        if clean_q in last_q or last_q in clean_q or abs(len(clean_q) - len(last_q)) < 6:
+            is_duplicate = True
+        elif any(w in last_q for w in clean_q.split() if len(w) > 3):
+            is_duplicate = True
+
+    if is_duplicate:
+        print(f"[MUSIC COORDINATOR] ⚡ Bỏ qua trigger trùng lặp từ '{source}' (vừa kích hoạt cách đây {now - last_t:.1f}s bởi '{last_src}')")
+        return False
+
+    ACTIVE_MUSIC_STATE["last_trigger_query"] = clean_q
+    ACTIVE_MUSIC_STATE["last_trigger_time"] = now
+    ACTIVE_MUSIC_STATE["last_trigger_source"] = source
+
+    # Dừng bài cũ ngay lập tức và tăng session_id
+    stop_active_music()
+    ACTIVE_MUSIC_STATE["is_preparing"] = True
+    current_sid = ACTIVE_MUSIC_STATE["session_id"]
+
+    async def _runner(sid: int):
+        try:
+            target_url = query_or_url
+            target_track = track_info
+
+            # Nếu là từ khóa tìm kiếm (không phải URL trực tiếp)
+            if not (target_url.startswith("http://") or target_url.startswith("https://")):
+                tracks = await search_youtube_tracks(target_url, limit=1)
+                if sid != ACTIVE_MUSIC_STATE.get("session_id"):
+                    print(f"[MUSIC COORDINATOR] ⏹ Session #{sid} bị hủy sau khi tìm kiếm YouTube")
+                    return
+                if not tracks:
+                    print(f"[MUSIC COORDINATOR] ⚠ Không tìm thấy bài hát cho: '{target_url}'")
+                    ACTIVE_MUSIC_STATE["is_preparing"] = False
+                    return
+                target_track = tracks[0]
+                target_url = target_track["url"]
+
+            if sid != ACTIVE_MUSIC_STATE.get("session_id"):
+                return
+
+            await resolve_and_stream_music(target_url, target_track, session_id=sid)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"[MUSIC COORDINATOR ERR] {e}")
+        finally:
+            if sid == ACTIVE_MUSIC_STATE.get("session_id"):
+                ACTIVE_MUSIC_STATE["is_preparing"] = False
+
+    ACTIVE_MUSIC_STATE["task"] = asyncio.create_task(_runner(current_sid))
+    return True
 
 
 # ==========================================
@@ -2660,12 +2821,15 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
         "thôi phát nhạc", "stop song", "dừng lại", "dung lai",
         "ngưng nhạc", "ngung nhac", "im đi", "im di", "im lặng", "im lang",
         "thôi đừng hát", "thôi hát", "thoi hat", "stop", "tắt đi", "tat di",
-        "dừng nghe", "dung nghe", "tắt loa", "tat loa", "ngưng hát", "ngung hat"
+        "dừng nghe", "dung nghe", "tắt loa", "tat loa", "ngưng hát", "ngung hat",
+        "tắt nhạc cho tôi đi", "tat nhac cho toi di", "tắt nhạc đi", "tat nhac di",
+        "dừng nhạc đi", "dung nhac di", "tắt bài đi", "tat bai di",
+        "không nghe nhạc nữa", "khong nghe nhac nua", "thôi không nghe nữa", "thoi khong nghe nua"
     ]
-    is_playing = bool(ACTIVE_MUSIC_STATE.get("is_playing"))
+    is_active_music = bool(ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing") or ACTIVE_MUSIC_STATE.get("proc"))
     words = t_norm.split()
     quick_stop_words = ["dừng", "dung", "tắt", "tat", "ngừng", "ngung", "thôi", "thoi", "stop", "im", "pause", "ngưng", "ngung"]
-    if (is_playing and any(w in words or w in t_norm for w in quick_stop_words)) or any(kw in t_norm for kw in stop_music_keywords):
+    if (is_active_music and any(w in words or w in t_norm for w in quick_stop_words)) or any(kw in t_norm for kw in stop_music_keywords):
         stop_active_music()
         await robot_ws_manager.send_oled_emotion("neutral", text="Da tat nhac")
         serial_manager._add_log("[KHẨU LỆNH] ⏹ Đã dừng phát nhạc theo giọng nói!")
@@ -2691,15 +2855,12 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
                 song_query = "nhạc thiếu nhi vui nhộn"
 
             serial_manager._add_log(f"[KHẨU LỆNH] 🎵 Nhận lệnh phát nhạc: '{song_query}'")
-            stop_active_music()
-            tracks = await search_youtube_tracks(song_query, limit=1)
-            if tracks:
-                t = tracks[0]
-                ACTIVE_MUSIC_STATE["task"] = asyncio.create_task(resolve_and_stream_music(t["url"], t))
-                short_title = t["title"].split("-")[0].strip()[:14]
-                await robot_ws_manager.send_oled_emotion("happy", text=f"Phat: {short_title}")
-                serial_manager._add_log(f"[YOUTUBE MUSIC] ▶ Đang phát bài: '{t['title']}' theo giọng nói!")
-                return True
+            success = await start_music_playback(song_query, source="voice")
+            if success:
+                clean_name = song_query[:14]
+                await robot_ws_manager.send_oled_emotion("happy", text=f"Tim: {clean_name}")
+                serial_manager._add_log(f"[YOUTUBE MUSIC] ▶ Đang phát bài: '{song_query}' theo giọng nói!")
+            return True
 
     # 0.3 Kiểm tra LỆNH ĐI NGỦ / TẮT ROBOT / STANDBY
     # Chỉ nhận lệnh đi ngủ khi câu nói là câu mệnh lệnh ngắn (dưới 6 từ) hoặc chứa cụm từ rõ ràng chỉ định robot
@@ -3067,8 +3228,8 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                 last_activity_time = time.time()
                 continue
 
-            # 2. Nếu đang phát nhạc YouTube, Robot luôn hoạt động
-            if ACTIVE_MUSIC_STATE.get("is_playing"):
+            # 2. Nếu đang phát hoặc đang tải nhạc YouTube, Robot luôn hoạt động
+            if ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing"):
                 last_activity_time = time.time()
                 continue
 
@@ -3151,8 +3312,8 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                 msg = await upstream_ws.recv()
                 if isinstance(msg, bytes):
                     # Gói âm thanh giọng nói (Opus) từ AI -> Loa Robot
-                    # Nếu đang phát nhạc YouTube, bỏ qua âm thanh nói chèn của AI Upstream
-                    if ACTIVE_MUSIC_STATE.get("is_playing"):
+                    # Nếu đang phát nhạc hoặc đang tải bài hát YouTube, bỏ qua âm thanh nói chèn của AI Upstream
+                    if ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing"):
                         continue
                     # Bóc tách BinaryProtocol2 header (16 bytes) nếu có để gửi Opus thuần (Raw Opus) cho firmware ESP32
                     out_audio = msg
@@ -3312,7 +3473,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             is_ai_thinking = False
                             last_activity_time = now_l
                             last_mic_audio_time = now_l
-                            if ACTIVE_MUSIC_STATE.get("is_playing"):
+                            if ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing") or ACTIVE_MUSIC_STATE.get("proc"):
                                 print("[ROBOT WS] 🎙 Bắt đầu lắng nghe người dùng -> Tự động ngắt phát nhạc!")
                                 stop_active_music()
                         elif st in ["stop"]:
@@ -3853,9 +4014,6 @@ async def api_music_play(payload: MusicPlayPayload):
     if not target:
         raise HTTPException(status_code=400, detail="Thiếu thông tin bài hát (URL, ID hoặc Query)")
 
-    # 1. Dừng bài trước nếu đang phát
-    stop_active_music()
-
     target_url = target if target.startswith("http") else f"https://www.youtube.com/watch?v={target}"
 
     if not track_info:
@@ -3874,8 +4032,8 @@ async def api_music_play(payload: MusicPlayPayload):
             "url": target_url
         }
 
-    # 2. Khởi chạy task stream background xuống Robot ESP32
-    ACTIVE_MUSIC_STATE["task"] = asyncio.create_task(resolve_and_stream_music(target_url, track_info))
+    # Khởi chạy qua bộ điều phối phát nhạc tập trung
+    await start_music_playback(target_url, track_info=track_info, source="api")
     serial_manager._add_log(f"[YOUTUBE MUSIC] ▶ Đang phát bài: '{track_info['title']}' trên Robot!")
 
     return {
