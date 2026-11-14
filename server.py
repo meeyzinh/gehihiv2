@@ -72,7 +72,7 @@ CURRENT_UPSTREAM_WS_URL = DEFAULT_UPSTREAM_WS_URL
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 SECRET_KEY = os.getenv("SECRET_KEY", "gmbot-control-plane-secret-key-local-2026")
-ROBOT_INACTIVITY_TIMEOUT = float(os.getenv("ROBOT_INACTIVITY_TIMEOUT", "45.0"))
+ROBOT_INACTIVITY_TIMEOUT = float(os.getenv("ROBOT_INACTIVITY_TIMEOUT", "30.0"))
 MAIN_ASYNC_LOOP: Optional[asyncio.AbstractEventLoop] = None
 
 DB_PATH = os.path.abspath("database.db")
@@ -1834,7 +1834,10 @@ def execute_mcp_tool(name: str, args: Dict[str, Any]) -> str:
         try:
             import asyncio
             if MAIN_ASYNC_LOOP and MAIN_ASYNC_LOOP.is_running():
-                asyncio.run_coroutine_threadsafe(robot_ws_manager.send_sleep_command(), MAIN_ASYNC_LOOP)
+                async def _delayed_mcp_sleep():
+                    await asyncio.sleep(2.0)  # Đợi AI đọc xong câu chào tạm biệt qua loa
+                    await robot_ws_manager.send_sleep_command()
+                asyncio.run_coroutine_threadsafe(_delayed_mcp_sleep(), MAIN_ASYNC_LOOP)
         except Exception as e:
             print(f"[SLEEP MCP ERR] {e}")
         serial_manager._add_log(f"[ROBOT AI] 💤 {msg} -> Robot vào chế độ ngủ (Standby).")
@@ -3357,52 +3360,23 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                 last_activity_time = time.time()
                 continue
 
-            # 3. Khi Robot đang phát lời thoại (TTS), AI đang suy nghĩ, hoặc vừa có tiếng nói micro trong 3s qua:
+            # 3. Khi Robot đang phát lời thoại (TTS) hoặc AI đang suy nghĩ:
             # Luôn giữ trạng thái hoạt động, không bao giờ ngắt ngang khi đang nói chuyện
             now = time.time()
-            if is_robot_speaking or is_ai_thinking or (now - last_mic_audio_time < 3.0):
+            if is_robot_speaking or is_ai_thinking:
                 last_activity_time = now
                 continue
 
-            # 4. Khi đang trong bài học tiếng Anh, cho phép thời gian suy nghĩ 90s; bình thường theo cấu hình (mặc định 45s)
-            current_timeout = 90.0 if current_english_lesson.get("active") else ROBOT_INACTIVITY_TIMEOUT
+            # 4. Khi đang trong bài học tiếng Anh, cho phép thời gian suy nghĩ 90s; bình thường theo cấu hình (mặc định 30s)
+            current_timeout = 90.0 if current_english_lesson.get("active") else (ROBOT_INACTIVITY_TIMEOUT if ROBOT_INACTIVITY_TIMEOUT > 0 else 30.0)
 
             idle_duration = now - last_activity_time
             if is_listening and idle_duration >= current_timeout:
-                print(f"[AUTO SLEEP] 💤 Sau {int(idle_duration)}s im lặng hoàn toàn -> Chuyển Robot sang chế độ ngủ (Standby)!")
-                serial_manager._add_log(f"[TỰ ĐỘNG NGỦ] 💤 Không có tương tác trong {int(idle_duration)}s -> Robot vào chế độ ngủ.")
+                print(f"[AUTO SLEEP] 💤 Sau {int(idle_duration)}s không có tương tác trò chuyện -> Chuyển Robot sang chế độ ngủ (Standby)!")
+                serial_manager._add_log(f"[TỰ ĐỘNG NGỦ] 💤 Không có tương tác trong {int(idle_duration)}s -> Robot vào chế độ ngủ (Standby).")
                 is_listening = False
-                last_activity_time = now
-                sess = session_id or robot_ws_manager.sessions.get(websocket) or ""
-                try:
-                    await websocket.send_json({
-                        "session_id": sess,
-                        "type": "llm",
-                        "emotion": "sleepy",
-                        "text": "Da tat robot"
-                    })
-                    await websocket.send_json({
-                        "session_id": sess,
-                        "type": "listen",
-                        "state": "stop"
-                    })
-                except Exception as e:
-                    print(f"[AUTO SLEEP ERR] {e}")
-
-                mic_monitor_manager.current_state["state"] = "idle"
-                asyncio.create_task(mic_monitor_manager.broadcast({
-                    "type": "state_change",
-                    "state": "idle",
-                    "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
-                    "message": f"Robot đã tắt chế độ lắng nghe (Standby sau {int(current_timeout)}s không có tương tác)"
-                }))
-
-                await asyncio.sleep(0.35)
-                try:
-                    await websocket.close(code=1000, reason="auto_sleep")
-                    break
-                except Exception:
-                    pass
+                await robot_ws_manager.send_sleep_command(dev_mac)
+                break
 
     watchdog_task = asyncio.create_task(auto_sleep_watchdog())
 
@@ -3429,8 +3403,10 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
     heartbeat_task = asyncio.create_task(heartbeat_loop())
 
     # Task chuyển tiếp luồng Upstream -> Robot (STT, LLM, TTS Subtitles, Audio chunks)
+    should_sleep_after_tts = False
+
     async def forward_upstream_to_robot():
-        nonlocal upstream_ws
+        nonlocal upstream_ws, should_sleep_after_tts, is_listening, is_robot_speaking, is_ai_thinking, last_activity_time
         while True:
             if not is_ws_alive(upstream_ws):
                 await asyncio.sleep(1)
@@ -3510,6 +3486,19 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                                     "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
                                     "message": f"Robot Sophia: {txt}"
                                 }))
+                                txt_low = txt.lower()
+                                farewell_triggers = [
+                                    "tạm biệt", "tam biet", "hẹn gặp lại", "hen gap lai",
+                                    "đi ngủ đây", "di ngu day", "đi ngủ nhé", "di ngu nhe",
+                                    "xin phép tạm biệt", "xin phep tam biet", "nghỉ ngơi đây", "nghi ngoi day",
+                                    "khi nào cần cứ gọi", "khi nao can cu goi", "khi nào cần hãy gọi", "khi nao can hay goi",
+                                    "chúc bạn ngủ ngon", "chuc ban ngu ngon", "hẹn bạn lần sau", "hen ban lan sau",
+                                    "mình đi ngủ", "minh di ngu", "tôi đi ngủ", "toi di ngu", "tôi xin phép tắt", "minh xin phep tat",
+                                    "tự tắt", "tu tat", "tắt robot", "tat robot", "bye bye", "goodbye"
+                                ]
+                                if any(kw in txt_low for kw in farewell_triggers):
+                                    should_sleep_after_tts = True
+                                    print(f"[VOICE AI] 💤 Phát hiện AI báo tự tắt / chào tạm biệt: \"{txt}\" -> Sẽ đưa Robot vào Standby sau câu nói!")
                                 if current_english_lesson.get("active"):
                                     ACTIVE_ENGLISH_SESSION["robot_turns"] = ACTIVE_ENGLISH_SESSION.get("robot_turns", 0) + 1
                                     ACTIVE_ENGLISH_SESSION.setdefault("dialog", []).append({
@@ -3549,6 +3538,14 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                                 "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
                                 "message": "Sẵn sàng (chờ giọng nói)"
                             }))
+                            if should_sleep_after_tts:
+                                should_sleep_after_tts = False
+                                print(f"[AUTO SLEEP] 💤 Hoàn thành câu thoại báo tự tắt -> Chuyển Robot sang Standby (ngắt kênh mic)!")
+                                serial_manager._add_log("[ROBOT] 💤 Robot đã báo tự tắt và vào chế độ ngủ (Standby). Chờ gọi 'Sophia' để đánh thức.")
+                                async def _do_sleep_after_tts():
+                                    await asyncio.sleep(0.6)  # Đợi 600ms để loa phát xong gói âm thanh cuối cùng
+                                    await robot_ws_manager.send_sleep_command(dev_mac)
+                                asyncio.create_task(_do_sleep_after_tts())
                     except Exception:
                         pass
                     try:
@@ -3560,6 +3557,13 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
             except Exception as err:
                 print(f"[VOICE PROXY] Kênh Upstream tạm ngắt: {err}")
                 upstream_ws = None
+                now_err = time.time()
+                # Nếu Upstream ngắt kết nối do không có hoạt động trong hơn 25 giây -> Đưa robot vào Standby luôn
+                if (now_err - last_activity_time >= 25.0) and not (ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing")):
+                    print(f"[AUTO SLEEP] 💤 Kênh Upstream đã ngắt do người dùng không nói chuyện ({int(now_err - last_activity_time)}s) -> Chuyển Robot vào Standby!")
+                    serial_manager._add_log("[ROBOT] 💤 Không có tương tác và Upstream đã ngắt -> Robot vào chế độ ngủ (Standby).")
+                    await robot_ws_manager.send_sleep_command(dev_mac)
+                    break
                 await asyncio.sleep(1)
 
     upstream_task = asyncio.create_task(forward_upstream_to_robot())
@@ -3600,12 +3604,10 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             is_listening = True
                             is_robot_speaking = False
                             is_ai_thinking = False
-                            last_activity_time = now_l
                             last_mic_audio_time = now_l
                         elif st in ["stop"]:
                             # Người dùng ngưng nói, chuyển quyền cho AI suy nghĩ và trả lời
                             is_ai_thinking = True
-                            last_activity_time = now_l
                         print(f"[ROBOT MIC] Lắng nghe {st} (chế độ: {md})")
                         serial_manager._add_log(f"[MIC ROBOT] Đang lắng nghe giọng nói ({st})...")
                         st_ui = "recording" if st == "start" else ("processing" if st in ["stop", "detect"] else "idle")
@@ -3638,8 +3640,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                 # Chuyển tiếp luồng âm thanh Mic INMP441 lên Upstream AI để nhận diện giọng nói!
                 raw_chunk = msg_data["bytes"]
                 now_b = time.time()
-                last_activity_time = now_b
-                last_mic_audio_time = now_b
+                # Không cập nhật last_activity_time ở đây vì mic luôn gửi 16 gói âm thanh mỗi giây
                 is_listening = True
                 mic_monitor_manager.packet_index += 1
                 peak_val = 2500
@@ -3652,6 +3653,9 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                         peak_val = max(abs(s) for s in shorts)
                 except Exception:
                     peak_val = min(32767, int(len(raw_chunk) * 110))
+
+                if peak_val > 4500:
+                    last_mic_audio_time = now_b
 
                 lvl = min(1.0, round(peak_val / 32767.0, 3))
                 asyncio.create_task(mic_monitor_manager.broadcast({
