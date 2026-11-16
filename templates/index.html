@@ -1878,6 +1878,7 @@ body {
       <div class="menu-item" onclick="switchSection('micMonitor', this)">🎙️ Theo dõi Ghi âm Mic</div>
       <div class="menu-item" onclick="switchSection('youtubeMusic', this)">🎵 Phát nhạc YouTube Online</div>
       <div class="menu-item" onclick="switchSection('liveChat', this)">💬 Thử nghiệm Chat AI</div>
+      <div class="menu-item" onclick="switchSection('mcpPortal', this)" style="color: #38bdf8; font-weight: bold; background: rgba(56, 189, 248, 0.12); border-left: 3px solid #38bdf8; margin: 4px 0;">🚀 XIAOZHI MCP PORTAL (78 Tools)</div>
       <div class="menu-item active" onclick="switchSection('xiaozhiConfig', this)">⚙️ Cấu hình Gehihi AI</div>
       <div class="menu-item" onclick="switchSection('aiRoleSelect', this)">🎭 Chọn vai trò cho AI</div>
       <div class="menu-item" onclick="switchSection('englishTutor', this)">📚 HỌC TIẾNG ANH</div>
@@ -1943,6 +1944,175 @@ body {
 
     <!-- CONTAINER TẤT CẢ CÁC TRANG CARD ĐƯỢC BÓC TÁCH -->
     <div id="cardsContainer">
+
+<!-- ============================================================== -->
+<!-- CARD: XIAOZHI MCP PORTAL (78 CÔNG CỤ TRÍ TUỆ NHÂN TẠO) -->
+<!-- ============================================================== -->
+<div class="card" id="mcpPortalCard" style="display: none; background: #0c1a32; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 16px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+    
+    <!-- HEADER PORTAL -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 18px;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 28px;">🚀</span>
+                <h2 style="margin: 0; font-size: 22px; font-weight: 800; background: linear-gradient(135deg, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                    XIAOZHI MCP PORTAL (78 CÔNG CỤ AI)
+                </h2>
+            </div>
+            <p style="margin: 6px 0 0 0; font-size: 13px; color: #94a3b8;">
+                Cổng kết nối WebSocket MCP JSON-RPC 2.0 mở rộng trí tuệ toàn diện cho Robot Xiaozhi trực tiếp từ Render Free Tier.
+            </p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div id="mcpGlobalStatusBadge" style="display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #f87171;">
+                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></span>
+                <span id="mcpGlobalStatusText">Chưa kết nối</span>
+            </div>
+            <button onclick="loadMcpPortalData()" style="padding: 8px 14px; font-size: 12px; font-weight: bold; border-radius: 8px; background: #1e293b; color: #e2e8f0; border: 1px solid #475569; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                🔄 Làm mới
+            </button>
+        </div>
+    </div>
+
+    <!-- KHỐI 1: CẤU HÌNH THIẾT BỊ VÀ ĐIỂM CUỐI WEBSOCKET -->
+    <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 12px; padding: 18px; margin-bottom: 24px;">
+        <h4 style="margin: 0 0 14px 0; font-size: 15px; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
+            <span>⚡</span> CẤU HÌNH KẾT NỐI XIAOZHI.ME (WEBSOCKET CLIENT)
+        </h4>
+        <div style="display: grid; grid-template-columns: 1fr 2.5fr auto; gap: 12px; align-items: flex-end;" class="mcp-config-grid">
+            <div>
+                <label style="display: block; font-size: 12px; font-weight: bold; color: #cbd5e1; margin-bottom: 6px;">TÊN THIẾT BỊ:</label>
+                <input id="mcpInputDeviceName" type="text" value="330730" placeholder="VD: 330730" style="width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #334155; color: white; padding: 10px 12px; border-radius: 8px; font-size: 13px;">
+            </div>
+            <div>
+                <label style="display: block; font-size: 12px; font-weight: bold; color: #cbd5e1; margin-bottom: 6px;">WEBSOCKET URL (TỪ XIAOZHI.ME):</label>
+                <input id="mcpInputWsUrl" type="text" placeholder="wss://api.xiaozhi.me/mcp/?token=..." style="width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #334155; color: white; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-family: monospace;">
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button onclick="connectMcpDeviceBtn()" style="padding: 10px 18px; font-size: 13px; font-weight: bold; border-radius: 8px; background: linear-gradient(135deg, #0284c7, #0369a1); color: white; border: 1px solid #38bdf8; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.4); white-space: nowrap;">
+                    🔌 KẾT NỐI MCP (MIỄN PHÍ)
+                </button>
+            </div>
+        </div>
+
+        <!-- DANH SÁCH THIẾT BỊ ĐANG QUẢN LÝ -->
+        <div id="mcpDevicesContainer" style="margin-top: 16px;">
+            <div style="font-size: 12px; color: #94a3b8;">Đang tải danh sách thiết bị...</div>
+        </div>
+    </div>
+
+    <!-- KHỐI 2: KHÁM PHÁ VÀ QUẢN LÝ 78 CÔNG CỤ -->
+    <div style="background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px; margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+            <div>
+                <h4 style="margin: 0; font-size: 16px; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                    <span>🧰</span> KHO 78 CÔNG CỤ MỞ RỘNG TRÍ TUỆ (VIETNAMESE TOOLS)
+                </h4>
+                <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+                    Nhấp vào thẻ để Bật/Tắt hoặc Chạy thử nghiệm công cụ trực tiếp
+                </div>
+            </div>
+            <!-- BỘ TÌM KIẾM NHANH -->
+            <div style="min-width: 280px; position: relative;">
+                <input id="mcpToolSearchInput" oninput="filterMcpTools()" type="text" placeholder="🔍 Tìm kiếm công cụ (VD: vàng, lương, thời tiết...)" style="width: 100%; box-sizing: border-box; background: #0f172a; border: 1px solid #334155; color: white; padding: 8px 12px; border-radius: 8px; font-size: 13px;">
+            </div>
+        </div>
+
+        <!-- CATEGORY TABS -->
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
+            <button class="mcp-cat-btn active" onclick="setMcpCategory('all', this)" style="padding: 6px 14px; font-size: 12px; font-weight: bold; border-radius: 20px; background: #0284c7; color: white; border: none; cursor: pointer;">
+                Tất cả (78)
+            </button>
+            <button class="mcp-cat-btn" onclick="setMcpCategory('realtime', this)" style="padding: 6px 14px; font-size: 12px; font-weight: bold; border-radius: 20px; background: #1e293b; color: #cbd5e1; border: 1px solid #334155; cursor: pointer;">
+                ⚡ Real-time & Thuật toán (12)
+            </button>
+            <button class="mcp-cat-btn" onclick="setMcpCategory('knowledge', this)" style="padding: 6px 14px; font-size: 12px; font-weight: bold; border-radius: 20px; background: #1e293b; color: #cbd5e1; border: 1px solid #334155; cursor: pointer;">
+                📚 Tri thức & Trò chơi (16)
+            </button>
+            <button class="mcp-cat-btn" onclick="setMcpCategory('persona', this)" style="padding: 6px 14px; font-size: 12px; font-weight: bold; border-radius: 20px; background: #1e293b; color: #cbd5e1; border: 1px solid #334155; cursor: pointer;">
+                🎓 Chuyên gia & Giáo viên (32)
+            </button>
+            <button class="mcp-cat-btn" onclick="setMcpCategory('utility', this)" style="padding: 6px 14px; font-size: 12px; font-weight: bold; border-radius: 20px; background: #1e293b; color: #cbd5e1; border: 1px solid #334155; cursor: pointer;">
+                🧠 Tiện ích & Bộ nhớ (18)
+            </button>
+        </div>
+
+        <!-- LƯỚI 78 CÔNG CỤ -->
+        <div id="mcpToolsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; max-height: 600px; overflow-y: auto; padding-right: 6px;">
+            <div style="color: #94a3b8; font-size: 13px;">Đang tải danh sách 78 công cụ...</div>
+        </div>
+    </div>
+
+    <!-- KHỐI 3: TERMINAL NHẬT KÝ HOẠT ĐỘNG REALTIME -->
+    <div style="background: #020617; border: 1px solid #1e293b; border-radius: 12px; padding: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div style="font-size: 13px; font-weight: bold; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
+                <span>📡</span> NHẬT KÝ HOẠT ĐỘNG REALTIME (JSON-RPC 2.0)
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button onclick="refreshMcpLogs()" style="padding: 4px 10px; font-size: 11px; background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 6px; cursor: pointer;">
+                    🔄 Tải lại log
+                </button>
+                <button onclick="clearMcpLogsDisplay()" style="padding: 4px 10px; font-size: 11px; background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 6px; cursor: pointer;">
+                    🗑️ Xóa màn hình
+                </button>
+            </div>
+        </div>
+        <div id="mcpTerminalLogs" style="font-family: monospace; font-size: 12px; height: 180px; overflow-y: auto; background: #000; border: 1px solid #0f172a; border-radius: 8px; padding: 12px; line-height: 1.5; color: #e2e8f0;">
+            <div style="color: #64748b;">[System] Đang lắng nghe các sự kiện từ MCP Portal...</div>
+        </div>
+    </div>
+
+</div>
+
+<!-- MODAL CHẠY THỬ NGHIỆM CÔNG CỤ MCP -->
+<div id="mcpTestModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
+    <div style="background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 16px; width: 90%; max-width: 600px; max-height: 85vh; overflow-y: auto; padding: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.8); position: relative;">
+        <button onclick="closeMcpTestModal()" style="position: absolute; top: 16px; right: 16px; background: transparent; border: none; font-size: 20px; color: #94a3b8; cursor: pointer;">✕</button>
+        
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+            <span id="mcpModalIcon" style="font-size: 32px;">🪙</span>
+            <div>
+                <h3 id="mcpModalTitle" style="margin: 0; font-size: 18px; color: #f8fafc;">Giá Vàng Hôm Nay</h3>
+                <span id="mcpModalName" style="font-size: 12px; color: #38bdf8; font-family: monospace;">gia_vang_hom_nay</span>
+            </div>
+        </div>
+
+        <p id="mcpModalDesc" style="font-size: 13px; color: #94a3b8; margin: 0 0 16px 0; line-height: 1.4;">
+            Tra cứu giá vàng SJC, nhẫn 9999...
+        </p>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(30, 41, 59, 0.6); padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; border: 1px solid #334155;">
+            <span style="font-size: 13px; color: #cbd5e1; font-weight: bold;">Trạng thái công cụ:</span>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input id="mcpModalToggleSwitch" type="checkbox" onchange="toggleCurrentModalTool()" style="width: 18px; height: 18px; cursor: pointer;">
+                <span id="mcpModalToggleText" style="font-size: 13px; font-weight: bold; color: #10b981;">Đang BẬT</span>
+            </label>
+        </div>
+
+        <div style="margin-bottom: 14px;">
+            <label style="display: block; font-size: 12px; font-weight: bold; color: #cbd5e1; margin-bottom: 6px;">THAM SỐ ĐẦU VÀO (JSON ARGUMENTS):</label>
+            <textarea id="mcpModalArgsInput" rows="3" style="width: 100%; box-sizing: border-box; background: #020617; border: 1px solid #334155; color: #38bdf8; padding: 10px; border-radius: 8px; font-size: 13px; font-family: monospace;">{}</textarea>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 16px;">
+            <button onclick="runMcpModalTest()" id="btnRunMcpTest" style="padding: 10px 20px; font-size: 13px; font-weight: bold; border-radius: 8px; background: linear-gradient(135deg, #059669, #10b981); color: white; border: none; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
+                ⚡ CHẠY THỬ NGHIỆM NGAY
+            </button>
+        </div>
+
+        <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label style="font-size: 12px; font-weight: bold; color: #cbd5e1;">KẾT QUẢ THỰC THI (KẾT QUẢ ROBOT NHẬN ĐƯỢC):</label>
+                <button onclick="copyMcpResult()" style="font-size: 11px; background: #1e293b; color: #94a3b8; border: 1px solid #334155; padding: 2px 8px; border-radius: 4px; cursor: pointer;">
+                    📋 Sao chép
+                </button>
+            </div>
+            <pre id="mcpModalResultBox" style="background: #020617; border: 1px solid #334155; border-radius: 8px; padding: 12px; font-size: 13px; line-height: 1.5; color: #e2e8f0; max-height: 200px; overflow-y: auto; white-space: pre-wrap; font-family: sans-serif; margin: 0;">Chưa chạy thử nghiệm.</pre>
+        </div>
+    </div>
+</div>
+
 <div class="card" id="deviceProfileCard" style="display: block;">
     <!-- HEADER QUẢN TRỊ ROBOT -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 14px;">
@@ -3453,8 +3623,13 @@ Ví dụ:
         'photoHomework': ['photoHomeworkCard'],
         'knowledgeBase': ['knowledgeBaseCard'],
         'wssRequest': ['wssRequestCard'],
-        'feedback': ['feedbackCard']
+        'feedback': ['feedbackCard'],
+        'mcpPortal': ['mcpPortalCard']
       };
+
+      if (sectionId === 'mcpPortal') {
+        loadMcpPortalData();
+      }
 
       if (sectionId === 'youtubeMusic') {
         checkMusicStatus();
@@ -7328,6 +7503,381 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
       setTimeout(initMicMonitorWs, 1000);
     });
     
+
+
+// ==============================================================================
+// LOGIC XIAOZHI MCP PORTAL (78 TOOLS)
+// ==============================================================================
+let allMcpTools = [];
+let currentMcpCategory = 'all';
+let currentModalTool = null;
+
+async function loadMcpPortalData() {
+    try {
+        await Promise.all([
+            fetchMcpStatus(),
+            fetchMcpToolsList(),
+            refreshMcpLogs()
+        ]);
+    } catch(err) {
+        console.error("Lỗi tải dữ liệu MCP Portal:", err);
+    }
+}
+
+async function fetchMcpStatus() {
+    try {
+        const res = await fetch('/api/mcp/portal/status');
+        const data = await res.json();
+        
+        const badge = document.getElementById('mcpGlobalStatusBadge');
+        const text = document.getElementById('mcpGlobalStatusText');
+        
+        if (data && data.is_connected) {
+            badge.style.background = 'rgba(16, 185, 129, 0.15)';
+            badge.style.border = '1px solid #10b981';
+            badge.style.color = '#34d399';
+            badge.children[0].style.background = '#10b981';
+            text.innerText = '● Đã kết nối với xiaozhi.me';
+        } else {
+            badge.style.background = 'rgba(239, 68, 68, 0.15)';
+            badge.style.border = '1px solid #ef4444';
+            badge.style.color = '#f87171';
+            badge.children[0].style.background = '#ef4444';
+            text.innerText = '● Chưa kết nối';
+        }
+
+        renderMcpDevices(data.devices || []);
+    } catch(e) {
+        console.error("fetchMcpStatus err:", e);
+    }
+}
+
+function renderMcpDevices(devices) {
+    const container = document.getElementById('mcpDevicesContainer');
+    if (!container) return;
+    
+    if (devices.length === 0) {
+        container.innerHTML = '<div style="font-size: 13px; color: #94a3b8; padding: 10px; background: #020617; border-radius: 8px; border: 1px dashed #334155;">Chưa có thiết bị nào được kết nối. Vui lòng nhập Tên và WebSocket URL ở trên rồi nhấn "KẾT NỐI MCP".</div>';
+        return;
+    }
+
+    let html = '<div style="display: flex; flex-direction: column; gap: 8px;">';
+    devices.forEach(d => {
+        const isOnline = d.is_connected;
+        const statusColor = isOnline ? '#10b981' : '#ef4444';
+        const statusText = isOnline ? '🟢 Online (Connected)' : '🔴 Offline (Connecting...)';
+        html += `
+        <div style="display: flex; justify-content: space-between; align-items: center; background: #020617; border: 1px solid #1e293b; border-radius: 8px; padding: 10px 14px; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-weight: bold; color: #38bdf8; font-size: 14px;">${d.name}</span>
+                <span style="font-size: 12px; color: ${statusColor}; font-weight: bold;">${statusText}</span>
+                <span style="font-size: 12px; color: #94a3b8;">• Uptime: <strong style="color: #e2e8f0;">${d.uptime}</strong></span>
+                <span style="font-size: 12px; color: #94a3b8;">• Đã gọi: <strong style="color: #fbbf24;">${d.call_count} lần</strong></span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-family: monospace; font-size: 11px; color: #64748b; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${d.websocket_url}</span>
+                <button onclick="reconnectMcpDevice('${d.id}')" style="padding: 4px 8px; font-size: 11px; background: #1e293b; color: #38bdf8; border: 1px solid #334155; border-radius: 6px; cursor: pointer;">🔄 Kết nối lại</button>
+                <button onclick="deleteMcpDevice('${d.id}')" style="padding: 4px 8px; font-size: 11px; background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid #ef4444; border-radius: 6px; cursor: pointer;">🗑️ Xóa</button>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+async function connectMcpDeviceBtn() {
+    const name = document.getElementById('mcpInputDeviceName').value.trim() || '330730';
+    const url = document.getElementById('mcpInputWsUrl').value.trim();
+    if (!url) {
+        alert('Vui lòng nhập WebSocket URL nhận được từ xiaozhi.me (wss://api.xiaozhi.me/mcp/?token=...)');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/mcp/portal/devices', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name, websocket_url: url})
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            alert('✓ ' + data.message);
+            document.getElementById('mcpInputWsUrl').value = '';
+            setTimeout(loadMcpPortalData, 1000);
+        } else {
+            alert('Lỗi: ' + (data.detail || 'Không thể thêm thiết bị'));
+        }
+    } catch(e) {
+        alert('Lỗi kết nối: ' + e);
+    }
+}
+
+async function deleteMcpDevice(deviceId) {
+    if (!confirm('Bạn có chắc chắn muốn ngắt kết nối và xóa thiết bị này?')) return;
+    try {
+        const res = await fetch(`/api/mcp/portal/devices/${deviceId}`, {method: 'DELETE'});
+        const data = await res.json();
+        fetchMcpStatus();
+    } catch(e) {
+        alert('Lỗi xóa thiết bị: ' + e);
+    }
+}
+
+async function reconnectMcpDevice(deviceId) {
+    try {
+        await fetch(`/api/mcp/portal/devices/${deviceId}/reconnect`, {method: 'POST'});
+        setTimeout(fetchMcpStatus, 1500);
+    } catch(e) {
+        console.error(e);
+    }
+}
+
+async function fetchMcpToolsList() {
+    try {
+        const res = await fetch('/api/mcp/portal/tools');
+        const data = await res.json();
+        allMcpTools = data.tools || [];
+        renderMcpTools();
+    } catch(e) {
+        console.error("fetchMcpToolsList err:", e);
+    }
+}
+
+function setMcpCategory(cat, btn) {
+    currentMcpCategory = cat;
+    document.querySelectorAll('.mcp-cat-btn').forEach(b => {
+        b.classList.remove('active');
+        b.style.background = '#1e293b';
+        b.style.color = '#cbd5e1';
+    });
+    if (btn) {
+        btn.classList.add('active');
+        btn.style.background = '#0284c7';
+        btn.style.color = 'white';
+    }
+    renderMcpTools();
+}
+
+function filterMcpTools() {
+    renderMcpTools();
+}
+
+function renderMcpTools() {
+    const grid = document.getElementById('mcpToolsGrid');
+    if (!grid) return;
+
+    const searchKw = (document.getElementById('mcpToolSearchInput')?.value || '').toLowerCase().trim();
+
+    const filtered = allMcpTools.filter(t => {
+        const matchCat = (currentMcpCategory === 'all') || (t.category === currentMcpCategory);
+        const matchSearch = !searchKw || 
+            t.name.toLowerCase().includes(searchKw) || 
+            t.title.toLowerCase().includes(searchKw) || 
+            t.description.toLowerCase().includes(searchKw);
+        return matchCat && matchSearch;
+    });
+
+    if (filtered.length === 0) {
+        grid.innerHTML = '<div style="color: #94a3b8; font-size: 13px; grid-column: 1 / -1; padding: 20px; text-align: center;">Không tìm thấy công cụ phù hợp với từ khóa tìm kiếm.</div>';
+        return;
+    }
+
+    const catBadgeMap = {
+        'realtime': {label: '⚡ Real-time', bg: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8'},
+        'knowledge': {label: '📚 Tri thức & Game', bg: 'rgba(234, 179, 8, 0.15)', color: '#fbbf24'},
+        'persona': {label: '🎓 Chuyên gia', bg: 'rgba(168, 85, 247, 0.15)', color: '#c084fc'},
+        'utility': {label: '🧠 Tiện ích', bg: 'rgba(16, 185, 129, 0.15)', color: '#34d399'}
+    };
+
+    let html = '';
+    filtered.forEach(t => {
+        const catInfo = catBadgeMap[t.category] || {label: 'Công cụ', bg: '#1e293b', color: '#94a3b8'};
+        const isEnabled = t.enabled;
+        const toggleBg = isEnabled ? '#10b981' : '#475569';
+        const cardBorder = isEnabled ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.05)';
+        const opacity = isEnabled ? '1' : '0.6';
+
+        html += `
+        <div style="background: #0f172a; border: 1px solid ${cardBorder}; border-radius: 12px; padding: 14px; opacity: ${opacity}; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s;" onmouseover="this.style.borderColor='#38bdf8'" onmouseout="this.style.borderColor='${cardBorder}'">
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 22px;">${t.icon}</span>
+                        <div>
+                            <div style="font-size: 14px; font-weight: bold; color: #f8fafc;">${t.title}</div>
+                            <span style="font-size: 11px; font-family: monospace; color: #64748b;">${t.name}</span>
+                        </div>
+                    </div>
+                    <!-- TOGGLE SWITCH -->
+                    <label style="position: relative; display: inline-block; width: 36px; height: 20px; cursor: pointer;">
+                        <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleMcpTool('${t.name}')" style="opacity: 0; width: 0; height: 0;">
+                        <span style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: ${toggleBg}; transition: .3s; border-radius: 20px;">
+                            <span style="position: absolute; height: 14px; width: 14px; left: ${isEnabled ? '19px' : '3px'}; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%;"></span>
+                        </span>
+                    </label>
+                </div>
+
+                <div style="display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; background: ${catInfo.bg}; color: ${catInfo.color}; margin-bottom: 8px;">
+                    ${catInfo.label}
+                </div>
+
+                <p style="font-size: 12px; color: #94a3b8; line-height: 1.4; margin: 0 0 12px 0; min-height: 34px;">
+                    ${t.description}
+                </p>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
+                <span style="font-size: 11px; color: #64748b;">📞 Đã gọi: <strong style="color: #fbbf24;">${t.call_count}</strong></span>
+                <button onclick="openMcpTestModal('${t.name}')" style="padding: 4px 10px; font-size: 11px; font-weight: bold; border-radius: 6px; background: #1e293b; color: #38bdf8; border: 1px solid #334155; cursor: pointer;" onmouseover="this.style.background='#0284c7'; this.style.color='white'" onmouseout="this.style.background='#1e293b'; this.style.color='#38bdf8'">
+                    🚀 Thử nghiệm
+                </button>
+            </div>
+        </div>`;
+    });
+
+    grid.innerHTML = html;
+}
+
+async function toggleMcpTool(toolName) {
+    try {
+        const res = await fetch(`/api/mcp/portal/tools/${toolName}/toggle`, {method: 'POST'});
+        const data = await res.json();
+        const found = allMcpTools.find(t => t.name === toolName);
+        if (found) found.enabled = data.enabled;
+        renderMcpTools();
+    } catch(e) {
+        console.error(e);
+    }
+}
+
+function openMcpTestModal(toolName) {
+    const t = allMcpTools.find(item => item.name === toolName);
+    if (!t) return;
+    currentModalTool = t;
+
+    document.getElementById('mcpModalIcon').innerText = t.icon;
+    document.getElementById('mcpModalTitle').innerText = t.title;
+    document.getElementById('mcpModalName').innerText = t.name;
+    document.getElementById('mcpModalDesc').innerText = t.description;
+    
+    const toggleSwitch = document.getElementById('mcpModalToggleSwitch');
+    const toggleText = document.getElementById('mcpModalToggleText');
+    toggleSwitch.checked = t.enabled;
+    toggleText.innerText = t.enabled ? 'Đang BẬT' : 'Đang TẮT';
+    toggleText.style.color = t.enabled ? '#10b981' : '#f87171';
+
+    let sampleArgs = {};
+    if (t.name === 'du_bao_thoi_tiet_63_tinh') sampleArgs = { tinh_thanh: "Hà Nội" };
+    else if (t.name === 'lich_van_nien') sampleArgs = { ngay: 16, thang: 11, nam: 2026 };
+    else if (t.name === 'tro_ly_tinh_luong') sampleArgs = { luong_gross: 25000000, nguoi_phu_thuoc: 1 };
+    else if (t.name === 'google_custom_search') sampleArgs = { tu_khoa: "giá vàng" };
+    else if (t.name === 'tim_dia_chi_nha') sampleArgs = { dia_chi: "Hồ Hoàn Kiếm, Hà Nội" };
+    else if (t.name === 'tra_cuu_bien_so_xe') sampleArgs = { bien_so: "29A-999.99" };
+    else if (t.name === 'quy_doi_don_vi_thong_minh') sampleArgs = { gia_tri: 5, tu_don_vi: "chi_vang" };
+    else if (t.name === 'tu_dien_tieng_long') sampleArgs = { tu_long: "flex" };
+    else if (t.name === 'than_so_hoc_pitago') sampleArgs = { ngay_sinh: "16/11/1998" };
+    else if (t.name === 'ai_la_trieu_phu') sampleArgs = { cau_so: 1 };
+    else if (t.name === 'chuyen_doi_so_thanh_chu_tien_viet') sampleArgs = { so_tien: 15200000 };
+    else if (t.name === 'giao_vien_tieng_anh') sampleArgs = { cau_hoi: "Làm thế nào để phân biệt between và among?" };
+    else if (t.name === 'luu_ghi_nho_dai_han') sampleArgs = { tieu_de: "Sở thích", noi_dung: "Chủ nhân thích uống cà phê muối mỗi sáng." };
+
+    document.getElementById('mcpModalArgsInput').value = JSON.stringify(sampleArgs, null, 2);
+    document.getElementById('mcpModalResultBox').innerText = 'Bấm "CHẠY THỬ NGHIỆM NGAY" để xem phản hồi...';
+
+    const modal = document.getElementById('mcpTestModal');
+    modal.style.display = 'flex';
+}
+
+function closeMcpTestModal() {
+    document.getElementById('mcpTestModal').style.display = 'none';
+    currentModalTool = null;
+}
+
+async function toggleCurrentModalTool() {
+    if (!currentModalTool) return;
+    await toggleMcpTool(currentModalTool.name);
+    const isNow = currentModalTool.enabled;
+    const toggleText = document.getElementById('mcpModalToggleText');
+    toggleText.innerText = isNow ? 'Đang BẬT' : 'Đang TẮT';
+    toggleText.style.color = isNow ? '#10b981' : '#f87171';
+}
+
+async function runMcpModalTest() {
+    if (!currentModalTool) return;
+    const btn = document.getElementById('btnRunMcpTest');
+    const resultBox = document.getElementById('mcpModalResultBox');
+    
+    let args = {};
+    try {
+        const raw = document.getElementById('mcpModalArgsInput').value.trim();
+        if (raw) args = JSON.parse(raw);
+    } catch(err) {
+        alert('Lỗi định dạng JSON trong tham số đầu vào!');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerText = '⏳ Đang thực thi...';
+    resultBox.innerText = 'Đang gọi công cụ và xử lý...';
+
+    try {
+        const res = await fetch(`/api/mcp/portal/tools/${currentModalTool.name}/test`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({arguments: args})
+        });
+        const data = await res.json();
+        resultBox.innerText = data.result || 'Không có kết quả trả về.';
+        refreshMcpLogs();
+    } catch(err) {
+        resultBox.innerText = 'Lỗi gọi API: ' + err;
+    } finally {
+        btn.disabled = false;
+        btn.innerText = '⚡ CHẠY THỬ NGHIỆM NGAY';
+    }
+}
+
+function copyMcpResult() {
+    const text = document.getElementById('mcpModalResultBox').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+        alert('✓ Đã sao chép kết quả vào bộ nhớ tạm!');
+    });
+}
+
+async function refreshMcpLogs() {
+    try {
+        const res = await fetch('/api/mcp/portal/logs?limit=40');
+        const data = await res.json();
+        const term = document.getElementById('mcpTerminalLogs');
+        if (!term) return;
+
+        const logs = data.logs || [];
+        if (logs.length === 0) {
+            term.innerHTML = '<div style="color: #64748b;">[System] Chưa có nhật ký hoạt động mới.</div>';
+            return;
+        }
+
+        let html = '';
+        logs.forEach(l => {
+            let color = '#94a3b8';
+            if (l.level === 'SUCCESS') color = '#34d399';
+            else if (l.level === 'CALL') color = '#38bdf8';
+            else if (l.level === 'WARN') color = '#fbbf24';
+            else if (l.level === 'ERROR') color = '#f87171';
+            html += `<div><span style="color: #64748b;">[${l.time}]</span> <strong style="color: ${color};">[${l.level}]</strong> ${l.message}</div>`;
+        });
+        term.innerHTML = html;
+        term.scrollTop = term.scrollHeight;
+    } catch(e) {
+        console.error("refreshMcpLogs err:", e);
+    }
+}
+
+function clearMcpLogsDisplay() {
+    const term = document.getElementById('mcpTerminalLogs');
+    if (term) term.innerHTML = '<div style="color: #64748b;">[System] Đã xóa màn hình log.</div>';
+}
+
 </script>
 
 </body>

@@ -59,6 +59,17 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 # Tải biến môi trường từ .env
 load_dotenv()
 
+# MCP Portal 78 Công Cụ
+from mcp_portal import (
+    mcp_device_manager,
+    execute_tool as execute_mcp_portal_tool,
+    get_all_tools_metadata,
+    get_tool_schemas,
+    toggle_tool,
+    get_tool_states,
+    TOTAL_TOOLS_COUNT
+)
+
 PORT = int(os.getenv("PORT", "8000"))
 HOST = os.getenv("HOST", "0.0.0.0")
 DEFAULT_AGENT_ID = os.getenv("AGENT_ID", "2625491")
@@ -2020,8 +2031,12 @@ async def lifespan(app: FastAPI):
     if xiaozhi_mcp_bridge.endpoint_url:
         xiaozhi_mcp_bridge.start()
 
+    # Khởi chạy toàn bộ MCP Portal (78 công cụ) cho các thiết bị đã cấu hình
+    mcp_device_manager.start_all()
+
     yield
     # Cleanup khi tắt server
+    mcp_device_manager.stop_all()
     mic_task.cancel()
     keep_alive_task.cancel()
     reg_task.cancel()
@@ -4048,6 +4063,7 @@ async def robot_speak(payload: RobotSpeakPayload):
     }
 
 
+@app.get("/health")
 @app.get("/api/health")
 async def api_health():
     """Health check endpoint for Render.com and monitoring"""
@@ -6509,6 +6525,101 @@ async def get_mcp_upstream_status():
         "is_connected": xiaozhi_mcp_bridge.is_connected,
         "endpoint": xiaozhi_mcp_bridge.endpoint_url
     }
+
+
+# ==========================================
+# 8.2 XIAOZHI MCP PORTAL (78 TOOLS) REST APIS
+# ==========================================
+
+class AddMcpDevicePayload(BaseModel):
+    name: str = "330730"
+    websocket_url: str
+
+class ToggleToolPayload(BaseModel):
+    enable: Optional[bool] = None
+
+class TestToolPayload(BaseModel):
+    arguments: Optional[Dict[str, Any]] = {}
+
+@app.get("/api/mcp/portal/status")
+async def get_mcp_portal_status():
+    """Lấy trạng thái tổng quan các thiết bị MCP Portal và uptime"""
+    return mcp_device_manager.get_status_summary()
+
+@app.post("/api/mcp/portal/devices")
+async def add_mcp_portal_device(payload: AddMcpDevicePayload):
+    """Thêm thiết bị mới và tự động kết nối MCP tới xiaozhi.me"""
+    ws_url = payload.websocket_url.strip()
+    if not ws_url:
+        raise HTTPException(status_code=400, detail="Vui lòng nhập WebSocket URL hợp lệ")
+    dev = mcp_device_manager.add_device(payload.name, ws_url)
+    return {
+        "status": "ok",
+        "message": f"Đã thêm và kích hoạt kết nối cho thiết bị [{dev.device_name}]",
+        "device": {
+            "id": dev.device_id,
+            "name": dev.device_name,
+            "websocket_url": dev.websocket_url,
+            "is_connected": dev.is_connected
+        }
+    }
+
+@app.delete("/api/mcp/portal/devices/{device_id}")
+async def remove_mcp_portal_device(device_id: str):
+    """Xóa thiết bị khỏi hệ thống MCP Portal"""
+    ok = mcp_device_manager.remove_device(device_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Không tìm thấy thiết bị")
+    return {"status": "ok", "message": "Đã xóa thiết bị thành công"}
+
+@app.post("/api/mcp/portal/devices/{device_id}/reconnect")
+async def reconnect_mcp_portal_device(device_id: str):
+    """Khởi động lại kết nối thiết bị"""
+    if device_id in mcp_device_manager.devices:
+        dev = mcp_device_manager.devices[device_id]
+        dev.stop()
+        dev.start(mcp_device_manager)
+        return {"status": "ok", "message": f"Đang kết nối lại thiết bị [{dev.device_name}]..."}
+    raise HTTPException(status_code=404, detail="Không tìm thấy thiết bị")
+
+@app.get("/api/mcp/portal/tools")
+async def get_mcp_portal_tools():
+    """Lấy danh sách 78 công cụ MCP kèm trạng thái Bật/Tắt và số lượt gọi"""
+    return {
+        "total": TOTAL_TOOLS_COUNT,
+        "tools": get_all_tools_metadata()
+    }
+
+@app.post("/api/mcp/portal/tools/{tool_name}/toggle")
+async def toggle_mcp_portal_tool(tool_name: str, payload: Optional[ToggleToolPayload] = None):
+    """Bật / Tắt một công cụ MCP"""
+    enable = payload.enable if payload else None
+    new_state = toggle_tool(tool_name, enable)
+    return {
+        "status": "ok",
+        "tool": tool_name,
+        "enabled": new_state
+    }
+
+@app.post("/api/mcp/portal/tools/{tool_name}/test")
+async def test_mcp_portal_tool(tool_name: str, payload: Optional[TestToolPayload] = None):
+    """Chạy thử nghiệm một công cụ MCP trực tiếp từ giao diện Web"""
+    args = payload.arguments if payload and payload.arguments else {}
+    res = await execute_mcp_portal_tool(tool_name, args)
+    return {
+        "status": "ok",
+        "tool": tool_name,
+        "arguments": args,
+        "result": res
+    }
+
+@app.get("/api/mcp/portal/logs")
+async def get_mcp_portal_logs(limit: int = 50):
+    """Lấy nhật ký hoạt động Realtime của MCP Portal"""
+    return {
+        "logs": mcp_device_manager.get_logs(limit=limit)
+    }
+
 
 
 # ==========================================
