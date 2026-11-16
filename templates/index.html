@@ -4169,8 +4169,11 @@ Ví dụ:
         });
         const data = await res.json();
 
-        if (res.ok && data.success && data.is_admin) {
-          localStorage.setItem("megabot_session_token", data.token);
+        const isAdminSuccess = res.ok && data.success && (data.is_admin || data.role === "admin" || data.user?.role === "admin");
+
+        if (isAdminSuccess) {
+          window.currentUserRole = "admin";
+          localStorage.setItem("megabot_session_token", data.token || "admin");
           localStorage.setItem("megabot_is_admin", "true");
           localStorage.setItem("megabot_admin_username", data.user?.username || username);
 
@@ -4187,8 +4190,10 @@ Ví dụ:
           } catch (wsErr) {}
 
           updateAdminUI(true);
+          if (typeof updateAdminBadgeUI === "function") updateAdminBadgeUI();
           hideAuthModal();
           showToast(`👑 Đăng nhập thành công với quyền Super Admin!`);
+          if (typeof loadMcpPortalData === "function") loadMcpPortalData();
 
           await loadDevices();
         } else {
@@ -4197,7 +4202,7 @@ Ví dụ:
             alertBox.style.background = "rgba(239,68,68,0.15)";
             alertBox.style.color = "#fca5a5";
             alertBox.style.border = "1px solid #ef4444";
-            alertBox.innerText = `✗ ${data.error || "Sai tên tài khoản hoặc mật khẩu Admin!"}`;
+            alertBox.innerText = `✗ ${data.detail || data.error || "Sai tên tài khoản hoặc mật khẩu Admin!"}`;
           }
         }
       } catch (err) {
@@ -4249,20 +4254,25 @@ Ví dụ:
         const data = await res.json();
 
         if (res.ok && data.success) {
-          localStorage.setItem("megabot_session_token", data.token);
+          localStorage.setItem("megabot_session_token", data.token || username);
 
-          if (data.is_admin || data.role === "admin") {
+          if (data.is_admin || data.role === "admin" || data.user?.role === "admin") {
+            window.currentUserRole = "admin";
             localStorage.setItem("megabot_is_admin", "true");
             localStorage.setItem("megabot_admin_username", data.user?.username || "admin");
             updateAdminUI(true);
+            if (typeof updateAdminBadgeUI === "function") updateAdminBadgeUI();
             hideAuthModal();
             showToast(`👑 Đăng nhập thành công với quyền Super Admin!`);
+            if (typeof loadMcpPortalData === "function") loadMcpPortalData();
             await loadDevices();
             return;
           }
 
+          window.currentUserRole = "user";
           localStorage.setItem("megabot_is_admin", "false");
           updateAdminUI(false);
+          if (typeof updateAdminBadgeUI === "function") updateAdminBadgeUI();
           if (data.device) {
             localStorage.setItem("megabot_active_robot_id", data.device.id);
             localStorage.setItem("megabot_active_robot_name", data.device.name);
@@ -4281,7 +4291,7 @@ Ví dụ:
             alertBox.style.background = "rgba(239,68,68,0.15)";
             alertBox.style.color = "#fca5a5";
             alertBox.style.border = "1px solid #ef4444";
-            alertBox.innerText = `✗ ${data.error || "Sai mã PIN hoặc mật khẩu!"}`;
+            alertBox.innerText = `✗ ${data.detail || data.error || "Sai mã PIN hoặc mật khẩu!"}`;
           }
         }
       } catch (err) {
@@ -4344,7 +4354,10 @@ Ví dụ:
         if (confirm("Bạn có muốn đăng xuất khỏi chế độ Super Admin?")) {
           localStorage.removeItem("megabot_is_admin");
           localStorage.removeItem("megabot_admin_username");
+          localStorage.removeItem("megabot_session_token");
+          window.currentUserRole = "user";
           updateAdminUI(false);
+          if (typeof updateAdminBadgeUI === "function") updateAdminBadgeUI();
           showToast("Đã thoát chế độ Super Admin");
         }
       } else {
@@ -6134,9 +6147,13 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
       if (localStorage.getItem("megabot_is_admin") === null) {
         localStorage.setItem("megabot_is_admin", "true");
         localStorage.setItem("megabot_admin_username", "admin");
+        localStorage.setItem("megabot_session_token", "admin");
       }
       const isAdmin = localStorage.getItem("megabot_is_admin") === "true";
+      window.currentUserRole = isAdmin ? "admin" : "user";
       updateAdminUI(isAdmin);
+      if (typeof updateAdminBadgeUI === "function") updateAdminBadgeUI();
+      if (typeof checkCurrentUserRole === "function") checkCurrentUserRole();
 
       const savedRobotId = localStorage.getItem("megabot_active_robot_id");
       if (savedRobotId) {
@@ -7636,16 +7653,32 @@ let currentMcpPermissions = {
 };
 window.currentUserRole = 'admin'; // Mặc định admin (tự động cập nhật theo /api/auth/me)
 
+function getAuthHeaders(extraHeaders = {}) {
+    const token = localStorage.getItem("megabot_session_token");
+    const headers = { ...extraHeaders };
+    if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+    }
+    return headers;
+}
+
 async function checkCurrentUserRole() {
     try {
-        const res = await fetch('/api/auth/me');
+        const res = await fetch('/api/auth/me', { headers: getAuthHeaders() });
         if (res.ok) {
             const u = await res.json();
-            window.currentUserRole = u.role || 'user';
+            window.currentUserRole = (u.is_admin || u.role === 'admin') ? 'admin' : (u.role || 'user');
+            updateAdminBadgeUI();
+        } else if (localStorage.getItem("megabot_is_admin") === "true") {
+            window.currentUserRole = 'admin';
             updateAdminBadgeUI();
         }
     } catch(e) {
         console.error("checkCurrentUserRole err:", e);
+        if (localStorage.getItem("megabot_is_admin") === "true") {
+            window.currentUserRole = 'admin';
+            updateAdminBadgeUI();
+        }
     }
 }
 
@@ -7806,7 +7839,8 @@ async function toggleMcpGroup(groupId, inputEl) {
 
     try {
         const res = await fetch(`/api/mcp/portal/robots/${encodeURIComponent(currentMcpDeviceId)}/groups/${groupId}/toggle`, {
-            method: 'POST'
+            method: 'POST',
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' })
         });
         if (res.ok) {
             const data = await res.json();
@@ -8109,7 +8143,8 @@ async function toggleMcpTool(toolName, inputEl) {
 
     try {
         const res = await fetch(`/api/mcp/portal/robots/${encodeURIComponent(currentMcpDeviceId)}/tools/${toolName}/toggle`, {
-            method: 'POST'
+            method: 'POST',
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' })
         });
         if (res.ok) {
             const data = await res.json();
