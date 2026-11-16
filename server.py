@@ -1627,21 +1627,32 @@ class MicMonitorManager:
 
 mic_monitor_manager = MicMonitorManager()
 
+ROBOT_LAST_SEEN: Dict[str, float] = {}
 
 def is_robot_online(agent: Optional[Any] = None) -> bool:
-    """Xác định trạng thái trực tuyến THỰC TẾ của robot phần cứng (Serial COM8 hoặc WebSocket Wi-Fi)"""
+    """Xác định trạng thái trực tuyến THỰC TẾ của robot phần cứng (Serial COM8, WebSocket Wi-Fi, hoặc vừa ping OTA/WS)"""
     try:
-        # 1. Kiểm tra cổng Serial phần cứng (USB COM8)
+        # 1. Kiểm tra cổng Serial phần cứng (USB COM8 - nếu đang cắm trực tiếp trên máy local)
         if serial_manager.is_running and serial_manager.check_connection():
             return True
 
-        # 2. Kiểm tra kết nối WebSocket thực tế từ robot (qua Wi-Fi)
+        # 2. Kiểm tra kết nối WebSocket thực tế đang mở (qua Wi-Fi)
         if len(robot_ws_manager.all_robots) > 0:
             if agent and getattr(agent, "mac_address", None):
                 mac_lower = str(agent.mac_address).lower().strip()
                 if mac_lower in robot_ws_manager.connected_macs:
                     return True
             else:
+                return True
+
+        # 3. Kiểm tra tín hiệu vừa hoạt động (OTA ping hoặc WebSocket gần đây trong 300s - chế độ Standby sẵn sàng nhận lệnh)
+        now = time.time()
+        if agent and getattr(agent, "mac_address", None):
+            mac_lower = str(agent.mac_address).lower().strip()
+            if (now - ROBOT_LAST_SEEN.get(mac_lower, 0)) < 300:
+                return True
+        else:
+            if any((now - t) < 300 for t in ROBOT_LAST_SEEN.values()):
                 return True
     except Exception:
         pass
@@ -3215,6 +3226,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
     req_headers = dict(websocket.headers)
     dev_mac = req_headers.get("device-id") or req_headers.get("Device-Id") or device_id or "14:c1:9f:c4:ee:d0"
     dev_mac = dev_mac.lower().strip()
+    ROBOT_LAST_SEEN[dev_mac] = time.time()
 
     # Tự động gán MAC của robot đang kết nối vào cơ sở dữ liệu nếu chưa có hoặc đang là MAC cũ
     try:
@@ -3574,6 +3586,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
             msg_data = await websocket.receive()
             if msg_data.get("type") == "websocket.disconnect":
                 break
+            ROBOT_LAST_SEEN[dev_mac] = time.time()
 
             if "text" in msg_data and msg_data["text"]:
                 t_str = msg_data["text"]
@@ -3820,13 +3833,18 @@ async def handle_xiaozhi_ota(request: Request):
         ws_url = f"{proto}://{host}/ws/device"
     # 2. Nếu đang chạy trên Render hoặc request trỏ tới Render
     elif "onrender.com" in host or os.getenv("RENDER"):
-        cached_tunnel = load_tunnel_cache()
-        if cached_tunnel:
-            clean_tunnel = cached_tunnel.replace("https://", "wss://").replace("http://", "ws://")
-            ws_url = f"{clean_tunnel}/ws/device"
-        elif ACTIVE_TUNNEL_URL and (time.time() - TUNNEL_LAST_PING < 300):
-            clean_tunnel = ACTIVE_TUNNEL_URL.replace("https://", "wss://").replace("http://", "ws://")
-            ws_url = f"{clean_tunnel}/ws/device"
+        # Mặc định trên Render: Luôn cấp phát WebSocket trực tiếp của Render để Robot kết nối thẳng vào Cloud Server!
+        # Chỉ chuyển hướng sang tunnel nếu có tham số truy vấn ?tunnel=1
+        if request.query_params.get("tunnel") == "1":
+            cached_tunnel = load_tunnel_cache()
+            if cached_tunnel:
+                clean_tunnel = cached_tunnel.replace("https://", "wss://").replace("http://", "ws://")
+                ws_url = f"{clean_tunnel}/ws/device"
+            elif ACTIVE_TUNNEL_URL and (time.time() - TUNNEL_LAST_PING < 300):
+                clean_tunnel = ACTIVE_TUNNEL_URL.replace("https://", "wss://").replace("http://", "ws://")
+                ws_url = f"{clean_tunnel}/ws/device"
+            else:
+                ws_url = f"wss://{host}/ws/device"
         else:
             ws_url = f"wss://{host}/ws/device"
     else:
@@ -3858,6 +3876,9 @@ async def handle_xiaozhi_ota(request: Request):
             ws_url = f"{proto}://{host}/ws/device"
 
     dev_id = request.headers.get("Device-Id") or request.headers.get("device-id") or "unknown"
+    dev_id_clean = dev_id.lower().strip()
+    if dev_id_clean and dev_id_clean != "unknown":
+        ROBOT_LAST_SEEN[dev_id_clean] = time.time()
     print(f"[OTA ROUTER] Robot '{dev_id}' yêu cầu OTA -> Cấp phát WebSocket: {ws_url}")
 
     return {
@@ -4045,6 +4066,10 @@ async def robot_status(device_id: Optional[str] = None):
     connected_macs = list(robot_ws_manager.connected_macs)
     if online and serial_manager.connected and "14:c1:9f:c4:ee:d0" not in connected_macs:
         connected_macs.append("14:c1:9f:c4:ee:d0")
+    now = time.time()
+    for mac, ts in ROBOT_LAST_SEEN.items():
+        if (now - ts) < 300 and mac not in connected_macs:
+            connected_macs.append(mac)
     return {
         "connected": online,
         "clients_connected": ws_count,

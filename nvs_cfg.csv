@@ -1,7 +1,11 @@
 key,type,encoding,value
 board,namespace,,
-uuid,data,string,0a12eb51-46c3-48a6-a2a2-539bf63e1669
+uuid,data,string,19b6bcfe-2425-4f66-8fcf-ffe05679ef8e
 wifi,namespace,,
 ssid,data,string,CMCCS - USER
 password,data,string,CMC@1234!@#$
-ota_url,data,string,https://excerpt-fundamental-fairly-mason.trycloudflare.com/xiaozhi/ota/
+ota_url,data,string,https://gehihiv2.onrender.com/xiaozhi/ota/
+websocket,namespace,,
+url,data,string,wss://gehihiv2.onrender.com/ws/device
+token,data,string,gmbot-token-gehihiv2
+version,data,i32,1
