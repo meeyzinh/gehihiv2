@@ -13,6 +13,7 @@ venv/
 cloudflared.exe
 ffmpeg.exe
 *.bin
+*.csv
 screenshots_test/
 CURRENT_ONLINE_URL.txt
 

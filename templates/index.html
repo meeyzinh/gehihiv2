@@ -1919,8 +1919,16 @@ body {
           <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e;"></span>
           <span id="topServerStatusText">Server: Trực tuyến</span>
         </div>
+        <!-- MULTI-ROBOT FAST SWITCHER -->
+        <div style="display: flex; align-items: center; gap: 6px; background: #0c1a32; border: 1px solid #38bdf8; padding: 3px 10px; border-radius: 20px; font-size: 12px; box-shadow: 0 0 10px rgba(56,189,248,0.2);">
+          <span style="font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+            <span>🤖</span> <span>Chọn Robot đang điều khiển:</span>
+          </span>
+          <select id="topRobotSelector" onchange="onSelectRobotFromDropdown(this.value)" style="background: #0f172a; color: #f8fafc; border: 1px solid #334155; border-radius: 12px; font-size: 12px; font-weight: 600; outline: none; cursor: pointer; padding: 4px 8px; max-width: 320px;">
+            <option value="">Đang nạp danh sách robot...</option>
+          </select>
+        </div>
         <div id="topRobotAccountBadge" onclick="showAuthModal()" style="display: flex; align-items: center; gap: 6px; background: #0c1a32; border: 1px solid #6366f1; padding: 4px 10px; border-radius: 20px; font-size: 12px; cursor: pointer; color:#c7d2fe;">
-          <span>🤖 Robot:</span>
           <strong id="topRobotNameDisplay" style="color: #38bdf8;">Robot Sophia</strong>
           <span id="topRobotPinDisplay" style="color: #93c5fd; font-family: monospace;">927184</span>
         </div>
@@ -1998,6 +2006,43 @@ body {
         <!-- DANH SÁCH THIẾT BỊ ĐANG QUẢN LÝ -->
         <div id="mcpDevicesContainer" style="margin-top: 16px;">
             <div style="font-size: 12px; color: #94a3b8;">Đang tải danh sách thiết bị...</div>
+        </div>
+    </div>
+
+    <!-- KHỐI QUẢN TRỊ PHÂN QUYỀN NHÓM CÔNG CỤ (CHỈ TÀI KHOẢN ADMIN ĐƯỢC TÙY CHỈNH) -->
+    <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 12px; padding: 18px; margin-bottom: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 24px;">🛡️</span>
+                <div>
+                    <h4 style="margin: 0; font-size: 16px; color: #a5b4fc; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                        QUẢN TRỊ PHÂN QUYỀN 4 NHÓM CHỨC NĂNG CHO ROBOT
+                    </h4>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                        <span id="mcpAdminRoleBadge" style="font-size: 11px; padding: 2px 8px; border-radius: 12px; background: rgba(59,130,246,0.15); color: #60a5fa; font-weight: bold; border: 1px solid #3b82f6;">
+                            Đang xác thực quyền Admin...
+                        </span>
+                        <span style="font-size: 11px; color: #94a3b8;">(Chỉ tài khoản Admin mới có quyền bật/tắt nhóm chức năng hoặc công cụ riêng cho Robot)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CHỌN ROBOT ĐỂ PHÂN QUYỀN -->
+            <div style="display: flex; align-items: center; gap: 8px; background: #0f172a; padding: 6px 12px; border-radius: 10px; border: 1px solid #334155;">
+                <label style="font-size: 12px; font-weight: bold; color: #cbd5e1; white-space: nowrap;">Cấu hình cho Robot:</label>
+                <select id="mcpActiveRobotSelect" onchange="onMcpRobotSelectChange(this.value)" style="background: #1e293b; color: #38bdf8; border: 1px solid #38bdf8; border-radius: 8px; font-size: 12px; font-weight: bold; padding: 6px 10px; outline: none; cursor: pointer;">
+                    <option value="330730">Robot Mặc định (330730)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 4 NHÓM CHỨC NĂNG BANNER TOGGLES -->
+        <div id="mcpGroupBannersContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;">
+            <!-- Render động 4 nhóm chức năng qua hàm renderMcpGroupBanners() -->
+        </div>
+
+        <div id="mcpAdminNotice" style="margin-top: 14px; font-size: 12px; color: #94a3b8; display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: rgba(2,6,23,0.5); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+            <span>🔒</span> <span id="mcpAdminNoticeText">Kiểm tra phân quyền tài khoản quản trị...</span>
         </div>
     </div>
 
@@ -4509,11 +4554,84 @@ Ví dụ:
     }
 
     // 1. TẢI DANH SÁCH THIẾT BỊ TỪ API VÀ CẬP NHẬT HỒ SƠ ROBOT HIỆN TẠI
+    function populateTopRobotSelector(devices) {
+      const sel = document.getElementById("topRobotSelector");
+      if (!sel) return;
+      sel.innerHTML = "";
+      if (!devices || devices.length === 0) {
+        sel.innerHTML = '<option value="">Không có robot kết nối</option>';
+        return;
+      }
+      devices.forEach(d => {
+        const isOnline = d.is_online === true || d.is_online === "true" || d.online === true;
+        const statusIcon = isOnline ? "🟢 Online" : "⚪ Offline";
+        const devName = d.assistant_name || d.device_name || d.name || "Robot";
+        const mac = d.mac_address || d.device_mac || "Chưa có MAC";
+        const agentId = d.agent_id || d.device_code || d.id;
+        const opt = document.createElement("option");
+        opt.value = d.id;
+        opt.innerText = `${devName} | ${mac} | ID: ${agentId} (${statusIcon})`;
+        if (String(d.id) === String(activeDeviceId) || String(d.agent_id) === String(activeDeviceId) || d.is_active) {
+          opt.selected = true;
+        }
+        sel.appendChild(opt);
+      });
+    }
+
+    async function onSelectRobotFromDropdown(selectedId) {
+      if (!selectedId || !currentDevices) return;
+      const dev = currentDevices.find(d => String(d.id) === String(selectedId) || String(d.agent_id) === String(selectedId));
+      if (!dev) return;
+
+      activeDeviceId = dev.id;
+      const agentId = dev.agent_id || dev.device_code || dev.id;
+      const devName = dev.assistant_name || dev.device_name || dev.name || "Robot";
+
+      localStorage.setItem("megabot_active_robot_id", dev.id);
+      localStorage.setItem("megabot_active_robot_name", devName);
+      localStorage.setItem("megabot_active_robot_code", agentId);
+
+      // 1. Đồng bộ sang server
+      try {
+        await fetch(`/api/devices/${encodeURIComponent(agentId)}/select`, { method: "POST" });
+      } catch (e) {}
+
+      // 2. Cập nhật Sidebar và Profile Dashboard (Tên trợ lý, Giọng nói, Model AI, System Prompt)
+      updateSidebarRobotInfo(currentDevices);
+      updateDeviceProfileDashboard(dev);
+
+      // 3. Cập nhật hiển thị Topbar
+      const topName = document.getElementById("topRobotNameDisplay");
+      const topPin = document.getElementById("topRobotPinDisplay");
+      if (topName) topName.innerText = devName;
+      if (topPin) topPin.innerText = agentId;
+
+      // 4. Nạp lại Bộ nhớ & Nhiệm vụ riêng của Robot này (Cách ly dữ liệu)
+      if (typeof loadMemoriesFromApi === "function") {
+        loadMemoriesFromApi();
+      }
+
+      // 5. Đồng bộ cấu hình MCP Portal cho Robot này
+      const mcpSel = document.getElementById("mcpActiveRobotSelect");
+      if (mcpSel) {
+        mcpSel.value = agentId;
+      }
+      if (typeof onMcpRobotSelectChange === "function") {
+        onMcpRobotSelectChange(agentId);
+      }
+
+      showToast(`🤖 Đang điều khiển: ${devName} (ID: ${agentId})`);
+    }
+
     async function loadDevices() {
       try {
         const res = await fetch("/api/devices");
         if (res.ok) {
           currentDevices = await res.json();
+          populateTopRobotSelector(currentDevices);
+          if (typeof populateMcpActiveRobotSelector === "function") {
+            populateMcpActiveRobotSelector(currentDevices);
+          }
           updateSidebarRobotInfo(currentDevices);
           renderAllDeviceCards(currentDevices);
           const dev = currentDevices.find(d => d.id === activeDeviceId || d.device_code === activeDeviceId) || currentDevices[0];
@@ -7506,16 +7624,211 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
 
 
 // ==============================================================================
-// LOGIC XIAOZHI MCP PORTAL (78 TOOLS)
+// LOGIC XIAOZHI MCP PORTAL (78 TOOLS) & MULTI-ROBOT ADMIN MANAGEMENT
 // ==============================================================================
 let allMcpTools = [];
 let currentMcpCategory = 'all';
 let currentModalTool = null;
+let currentMcpDeviceId = '330730';
+let currentMcpPermissions = {
+    allowed_groups: ['realtime', 'knowledge', 'persona', 'utility'],
+    allowed_tools: ['*']
+};
+window.currentUserRole = 'admin'; // Mặc định admin (tự động cập nhật theo /api/auth/me)
+
+async function checkCurrentUserRole() {
+    try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+            const u = await res.json();
+            window.currentUserRole = u.role || 'user';
+            updateAdminBadgeUI();
+        }
+    } catch(e) {
+        console.error("checkCurrentUserRole err:", e);
+    }
+}
+
+function updateAdminBadgeUI() {
+    const badge = document.getElementById('mcpAdminRoleBadge');
+    const noticeText = document.getElementById('mcpAdminNoticeText');
+    const isAdmin = window.currentUserRole === 'admin';
+    if (badge) {
+        if (isAdmin) {
+            badge.innerText = '👑 Quyền Quản trị viên (Admin)';
+            badge.style.background = 'rgba(16,185,129,0.15)';
+            badge.style.border = '1px solid #10b981';
+            badge.style.color = '#34d399';
+        } else {
+            badge.innerText = '👤 Quyền Người dùng (Chỉ xem)';
+            badge.style.background = 'rgba(239,68,68,0.15)';
+            badge.style.border = '1px solid #ef4444';
+            badge.style.color = '#f87171';
+        }
+    }
+    if (noticeText) {
+        noticeText.innerText = isAdmin ?
+            'Bạn đang đăng nhập với quyền Admin: Toàn quyền Bật/Tắt 4 nhóm chức năng hoặc công cụ riêng cho từng Robot.' :
+            '🔒 Bạn đang ở quyền Người dùng: Chỉ có tài khoản Admin mới có quyền bật/tắt nhóm chức năng hoặc công cụ cho Robot.';
+    }
+}
+
+function populateMcpActiveRobotSelector(devices) {
+    const sel = document.getElementById("mcpActiveRobotSelect");
+    if (!sel) return;
+    sel.innerHTML = "";
+    if (!devices || devices.length === 0) {
+        sel.innerHTML = '<option value="330730">Robot Mặc định (330730)</option>';
+        return;
+    }
+    devices.forEach(d => {
+        const agentId = d.agent_id || d.device_code || d.id;
+        const devName = d.assistant_name || d.device_name || d.name || "Robot";
+        const opt = document.createElement("option");
+        opt.value = agentId;
+        opt.innerText = `${devName} (ID: ${agentId})`;
+        if (String(agentId) === String(currentMcpDeviceId) || String(d.id) === String(currentMcpDeviceId)) {
+            opt.selected = true;
+        }
+        sel.appendChild(opt);
+    });
+}
+
+async function onMcpRobotSelectChange(deviceId) {
+    currentMcpDeviceId = deviceId || '330730';
+    await loadMcpPermissions(currentMcpDeviceId);
+}
+
+async function loadMcpPermissions(deviceId) {
+    try {
+        const res = await fetch(`/api/mcp/portal/robots/${encodeURIComponent(deviceId)}/permissions`);
+        if (res.ok) {
+            currentMcpPermissions = await res.json();
+            renderMcpGroupBanners();
+            renderMcpTools();
+        }
+    } catch(e) {
+        console.error("loadMcpPermissions err:", e);
+    }
+}
+
+function renderMcpGroupBanners() {
+    const container = document.getElementById('mcpGroupBannersContainer');
+    if (!container) return;
+
+    const groups = [
+        {
+            id: "realtime",
+            name: "Nhóm 1: Tra cứu Real-time & Thuật toán",
+            icon: "⚡",
+            desc: "Giá vàng, tỷ giá VCB, giá xăng, chứng khoán, lịch âm, tính lương, tin tức, thời tiết...",
+            count: 12
+        },
+        {
+            id: "knowledge",
+            name: "Nhóm 2: Tri thức, Văn hóa & Trò chơi",
+            icon: "📚",
+            desc: "Từ điển Gen Z, lịch sử VN, giấc mơ, món ăn, Ai là triệu phú, thi A1, Tarot, thần số học, tử vi...",
+            count: 16
+        },
+        {
+            id: "persona",
+            name: "Nhóm 3: Chuyên gia & Giáo viên AI",
+            icon: "🎓",
+            desc: "Giáo viên Anh/Trung/Nhật, Ngữ văn, Sinh, Toán Lý Hóa, Thầy phong thủy, Luật sư, Bác sĩ nhi, 3D printing...",
+            count: 32
+        },
+        {
+            id: "utility",
+            name: "Nhóm 4: Bộ nhớ Dài hạn & Tiện ích",
+            icon: "🛠️",
+            desc: "Ký ức dài hạn, việc cần làm, kiểm tra server, BMI/TDEE, tính lãi suất, sinh mật khẩu, nối từ...",
+            count: 18
+        }
+    ];
+
+    const allowed = currentMcpPermissions.allowed_groups || ['realtime', 'knowledge', 'persona', 'utility'];
+    const isAdmin = window.currentUserRole === 'admin';
+
+    let html = '';
+    groups.forEach(g => {
+        const isAllowed = allowed.includes(g.id);
+        const borderCol = isAllowed ? 'rgba(56, 189, 248, 0.35)' : 'rgba(239, 68, 68, 0.2)';
+        const bgCol = isAllowed ? 'rgba(15, 23, 42, 0.7)' : 'rgba(239, 68, 68, 0.05)';
+        const statusBadge = isAllowed ?
+            '<span style="font-size: 11px; font-weight: bold; color: #4ade80; background: rgba(34,197,94,0.15); padding: 2px 8px; border-radius: 10px; border: 1px solid #22c55e;">🟢 Đang BẬT</span>' :
+            '<span style="font-size: 11px; font-weight: bold; color: #f87171; background: rgba(239,68,68,0.15); padding: 2px 8px; border-radius: 10px; border: 1px solid #ef4444;">🔴 Đang TẮT</span>';
+
+        const toggleBg = isAllowed ? '#10b981' : '#475569';
+        const disabledAttr = isAdmin ? '' : 'disabled';
+        const cursorStyle = isAdmin ? 'cursor: pointer;' : 'cursor: not-allowed; opacity: 0.6;';
+        const lockNote = isAdmin ? '' : 'title="Chỉ tài khoản Admin mới có quyền bật/tắt"';
+
+        html += `
+        <div style="background: ${bgCol}; border: 1px solid ${borderCol}; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s;">
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 24px;">${g.icon}</span>
+                        <div>
+                            <div style="font-size: 14px; font-weight: bold; color: #f8fafc;">${g.name}</div>
+                            <span style="font-size: 11px; color: #94a3b8;">${g.count} công cụ</span>
+                        </div>
+                    </div>
+                    <!-- SWITCH TOGGLE CHO NHÓM -->
+                    <label ${lockNote} style="position: relative; display: inline-block; width: 44px; height: 24px; ${cursorStyle}">
+                        <input type="checkbox" ${isAllowed ? 'checked' : ''} ${disabledAttr} onchange="toggleMcpGroup('${g.id}', this)" style="opacity: 0; width: 0; height: 0;">
+                        <span style="position: absolute; ${cursorStyle} top: 0; left: 0; right: 0; bottom: 0; background-color: ${toggleBg}; transition: .3s; border-radius: 24px;">
+                            <span style="position: absolute; height: 18px; width: 18px; left: ${isAllowed ? '23px' : '3px'}; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%;"></span>
+                        </span>
+                    </label>
+                </div>
+                <p style="font-size: 12px; color: #cbd5e1; line-height: 1.4; margin: 0 0 10px 0; min-height: 36px;">
+                    ${g.desc}
+                </p>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+                ${statusBadge}
+                ${!isAdmin ? '<span style="font-size: 10px; color: #f87171;">🔒 Cần quyền Admin</span>' : ''}
+            </div>
+        </div>`;
+    });
+
+    container.innerHTML = html;
+}
+
+async function toggleMcpGroup(groupId, inputEl) {
+    if (window.currentUserRole !== 'admin') {
+        alert('🔒 Chỉ tài khoản Quản trị viên (Admin) mới có quyền bật/tắt nhóm chức năng cho Robot!');
+        if (inputEl) inputEl.checked = !inputEl.checked;
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/mcp/portal/robots/${encodeURIComponent(currentMcpDeviceId)}/groups/${groupId}/toggle`, {
+            method: 'POST'
+        });
+        if (res.ok) {
+            const data = await res.json();
+            await loadMcpPermissions(currentMcpDeviceId);
+            showToast(`Đã ${data.enabled ? 'bật' : 'tắt'} nhóm công cụ [${groupId}] cho Robot.`);
+        } else {
+            const err = await res.json();
+            alert('Lỗi: ' + (err.detail || 'Không thể thay đổi phân quyền'));
+            renderMcpGroupBanners();
+        }
+    } catch(e) {
+        alert('Lỗi kết nối khi cập nhật nhóm: ' + e);
+        renderMcpGroupBanners();
+    }
+}
 
 async function loadMcpPortalData() {
     try {
+        await checkCurrentUserRole();
         await Promise.all([
             fetchMcpStatus(),
+            loadMcpPermissions(currentMcpDeviceId),
             fetchMcpToolsList(),
             refreshMcpLogs()
         ]);
@@ -7537,7 +7850,7 @@ async function fetchMcpStatus() {
             badge.style.border = '1px solid #10b981';
             badge.style.color = '#34d399';
             badge.children[0].style.background = '#10b981';
-            text.innerText = '● Đã kết nối với xiaozhi.me';
+            text.innerText = `● Đang kết nối (${data.total_devices} Robot)`;
         } else {
             badge.style.background = 'rgba(239, 68, 68, 0.15)';
             badge.style.border = '1px solid #ef4444';
@@ -7557,32 +7870,57 @@ function renderMcpDevices(devices) {
     if (!container) return;
     
     if (devices.length === 0) {
-        container.innerHTML = '<div style="font-size: 13px; color: #94a3b8; padding: 10px; background: #020617; border-radius: 8px; border: 1px dashed #334155;">Chưa có thiết bị nào được kết nối. Vui lòng nhập Tên và WebSocket URL ở trên rồi nhấn "KẾT NỐI MCP".</div>';
+        container.innerHTML = '<div style="font-size: 13px; color: #94a3b8; padding: 12px; background: #020617; border-radius: 8px; border: 1px dashed #334155;">Chưa có kết nối Robot nào trong MCPConnectionPool. Nhập Tên Robot và WebSocket URL ở trên rồi nhấn "KẾT NỐI MCP".</div>';
         return;
     }
 
     let html = '<div style="display: flex; flex-direction: column; gap: 8px;">';
     devices.forEach(d => {
         const isOnline = d.is_connected;
-        const statusColor = isOnline ? '#10b981' : '#ef4444';
-        const statusText = isOnline ? '🟢 Online (Connected)' : '🔴 Offline (Connecting...)';
+        const isPaused = d.is_paused;
+        let statusColor = '#ef4444';
+        let statusText = '🔴 Đang kết nối...';
+        if (isPaused) {
+            statusColor = '#fbbf24';
+            statusText = '⏸️ Đã tạm dừng';
+        } else if (isOnline) {
+            statusColor = '#10b981';
+            statusText = '🟢 Online (Ready)';
+        }
+
+        const pauseResumeBtn = isPaused ?
+            `<button onclick="reconnectMcpDevice('${d.id}')" style="padding: 4px 8px; font-size: 11px; background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid #22c55e; border-radius: 6px; cursor: pointer;">▶️ Tiếp tục</button>` :
+            `<button onclick="pauseMcpDevice('${d.id}')" style="padding: 4px 8px; font-size: 11px; background: rgba(234,179,8,0.15); color: #fbbf24; border: 1px solid #eab308; border-radius: 6px; cursor: pointer;">⏸️ Tạm dừng</button>`;
+
         html += `
         <div style="display: flex; justify-content: space-between; align-items: center; background: #020617; border: 1px solid #1e293b; border-radius: 8px; padding: 10px 14px; flex-wrap: wrap; gap: 10px;">
-            <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <span style="font-weight: bold; color: #38bdf8; font-size: 14px;">${d.name}</span>
+                <span style="font-size: 11px; font-family: monospace; background: #0f172a; padding: 2px 6px; border-radius: 6px; color: #a5b4fc;">ID: ${d.agent_id || d.id}</span>
                 <span style="font-size: 12px; color: ${statusColor}; font-weight: bold;">${statusText}</span>
                 <span style="font-size: 12px; color: #94a3b8;">• Uptime: <strong style="color: #e2e8f0;">${d.uptime}</strong></span>
                 <span style="font-size: 12px; color: #94a3b8;">• Đã gọi: <strong style="color: #fbbf24;">${d.call_count} lần</strong></span>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-family: monospace; font-size: 11px; color: #64748b; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${d.websocket_url}</span>
-                <button onclick="reconnectMcpDevice('${d.id}')" style="padding: 4px 8px; font-size: 11px; background: #1e293b; color: #38bdf8; border: 1px solid #334155; border-radius: 6px; cursor: pointer;">🔄 Kết nối lại</button>
+                <span style="font-family: monospace; font-size: 11px; color: #64748b; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${d.websocket_url}</span>
+                ${pauseResumeBtn}
+                <button onclick="reconnectMcpDevice('${d.id}')" style="padding: 4px 8px; font-size: 11px; background: #1e293b; color: #38bdf8; border: 1px solid #334155; border-radius: 6px; cursor: pointer;" title="Khởi động lại kết nối">🔄 Khởi động lại</button>
+                <button onclick="selectMcpRobotConfig('${d.agent_id || d.id}')" style="padding: 4px 8px; font-size: 11px; background: #1e293b; color: #c084fc; border: 1px solid #a855f7; border-radius: 6px; cursor: pointer;" title="Chọn Robot này để cấu hình quyền">⚙️ Cấu hình quyền</button>
                 <button onclick="deleteMcpDevice('${d.id}')" style="padding: 4px 8px; font-size: 11px; background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid #ef4444; border-radius: 6px; cursor: pointer;">🗑️ Xóa</button>
             </div>
         </div>`;
     });
     html += '</div>';
     container.innerHTML = html;
+}
+
+function selectMcpRobotConfig(deviceId) {
+    const sel = document.getElementById("mcpActiveRobotSelect");
+    if (sel) {
+        sel.value = deviceId;
+    }
+    onMcpRobotSelectChange(deviceId);
+    showToast(`Đã chọn Robot [${deviceId}] để cấu hình phân quyền.`);
 }
 
 async function connectMcpDeviceBtn() {
@@ -7597,7 +7935,7 @@ async function connectMcpDeviceBtn() {
         const res = await fetch('/api/mcp/portal/devices', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name: name, websocket_url: url})
+            body: JSON.stringify({name: name, websocket_url: url, agent_id: name, device_id: name})
         });
         const data = await res.json();
         if (data.status === 'ok') {
@@ -7613,9 +7951,9 @@ async function connectMcpDeviceBtn() {
 }
 
 async function deleteMcpDevice(deviceId) {
-    if (!confirm('Bạn có chắc chắn muốn ngắt kết nối và xóa thiết bị này?')) return;
+    if (!confirm(`Bạn có chắc chắn muốn ngắt kết nối và xóa Robot [${deviceId}] khỏi hệ thống?`)) return;
     try {
-        const res = await fetch(`/api/mcp/portal/devices/${deviceId}`, {method: 'DELETE'});
+        const res = await fetch(`/api/mcp/portal/devices/${encodeURIComponent(deviceId)}`, {method: 'DELETE'});
         const data = await res.json();
         fetchMcpStatus();
     } catch(e) {
@@ -7623,10 +7961,19 @@ async function deleteMcpDevice(deviceId) {
     }
 }
 
+async function pauseMcpDevice(deviceId) {
+    try {
+        await fetch(`/api/mcp/portal/devices/${encodeURIComponent(deviceId)}/pause`, {method: 'POST'});
+        setTimeout(fetchMcpStatus, 800);
+    } catch(e) {
+        console.error(e);
+    }
+}
+
 async function reconnectMcpDevice(deviceId) {
     try {
-        await fetch(`/api/mcp/portal/devices/${deviceId}/reconnect`, {method: 'POST'});
-        setTimeout(fetchMcpStatus, 1500);
+        await fetch(`/api/mcp/portal/devices/${encodeURIComponent(deviceId)}/reconnect`, {method: 'POST'});
+        setTimeout(fetchMcpStatus, 1000);
     } catch(e) {
         console.error(e);
     }
@@ -7634,7 +7981,7 @@ async function reconnectMcpDevice(deviceId) {
 
 async function fetchMcpToolsList() {
     try {
-        const res = await fetch('/api/mcp/portal/tools');
+        const res = await fetch(`/api/mcp/portal/tools?device_id=${encodeURIComponent(currentMcpDeviceId)}`);
         const data = await res.json();
         allMcpTools = data.tools || [];
         renderMcpTools();
@@ -7667,6 +8014,9 @@ function renderMcpTools() {
     if (!grid) return;
 
     const searchKw = (document.getElementById('mcpToolSearchInput')?.value || '').toLowerCase().trim();
+    const allowedGroups = currentMcpPermissions.allowed_groups || ['realtime', 'knowledge', 'persona', 'utility'];
+    const allowedTools = currentMcpPermissions.allowed_tools || ['*'];
+    const isAdmin = window.currentUserRole === 'admin';
 
     const filtered = allMcpTools.filter(t => {
         const matchCat = (currentMcpCategory === 'all') || (t.category === currentMcpCategory);
@@ -7692,10 +8042,19 @@ function renderMcpTools() {
     let html = '';
     filtered.forEach(t => {
         const catInfo = catBadgeMap[t.category] || {label: 'Công cụ', bg: '#1e293b', color: '#94a3b8'};
-        const isEnabled = t.enabled;
+        
+        // Kiểm tra xem công cụ có được phép chạy cho Robot hiện tại không
+        const isGroupAllowed = allowedGroups.includes(t.category);
+        const isToolExplicit = allowedTools.includes('*') || allowedTools.includes(t.name);
+        const isEnabled = t.enabled && isGroupAllowed && isToolExplicit;
+
         const toggleBg = isEnabled ? '#10b981' : '#475569';
-        const cardBorder = isEnabled ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.05)';
-        const opacity = isEnabled ? '1' : '0.6';
+        const cardBorder = isEnabled ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.05)';
+        const opacity = isEnabled ? '1' : '0.55';
+
+        const disabledAttr = isAdmin ? '' : 'disabled';
+        const cursorStyle = isAdmin ? 'cursor: pointer;' : 'cursor: not-allowed;';
+        const lockTitle = isAdmin ? '' : 'title="Chỉ tài khoản Admin mới có quyền bật/tắt"';
 
         html += `
         <div style="background: #0f172a; border: 1px solid ${cardBorder}; border-radius: 12px; padding: 14px; opacity: ${opacity}; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s;" onmouseover="this.style.borderColor='#38bdf8'" onmouseout="this.style.borderColor='${cardBorder}'">
@@ -7708,17 +8067,20 @@ function renderMcpTools() {
                             <span style="font-size: 11px; font-family: monospace; color: #64748b;">${t.name}</span>
                         </div>
                     </div>
-                    <!-- TOGGLE SWITCH -->
-                    <label style="position: relative; display: inline-block; width: 36px; height: 20px; cursor: pointer;">
-                        <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleMcpTool('${t.name}')" style="opacity: 0; width: 0; height: 0;">
-                        <span style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: ${toggleBg}; transition: .3s; border-radius: 20px;">
+                    <!-- TOGGLE SWITCH (CHỈ ADMIN CLICK ĐƯỢC) -->
+                    <label ${lockTitle} style="position: relative; display: inline-block; width: 36px; height: 20px; ${cursorStyle}">
+                        <input type="checkbox" ${isEnabled ? 'checked' : ''} ${disabledAttr} onchange="toggleMcpTool('${t.name}', this)" style="opacity: 0; width: 0; height: 0;">
+                        <span style="position: absolute; ${cursorStyle} top: 0; left: 0; right: 0; bottom: 0; background-color: ${toggleBg}; transition: .3s; border-radius: 20px;">
                             <span style="position: absolute; height: 14px; width: 14px; left: ${isEnabled ? '19px' : '3px'}; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%;"></span>
                         </span>
                     </label>
                 </div>
 
-                <div style="display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; background: ${catInfo.bg}; color: ${catInfo.color}; margin-bottom: 8px;">
-                    ${catInfo.label}
+                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap;">
+                    <span style="display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; background: ${catInfo.bg}; color: ${catInfo.color};">
+                        ${catInfo.label}
+                    </span>
+                    ${!isGroupAllowed ? '<span style="font-size: 10px; color: #f87171; background: rgba(239,68,68,0.1); padding: 1px 6px; border-radius: 8px;">Nhóm bị tắt</span>' : ''}
                 </div>
 
                 <p style="font-size: 12px; color: #94a3b8; line-height: 1.4; margin: 0 0 12px 0; min-height: 34px;">
@@ -7738,15 +8100,29 @@ function renderMcpTools() {
     grid.innerHTML = html;
 }
 
-async function toggleMcpTool(toolName) {
+async function toggleMcpTool(toolName, inputEl) {
+    if (window.currentUserRole !== 'admin') {
+        alert('🔒 Chỉ tài khoản Quản trị viên (Admin) mới có quyền bật/tắt chức năng cho Robot!');
+        if (inputEl) inputEl.checked = !inputEl.checked;
+        return;
+    }
+
     try {
-        const res = await fetch(`/api/mcp/portal/tools/${toolName}/toggle`, {method: 'POST'});
-        const data = await res.json();
-        const found = allMcpTools.find(t => t.name === toolName);
-        if (found) found.enabled = data.enabled;
-        renderMcpTools();
+        const res = await fetch(`/api/mcp/portal/robots/${encodeURIComponent(currentMcpDeviceId)}/tools/${toolName}/toggle`, {
+            method: 'POST'
+        });
+        if (res.ok) {
+            const data = await res.json();
+            await loadMcpPermissions(currentMcpDeviceId);
+            showToast(`Đã ${data.enabled ? 'bật' : 'tắt'} công cụ [${toolName}] cho Robot.`);
+        } else {
+            const err = await res.json();
+            alert('Lỗi: ' + (err.detail || 'Không thể thay đổi trạng thái công cụ'));
+            renderMcpTools();
+        }
     } catch(e) {
         console.error(e);
+        renderMcpTools();
     }
 }
 

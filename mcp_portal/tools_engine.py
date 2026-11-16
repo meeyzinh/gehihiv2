@@ -8,6 +8,7 @@ import re
 import json
 import time
 import math
+import sqlite3
 import random
 import hashlib
 import asyncio
@@ -60,6 +61,274 @@ TOOL_STATES: Dict[str, bool] = {}
 TOOL_CALL_COUNTS: Dict[str, int] = {}
 LONG_TERM_MEMORY: List[Dict[str, Any]] = []
 TASK_LIST: List[Dict[str, Any]] = []
+
+DB_PATH = os.path.abspath("database.db")
+
+def init_robot_storage():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS robot_mcp_memories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id TEXT NOT NULL,
+                agent_id TEXT,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_robot_mem_dev ON robot_mcp_memories (device_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_robot_mem_agt ON robot_mcp_memories (agent_id)")
+        
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS robot_mcp_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id TEXT NOT NULL,
+                agent_id TEXT,
+                task TEXT NOT NULL,
+                time_deadline TEXT,
+                is_done INTEGER DEFAULT 0,
+                created_at TEXT
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_robot_task_dev ON robot_mcp_tasks (device_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_robot_task_agt ON robot_mcp_tasks (agent_id)")
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS robot_mcp_permissions (
+                device_id TEXT PRIMARY KEY,
+                allowed_groups TEXT,
+                allowed_tools TEXT,
+                updated_at TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[INIT ROBOT STORAGE ERR] {e}")
+
+init_robot_storage()
+
+def save_robot_memory(device_id: str, agent_id: str, title: str, content: str) -> Dict[str, Any]:
+    now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    mem_id = 0
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO robot_mcp_memories (device_id, agent_id, title, content, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (device_id, agent_id or device_id, title, content, now_str))
+        mem_id = cur.lastrowid
+        try:
+            cur.execute("""
+                INSERT INTO memories (agent_id, memory_type, content, created_at)
+                VALUES (?, 'LONG_TERM', ?, datetime('now'))
+            """, (agent_id or device_id, f"[{title}] {content}"))
+        except Exception:
+            pass
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[SAVE MEM ERR] {e}")
+    return {"id": mem_id, "title": title, "content": content, "created_at": now_str}
+
+def get_robot_memories(device_id: str, agent_id: str, kw: str = "") -> List[Dict[str, Any]]:
+    results = []
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, title, content, created_at FROM robot_mcp_memories
+            WHERE (device_id = ? OR agent_id = ?)
+            ORDER BY id DESC LIMIT 20
+        """, (device_id, agent_id or device_id))
+        rows = cur.fetchall()
+        conn.close()
+        for r in rows:
+            mid, tit, cnt, crt = r
+            if not kw or (kw.lower() in tit.lower() or kw.lower() in cnt.lower()):
+                results.append({"id": mid, "title": tit, "content": cnt, "created_at": crt})
+    except Exception as e:
+        print(f"[GET MEM ERR] {e}")
+    return results
+
+def delete_robot_memory(device_id: str, agent_id: str, title: str) -> int:
+    deleted = 0
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("""
+            DELETE FROM robot_mcp_memories
+            WHERE (device_id = ? OR agent_id = ?) AND title LIKE ?
+        """, (device_id, agent_id or device_id, f"%{title}%"))
+        deleted = cur.rowcount
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[DEL MEM ERR] {e}")
+    return deleted
+
+def save_robot_task(device_id: str, agent_id: str, task: str, deadline: str) -> Dict[str, Any]:
+    now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    tid = 0
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO robot_mcp_tasks (device_id, agent_id, task, time_deadline, is_done, created_at)
+            VALUES (?, ?, ?, ?, 0, ?)
+        """, (device_id, agent_id or device_id, task, deadline, now_str))
+        tid = cur.lastrowid
+        try:
+            cur.execute("""
+                INSERT INTO tasks (agent_id, content, created_at)
+                VALUES (?, ?, datetime('now'))
+            """, (agent_id or device_id, f"{task} (Hạn: {deadline})"))
+        except Exception:
+            pass
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[SAVE TASK ERR] {e}")
+    return {"id": tid, "task": task, "time": deadline, "done": False}
+
+def get_robot_tasks(device_id: str, agent_id: str) -> List[Dict[str, Any]]:
+    results = []
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, task, time_deadline, is_done FROM robot_mcp_tasks
+            WHERE (device_id = ? OR agent_id = ?) AND is_done = 0
+            ORDER BY id DESC LIMIT 20
+        """, (device_id, agent_id or device_id))
+        rows = cur.fetchall()
+        conn.close()
+        for r in rows:
+            results.append({"id": r[0], "task": r[1], "time": r[2], "done": bool(r[3])})
+    except Exception as e:
+        print(f"[GET TASK ERR] {e}")
+    return results
+
+# ==============================================================================
+# QUẢN LÝ PHÂN QUYỀN NHÓM & CÔNG CỤ THEO ROBOT (ADMIN-ONLY ACCESS)
+# ==============================================================================
+MCP_TOOL_GROUPS = [
+    {
+        "id": "realtime",
+        "name": "Nhóm 1: Tra cứu Real-time & Thuật toán",
+        "icon": "⚡",
+        "description": "Giá vàng, tỷ giá Vietcombank, giá xăng, chứng khoán, lịch âm, tính lương, tin tức, thời tiết...",
+        "count": 12
+    },
+    {
+        "id": "knowledge",
+        "name": "Nhóm 2: Tri thức, Văn hóa & Trò chơi",
+        "icon": "📚",
+        "description": "Từ điển Gen Z, lịch sử VN, giấc mơ, món ăn, Ai là triệu phú, thi A1, Tarot, thần số học, tử vi...",
+        "count": 16
+    },
+    {
+        "id": "persona",
+        "name": "Nhóm 3: Chuyên gia & Giáo viên AI",
+        "icon": "🎓",
+        "description": "Giáo viên Anh/Trung/Nhật, Ngữ văn, Sinh, Toán Lý Hóa, Thầy phong thủy, Luật sư, Bác sĩ nhi, 3D printing...",
+        "count": 32
+    },
+    {
+        "id": "utility",
+        "name": "Nhóm 4: Bộ nhớ Dài hạn & Tiện ích",
+        "icon": "🛠️",
+        "description": "Ký ức dài hạn, việc cần làm, kiểm tra server, BMI/TDEE, tính lãi suất, sinh mật khẩu, nối từ...",
+        "count": 18
+    }
+]
+
+def get_robot_permissions(device_id: str) -> Dict[str, Any]:
+    """Lấy danh sách các nhóm và công cụ được phép chạy của Robot này"""
+    all_groups = ["realtime", "knowledge", "persona", "utility"]
+    allowed_groups = list(all_groups)
+    allowed_tools = ["*"]
+    if device_id:
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cur = conn.cursor()
+            cur.execute("SELECT allowed_groups, allowed_tools FROM robot_mcp_permissions WHERE device_id = ?", (device_id,))
+            row = cur.fetchone()
+            conn.close()
+            if row:
+                if row[0]:
+                    allowed_groups = json.loads(row[0])
+                if row[1]:
+                    allowed_tools = json.loads(row[1])
+        except Exception as e:
+            print(f"[GET ROBOT PERM ERR] {e}")
+    return {
+        "device_id": device_id,
+        "allowed_groups": allowed_groups,
+        "allowed_tools": allowed_tools,
+        "groups": MCP_TOOL_GROUPS,
+        "total_tools": 78
+    }
+
+def set_robot_permissions(
+    device_id: str,
+    allowed_groups: Optional[List[str]] = None,
+    allowed_tools: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """Cập nhật phân quyền nhóm và công cụ cho một Robot cụ thể"""
+    current = get_robot_permissions(device_id)
+    new_groups = allowed_groups if allowed_groups is not None else current["allowed_groups"]
+    new_tools = allowed_tools if allowed_tools is not None else current["allowed_tools"]
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT OR REPLACE INTO robot_mcp_permissions (device_id, allowed_groups, allowed_tools, updated_at)
+            VALUES (?, ?, ?, ?)
+        """, (device_id, json.dumps(new_groups, ensure_ascii=False), json.dumps(new_tools, ensure_ascii=False), now_str))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[SET ROBOT PERM ERR] {e}")
+    return {
+        "device_id": device_id,
+        "allowed_groups": new_groups,
+        "allowed_tools": new_tools,
+        "updated_at": now_str
+    }
+
+def toggle_robot_group(device_id: str, group_id: str, enable: Optional[bool] = None) -> bool:
+    """Admin bật hoặc tắt nguyên một nhóm công cụ cho Robot"""
+    perms = get_robot_permissions(device_id)
+    groups = perms["allowed_groups"]
+    is_active = group_id in groups
+    target_state = not is_active if enable is None else enable
+    if target_state and group_id not in groups:
+        groups.append(group_id)
+    elif not target_state and group_id in groups:
+        groups.remove(group_id)
+    set_robot_permissions(device_id, allowed_groups=groups)
+    return target_state
+
+def toggle_robot_tool(device_id: str, tool_name: str, enable: Optional[bool] = None) -> bool:
+    """Admin bật hoặc tắt một công cụ cụ thể cho Robot"""
+    perms = get_robot_permissions(device_id)
+    tools = perms["allowed_tools"]
+    if tools == ["*"]:
+        tools = [m["name"] for m in MCP_TOOLS_METADATA]
+    is_active = tool_name in tools
+    target_state = not is_active if enable is None else enable
+    if target_state and tool_name not in tools:
+        tools.append(tool_name)
+    elif not target_state and tool_name in tools:
+        tools.remove(tool_name)
+    set_robot_permissions(device_id, allowed_tools=tools)
+    return target_state
+
 
 def clean_html(text: str) -> str:
     if not text:
@@ -1108,17 +1377,55 @@ for meta in MCP_TOOLS_METADATA:
 # ==============================================================================
 # HÀM TRUY VẤN SCHEMAS & METADATA CHO BẢN TIN JSON-RPC "tools/list"
 # ==============================================================================
-def get_tool_schemas() -> List[Dict[str, Any]]:
+def get_tool_schemas(
+    device_id: Optional[str] = None,
+    allowed_groups: Optional[List[str]] = None,
+    allowed_tools: Optional[List[str]] = None
+) -> List[Dict[str, Any]]:
     """Trả về danh sách 78 tool definitions chuẩn JSON-RPC 2.0 cho xiaozhi.me"""
+    return get_tool_schemas_for_device(device_id or "default", allowed_groups, allowed_tools)
+
+def get_tool_schemas_for_device(
+    device_id: str = "default",
+    allowed_groups: Optional[List[str]] = None,
+    allowed_tools: Optional[List[str]] = None
+) -> List[Dict[str, Any]]:
+    """Trả về danh sách tool definitions lọc theo phân quyền riêng của từng Robot"""
     schemas = []
+    # Nếu chưa truyền allowed_groups/allowed_tools, thử nạp từ SQLite
+    if allowed_groups is None and allowed_tools is None and device_id and device_id != "default":
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cur = conn.cursor()
+            cur.execute("SELECT allowed_groups, allowed_tools FROM robot_mcp_permissions WHERE device_id = ?", (device_id,))
+            row = cur.fetchone()
+            conn.close()
+            if row:
+                if row[0]:
+                    allowed_groups = json.loads(row[0])
+                if row[1]:
+                    allowed_tools = json.loads(row[1])
+        except Exception:
+            pass
+
     for meta in MCP_TOOLS_METADATA:
-        # Chỉ trả về tool đang được Bật
-        if TOOL_STATES.get(meta["name"], True):
-            schemas.append({
-                "name": meta["name"],
-                "description": meta["description"],
-                "inputSchema": meta["parameters"]
-            })
+        t_name = meta["name"]
+        cat = meta.get("category", "")
+        # 1. Trạng thái bật/tắt toàn cục
+        if not TOOL_STATES.get(t_name, True):
+            continue
+        # 2. Phân quyền theo nhóm nếu có cấu hình cho Robot này
+        if allowed_groups is not None and cat not in allowed_groups:
+            continue
+        # 3. Phân quyền theo từng tool cụ thể nếu có cấu hình
+        if allowed_tools is not None and allowed_tools != ["*"] and t_name not in allowed_tools:
+            continue
+
+        schemas.append({
+            "name": t_name,
+            "description": meta["description"],
+            "inputSchema": meta["parameters"]
+        })
     return schemas
 
 def get_all_tools_metadata() -> List[Dict[str, Any]]:
@@ -1149,8 +1456,13 @@ def get_tool_states() -> Dict[str, bool]:
 # ==============================================================================
 # BỘ ĐIỀU HƯỚNG VÀ THỰC THI 78 CÔNG CỤ (DƯỚI 3 GIÂY)
 # ==============================================================================
-async def execute_tool(name: str, args: Dict[str, Any]) -> str:
-    """Thực thi công cụ theo tên, trả về kết quả dạng text thân thiện cho Robot đọc"""
+async def execute_tool(
+    name: str,
+    args: Dict[str, Any],
+    device_id: str = "default",
+    agent_id: str = ""
+) -> str:
+    """Thực thi công cụ theo tên, cô lập dữ liệu theo từng Robot"""
     global LONG_TERM_MEMORY, TASK_LIST
     if name not in TOOL_STATES or not TOOL_STATES.get(name, True):
         return f"Công cụ '{name}' hiện đang tạm tắt trên hệ thống MCP Portal."
@@ -1786,53 +2098,46 @@ async def execute_tool(name: str, args: Dict[str, Any]) -> str:
             return res_persona
 
         # ----------------------------------------------------------------------
-        # NHÓM 4: 18 CÔNG CỤ BỘ NHỚ & TIỆN ÍCH
+        # NHÓM 4: 18 CÔNG CỤ BỘ NHỚ & TIỆN ÍCH (CÔ LẬP THEO ROBOT)
         # ----------------------------------------------------------------------
         # 61. luu_ghi_nho_dai_han
         elif name == "luu_ghi_nho_dai_han":
             tieu_de = args.get("tieu_de", "Ghi nhớ mới").strip()
             noi_dung = args.get("noi_dung", "").strip()
-            LONG_TERM_MEMORY.append({
-                "id": len(LONG_TERM_MEMORY) + 1,
-                "title": tieu_de,
-                "content": noi_dung,
-                "created_at": datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-            })
-            return f"🧠 ĐÃ LƯU VÀO KÝ ỨC DÀI HẠN THÀNH CÔNG:\n• Tiêu đề: {tieu_de}\n• Nội dung: {noi_dung}"
+            res = save_robot_memory(device_id=device_id, agent_id=agent_id, title=tieu_de, content=noi_dung)
+            return f"🧠 ĐÃ LƯU VÀO KÝ ỨC DÀI HẠN (Robot [{device_id}]):\n• Tiêu đề: {res['title']}\n• Nội dung: {res['content']}"
 
         # 62. tim_kiem_ghi_nho_dai_han
         elif name == "tim_kiem_ghi_nho_dai_han":
             kw = (args.get("tu_khoa") or "").strip().lower()
-            matched = [m for m in LONG_TERM_MEMORY if kw in m["title"].lower() or kw in m["content"].lower()]
+            matched = get_robot_memories(device_id=device_id, agent_id=agent_id, kw=kw)
             if not matched:
-                if not LONG_TERM_MEMORY:
-                    return "🧠 Bộ nhớ dài hạn hiện chưa có dữ liệu nào được lưu."
-                matched = LONG_TERM_MEMORY[-3:]
-            lines = [f"🧠 TÌM THẤY {len(matched)} KÝ ỨC ĐÃ LƯU:"]
-            for m in matched:
+                return f"🧠 Robot [{device_id}] hiện chưa có ký ức nào phù hợp với từ khóa '{kw}'."
+            lines = [f"🧠 TÌM THẤY {len(matched)} KÝ ỨC CỦA ROBOT [{device_id}]:"]
+            for m in matched[:5]:
                 lines.append(f"• [ID {m['id']}] {m['title']}: {m['content']} ({m['created_at']})")
             return "\n".join(lines)
 
         # 63. xoa_ghi_nho_dai_han
         elif name == "xoa_ghi_nho_dai_han":
             tt = (args.get("tieu_de") or "").strip().lower()
-            before = len(LONG_TERM_MEMORY)
-            LONG_TERM_MEMORY = [m for m in LONG_TERM_MEMORY if tt not in m["title"].lower()]
-            return f"🗑️ Đã xóa {before - len(LONG_TERM_MEMORY)} mục ghi nhớ có chứa '{tt}'."
+            deleted = delete_robot_memory(device_id=device_id, agent_id=agent_id, title=tt)
+            return f"🗑️ Đã xóa {deleted} mục ghi nhớ của Robot [{device_id}] có chứa '{tt}'."
 
         # 64. tao_nhac_nho_cong_viec
         elif name == "tao_nhac_nho_cong_viec":
             cv = args.get("cong_viec", "").strip()
             tg = args.get("thoi_gian", "Trong ngày hôm nay").strip()
-            TASK_LIST.append({"task": cv, "time": tg, "done": False})
-            return f"⏰ ĐÃ TẠO NHẮC NHỞ MỚI:\n• Việc cần làm: {cv}\n• Thời hạn: {tg}"
+            res = save_robot_task(device_id=device_id, agent_id=agent_id, task=cv, deadline=tg)
+            return f"⏰ ĐÃ TẠO NHẮC NHỞ CHO ROBOT [{device_id}]:\n• Việc cần làm: {res['task']}\n• Thời hạn: {res['time']}"
 
         # 65. xem_danh_sach_cong_viec
         elif name == "xem_danh_sach_cong_viec":
-            if not TASK_LIST:
-                return "📋 Danh sách việc cần làm (To-Do List) hiện đang trống! Bạn đã hoàn thành tất cả công việc."
-            lines = ["📋 DANH SÁCH CÔNG VIỆC CẦN LÀM:"]
-            for i, t in enumerate(TASK_LIST, 1):
+            tasks = get_robot_tasks(device_id=device_id, agent_id=agent_id)
+            if not tasks:
+                return f"📋 Danh sách việc cần làm của Robot [{device_id}] hiện đang trống!"
+            lines = [f"📋 DANH SÁCH CÔNG VIỆC CẦN LÀM (Robot [{device_id}]):"]
+            for i, t in enumerate(tasks, 1):
                 status = "✅" if t.get("done") else "⏳"
                 lines.append(f"{i}. {status} {t['task']} (Hạn: {t['time']})")
             return "\n".join(lines)

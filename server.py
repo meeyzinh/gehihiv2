@@ -59,14 +59,27 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 # Tải biến môi trường từ .env
 load_dotenv()
 
-# MCP Portal 78 Công Cụ
+# MCP Portal 78 Công Cụ & Multi-Robot Connection Pool
 from mcp_portal import (
     mcp_device_manager,
+    MCPConnectionManager,
+    MCPConnectionPool,
     execute_tool as execute_mcp_portal_tool,
     get_all_tools_metadata,
     get_tool_schemas,
+    get_tool_schemas_for_device,
     toggle_tool,
     get_tool_states,
+    get_robot_permissions,
+    set_robot_permissions,
+    toggle_robot_group,
+    toggle_robot_tool,
+    save_robot_memory,
+    get_robot_memories,
+    delete_robot_memory,
+    save_robot_task,
+    get_robot_tasks,
+    MCP_TOOL_GROUPS,
     TOTAL_TOOLS_COUNT
 )
 
@@ -6000,13 +6013,20 @@ async def connect_upstream(
 @app.get("/api/memories")
 async def get_memories(
     agent_id: Optional[str] = None,
+    deviceId: Optional[str] = None,
     memory_type: Optional[str] = None,
     search: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
+    target_id = agent_id or deviceId
     query = db.query(Memory)
-    if agent_id:
-        query = query.filter(Memory.agent_id == agent_id)
+    if target_id:
+        # Nếu target_id là id số của Agent, lấy agent_id tương ứng
+        agent_match = None
+        if target_id.isdigit():
+            agent_match = db.query(Agent).filter(Agent.id == int(target_id)).first()
+        agt_code = agent_match.agent_id if agent_match else target_id
+        query = query.filter((Memory.agent_id == target_id) | (Memory.agent_id == agt_code))
     if memory_type and memory_type in ["SHORT_TERM", "LONG_TERM"]:
         query = query.filter(Memory.memory_type == memory_type)
     if search:
@@ -6058,10 +6078,19 @@ async def bulk_delete_memories(payload: BulkDeletePayload, db: Session = Depends
 
 # Quản lý Nhiệm vụ (Tasks)
 @app.get("/api/tasks")
-async def get_tasks(agent_id: Optional[str] = None, db: Session = Depends(get_db)):
+async def get_tasks(
+    agent_id: Optional[str] = None,
+    deviceId: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    target_id = agent_id or deviceId
     query = db.query(Task)
-    if agent_id:
-        query = query.filter(Task.agent_id == agent_id)
+    if target_id:
+        agent_match = None
+        if target_id.isdigit():
+            agent_match = db.query(Agent).filter(Agent.id == int(target_id)).first()
+        agt_code = agent_match.agent_id if agent_match else target_id
+        query = query.filter((Task.agent_id == target_id) | (Task.agent_id == agt_code))
     return query.order_by(Task.id.desc()).all()
 
 
@@ -6528,37 +6557,145 @@ async def get_mcp_upstream_status():
 
 
 # ==========================================
-# 8.2 XIAOZHI MCP PORTAL (78 TOOLS) REST APIS
+# 8.2 XIAOZHI MCP PORTAL (78 TOOLS) & MULTI-ROBOT APIS
 # ==========================================
 
 class AddMcpDevicePayload(BaseModel):
     name: str = "330730"
     websocket_url: str
+    agent_id: Optional[str] = None
+    device_id: Optional[str] = None
 
 class ToggleToolPayload(BaseModel):
     enable: Optional[bool] = None
 
+class ToggleGroupPayload(BaseModel):
+    enable: Optional[bool] = None
+
+class SetPermissionsPayload(BaseModel):
+    allowed_groups: Optional[List[str]] = None
+    allowed_tools: Optional[List[str]] = None
+
 class TestToolPayload(BaseModel):
     arguments: Optional[Dict[str, Any]] = {}
+    device_id: Optional[str] = "default"
 
 @app.get("/api/mcp/portal/status")
 async def get_mcp_portal_status():
-    """Lấy trạng thái tổng quan các thiết bị MCP Portal và uptime"""
+    """Lấy trạng thái tổng quan toàn bộ dàn Robot trong MCPConnectionPool"""
     return mcp_device_manager.get_status_summary()
+
+@app.get("/api/mcp/portal/groups")
+async def get_mcp_portal_groups():
+    """Lấy danh mục 4 nhóm công cụ MCP chuẩn"""
+    return {
+        "groups": MCP_TOOL_GROUPS,
+        "total_tools": TOTAL_TOOLS_COUNT
+    }
+
+@app.get("/api/mcp/portal/robots/{device_id}/permissions")
+async def get_robot_mcp_permissions(device_id: str):
+    """Lấy phân quyền các nhóm và công cụ được phép dùng của Robot này"""
+    return get_robot_permissions(device_id)
+
+@app.post("/api/mcp/portal/robots/{device_id}/permissions")
+async def update_robot_mcp_permissions(
+    device_id: str,
+    payload: SetPermissionsPayload,
+    current_user: User = Depends(get_current_user)
+):
+    """Admin cấu hình toàn diện danh sách nhóm và công cụ cho một Robot"""
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Chỉ tài khoản Admin mới có quyền thay đổi phân quyền cho Robot"
+        )
+    res = set_robot_permissions(
+        device_id=device_id,
+        allowed_groups=payload.allowed_groups,
+        allowed_tools=payload.allowed_tools
+    )
+    return {"status": "ok", "permissions": res}
+
+@app.post("/api/mcp/portal/robots/{device_id}/groups/{group_id}/toggle")
+async def toggle_robot_mcp_group(
+    device_id: str,
+    group_id: str,
+    payload: Optional[ToggleGroupPayload] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Admin Bật / Tắt nguyên một nhóm công cụ cho Robot"""
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Chỉ tài khoản Admin mới có quyền bật/tắt nhóm chức năng cho Robot"
+        )
+    enable = payload.enable if payload else None
+    new_state = toggle_robot_group(device_id, group_id, enable)
+    return {
+        "status": "ok",
+        "device_id": device_id,
+        "group_id": group_id,
+        "enabled": new_state
+    }
+
+@app.post("/api/mcp/portal/robots/{device_id}/tools/{tool_name}/toggle")
+async def toggle_robot_mcp_tool(
+    device_id: str,
+    tool_name: str,
+    payload: Optional[ToggleToolPayload] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Admin Bật / Tắt một công cụ cụ thể cho Robot"""
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Chỉ tài khoản Admin mới có quyền bật/tắt chức năng cho Robot"
+        )
+    enable = payload.enable if payload else None
+    new_state = toggle_robot_tool(device_id, tool_name, enable)
+    return {
+        "status": "ok",
+        "device_id": device_id,
+        "tool_name": tool_name,
+        "enabled": new_state
+    }
+
+@app.get("/api/mcp/portal/robots/{device_id}/memories")
+async def get_robot_mcp_memories_endpoint(device_id: str, kw: Optional[str] = "", agent_id: Optional[str] = None):
+    """Lấy ký ức dài hạn được cô lập riêng của Robot"""
+    return {
+        "device_id": device_id,
+        "memories": get_robot_memories(device_id=device_id, agent_id=agent_id or device_id, kw=kw or "")
+    }
+
+@app.get("/api/mcp/portal/robots/{device_id}/tasks")
+async def get_robot_mcp_tasks_endpoint(device_id: str, agent_id: Optional[str] = None):
+    """Lấy danh sách việc cần làm được cô lập riêng của Robot"""
+    return {
+        "device_id": device_id,
+        "tasks": get_robot_tasks(device_id=device_id, agent_id=agent_id or device_id)
+    }
 
 @app.post("/api/mcp/portal/devices")
 async def add_mcp_portal_device(payload: AddMcpDevicePayload):
-    """Thêm thiết bị mới và tự động kết nối MCP tới xiaozhi.me"""
+    """Thêm Robot mới và kết nối WebSocket song song trong Connection Pool"""
     ws_url = payload.websocket_url.strip()
     if not ws_url:
         raise HTTPException(status_code=400, detail="Vui lòng nhập WebSocket URL hợp lệ")
-    dev = mcp_device_manager.add_device(payload.name, ws_url)
+    dev = mcp_device_manager.add_device(
+        device_name=payload.name,
+        websocket_url=ws_url,
+        agent_id=payload.agent_id,
+        device_id=payload.device_id
+    )
     return {
         "status": "ok",
-        "message": f"Đã thêm và kích hoạt kết nối cho thiết bị [{dev.device_name}]",
+        "message": f"Đã thêm và kích hoạt kết nối cho Robot [{dev.device_name}]",
         "device": {
             "id": dev.device_id,
             "name": dev.device_name,
+            "agent_id": dev.agent_id,
             "websocket_url": dev.websocket_url,
             "is_connected": dev.is_connected
         }
@@ -6566,33 +6703,54 @@ async def add_mcp_portal_device(payload: AddMcpDevicePayload):
 
 @app.delete("/api/mcp/portal/devices/{device_id}")
 async def remove_mcp_portal_device(device_id: str):
-    """Xóa thiết bị khỏi hệ thống MCP Portal"""
+    """Xóa Robot khỏi hệ thống MCP Portal"""
     ok = mcp_device_manager.remove_device(device_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Không tìm thấy thiết bị")
-    return {"status": "ok", "message": "Đã xóa thiết bị thành công"}
+    return {"status": "ok", "message": "Đã xóa kết nối Robot thành công"}
+
+@app.post("/api/mcp/portal/devices/{device_id}/pause")
+async def pause_mcp_portal_device(device_id: str):
+    """Tạm dừng kết nối một Robot mà không làm gián đoạn các Robot khác"""
+    ok = mcp_device_manager.pause_device(device_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Không tìm thấy thiết bị")
+    return {"status": "ok", "message": f"Đã tạm dừng kết nối cho Robot [{device_id}]"}
 
 @app.post("/api/mcp/portal/devices/{device_id}/reconnect")
 async def reconnect_mcp_portal_device(device_id: str):
-    """Khởi động lại kết nối thiết bị"""
+    """Khởi động lại / Tiếp tục kết nối một Robot độc lập"""
+    ok = mcp_device_manager.resume_device(device_id)
+    if ok:
+        return {"status": "ok", "message": f"Đang kết nối lại Robot [{device_id}]..."}
     if device_id in mcp_device_manager.devices:
         dev = mcp_device_manager.devices[device_id]
         dev.stop()
         dev.start(mcp_device_manager)
-        return {"status": "ok", "message": f"Đang kết nối lại thiết bị [{dev.device_name}]..."}
+        return {"status": "ok", "message": f"Đang kết nối lại Robot [{dev.device_name}]..."}
     raise HTTPException(status_code=404, detail="Không tìm thấy thiết bị")
 
 @app.get("/api/mcp/portal/tools")
-async def get_mcp_portal_tools():
-    """Lấy danh sách 78 công cụ MCP kèm trạng thái Bật/Tắt và số lượt gọi"""
+async def get_mcp_portal_tools(device_id: Optional[str] = None):
+    """Lấy danh sách 78 công cụ MCP kèm trạng thái Bật/Tắt và phân quyền Robot"""
     return {
         "total": TOTAL_TOOLS_COUNT,
-        "tools": get_all_tools_metadata()
+        "tools": get_all_tools_metadata(),
+        "device_id": device_id
     }
 
 @app.post("/api/mcp/portal/tools/{tool_name}/toggle")
-async def toggle_mcp_portal_tool(tool_name: str, payload: Optional[ToggleToolPayload] = None):
-    """Bật / Tắt một công cụ MCP"""
+async def toggle_mcp_portal_tool(
+    tool_name: str,
+    payload: Optional[ToggleToolPayload] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Bật / Tắt một công cụ MCP toàn cục (Chỉ Admin)"""
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Chỉ tài khoản Admin mới có quyền bật/tắt công cụ hệ thống"
+        )
     enable = payload.enable if payload else None
     new_state = toggle_tool(tool_name, enable)
     return {
@@ -6605,10 +6763,12 @@ async def toggle_mcp_portal_tool(tool_name: str, payload: Optional[ToggleToolPay
 async def test_mcp_portal_tool(tool_name: str, payload: Optional[TestToolPayload] = None):
     """Chạy thử nghiệm một công cụ MCP trực tiếp từ giao diện Web"""
     args = payload.arguments if payload and payload.arguments else {}
-    res = await execute_mcp_portal_tool(tool_name, args)
+    dev_id = payload.device_id if payload and payload.device_id else "default"
+    res = await execute_mcp_portal_tool(tool_name, args, device_id=dev_id, agent_id=dev_id)
     return {
         "status": "ok",
         "tool": tool_name,
+        "device_id": dev_id,
         "arguments": args,
         "result": res
     }
