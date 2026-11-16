@@ -5315,6 +5315,14 @@ async def serve_index(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request=request, name="index.html", context={"port": PORT})
 
 
+@app.get("/admin", response_class=HTMLResponse)
+@app.get("/admin/devices", response_class=HTMLResponse)
+@app.get("/admin.html", response_class=HTMLResponse)
+async def serve_admin_page(request: Request):
+    """Trang Quản trị Danh sách Thiết bị dành riêng cho tài khoản Super Admin"""
+    return templates.TemplateResponse(request=request, name="admin.html", context={"port": PORT})
+
+
 @app.get("/huong-dan", response_class=HTMLResponse)
 @app.get("/huong-dan.html", response_class=HTMLResponse)
 async def serve_guide(request: Request):
@@ -5884,37 +5892,50 @@ async def get_devices(db: Session = Depends(get_db), current_user: User = Depend
 
 class DevicePayload(BaseModel):
     device_name: str
-    agent_id: str
+    agent_id: Optional[str] = ""
     mac_address: str
     assistant_name: Optional[str] = "Sophia"
+    model: Optional[str] = "Gemini 3.1 Flash Lite"
+    voice: Optional[str] = "vi-VN-HoaiMyNeural"
+    prompt: Optional[str] = ""
+    character: Optional[str] = ""
+    password: Optional[str] = "123456"
 
 
 @app.post("/api/devices")
 async def create_or_update_device(payload: DevicePayload, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db.query(Agent).filter(Agent.user_id == current_user.id).update({Agent.is_active: False})
-    existing = db.query(Agent).filter((Agent.agent_id == payload.agent_id) | (sa.func.lower(Agent.mac_address) == payload.mac_address.lower())).first()
+    agent_code = payload.agent_id.strip() if payload.agent_id and payload.agent_id.strip() else f"{random.randint(100000, 999999)}"
+    mac_clean = payload.mac_address.strip()
+
+    existing = db.query(Agent).filter((Agent.agent_id == agent_code) | (sa.func.lower(Agent.mac_address) == mac_clean.lower())).first()
     if existing:
         existing.device_name = payload.device_name
-        existing.mac_address = payload.mac_address
-        existing.assistant_name = payload.assistant_name or existing.assistant_name
+        existing.mac_address = mac_clean
+        existing.assistant_name = payload.assistant_name or payload.device_name or existing.assistant_name
+        if payload.model: existing.llm_model = payload.model
+        if payload.voice: existing.tts_voice = payload.voice
+        if payload.prompt or payload.character: existing.character = payload.prompt or payload.character
         existing.is_active = True
         db.commit()
         db.refresh(existing)
-        return existing
+        return format_device_dict(existing)
     else:
         new_agent = Agent(
             user_id=current_user.id,
             device_name=payload.device_name,
-            agent_id=payload.agent_id,
-            mac_address=payload.mac_address,
-            assistant_name=payload.assistant_name or "Sophia",
-            tts_voice="vi-female",
+            agent_id=agent_code,
+            mac_address=mac_clean,
+            assistant_name=payload.assistant_name or payload.device_name or "Sophia",
+            llm_model=payload.model or "Gemini 3.1 Flash Lite",
+            tts_voice=payload.voice or "vi-VN-HoaiMyNeural",
+            character=payload.prompt or payload.character or DEFAULT_CHARACTER_PROMPT,
             is_active=True
         )
         db.add(new_agent)
         db.commit()
         db.refresh(new_agent)
-        return new_agent
+        return format_device_dict(new_agent)
 
 
 @app.get("/api/upstream/status")
@@ -5962,8 +5983,12 @@ async def select_active_device(agent_id: str, db: Session = Depends(get_db), cur
 
 
 @app.delete("/api/devices/{device_id}")
-async def delete_device(device_id: int, db: Session = Depends(get_db)):
-    agent = db.query(Agent).filter(Agent.id == device_id).first()
+async def delete_device(device_id: str, db: Session = Depends(get_db)):
+    agent = None
+    if device_id.isdigit():
+        agent = db.query(Agent).filter(Agent.id == int(device_id)).first()
+    if not agent:
+        agent = db.query(Agent).filter((Agent.agent_id == device_id) | (sa.func.lower(Agent.mac_address) == device_id.lower())).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Không tìm thấy thiết bị")
     db.delete(agent)
