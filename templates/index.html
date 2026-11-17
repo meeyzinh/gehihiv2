@@ -3624,12 +3624,24 @@ Ví dụ:
             <!-- CẤU HÌNH TOKEN RIÊNG (TÙY CHỌN) -->
             <div style="margin-top: 10px; border-top: 1px dashed rgba(71,85,105,0.5); padding-top: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
                 <div style="font-size: 12px; color: #cbd5e1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                    <span>🔑 Upstream Token riêng của Robot này:</span>
-                    <input type="password" id="currentRobotTokenInput" placeholder="Để trống nếu dùng token chung của tài khoản" style="background: #0f172a; border: 1px solid #334155; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; width: 240px;">
+                    <span>🔑 Upstream REST Token (Đồng bộ cấu hình Prompt/Voice):</span>
+                    <input type="password" id="currentRobotTokenInput" placeholder="Token tài khoản xiaozhi.me..." style="background: #0f172a; border: 1px solid #334155; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; width: 220px;">
                     <button type="button" onclick="saveCurrentRobotToken()" style="background: #334155; border: none; color: #e2e8f0; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;">Lưu Token</button>
                 </div>
                 <div id="syncCardLastSyncTime" style="font-size: 11px; color: #64748b;">
                     Lần đồng bộ gần nhất: Chưa có
+                </div>
+            </div>
+
+            <!-- KẾT NỐI ĐIỂM CUỐI MCP XIAOZHI.ME (78 CÔNG CỤ AI MỞ RỘNG) -->
+            <div style="margin-top: 10px; border-top: 1px dashed rgba(56,189,248,0.35); padding-top: 10px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: rgba(8, 23, 48, 0.6); padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.2);">
+                <div style="font-size: 12px; color: #cbd5e1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1;">
+                    <span style="color: #38bdf8; font-weight: 700; white-space: nowrap;">⚡ Điểm cuối MCP xiaozhi.me:</span>
+                    <input type="text" id="currentRobotMcpWsInput" placeholder="Dán URL wss://api.xiaozhi.me/mcp/?token=... từ mục Mở rộng của robot trên xiaozhi.me" style="background: #0f172a; border: 1px solid #0284c7; color: #38bdf8; padding: 5px 10px; border-radius: 6px; font-size: 12px; flex: 1; min-width: 260px; font-family: monospace;">
+                    <button type="button" onclick="saveCurrentRobotMcpWs()" style="background: linear-gradient(135deg, #0284c7, #0369a1); border: 1px solid #38bdf8; color: white; padding: 5px 14px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;">🔌 Kết nối MCP</button>
+                </div>
+                <div id="syncCardMcpStatusBadge">
+                    <span class="badge badge-offline" style="font-size: 11px;">⚪ MCP: Chưa kết nối</span>
                 </div>
             </div>
         </div>
@@ -5704,7 +5716,21 @@ Ví dụ:
 
         if (syncName) syncName.innerText = dev.assistant_name || dev.device_name || dev.name || "Robot Sophia";
         if (syncIdBadge) syncIdBadge.innerText = `ID: ${dev.agent_id || dev.device_code || dev.id || 'N/A'}`;
-        if (tokenInput) tokenInput.value = dev.upstream_token || "";
+        if (tokenInput) tokenInput.value = (dev.upstream_token && !dev.upstream_token.startsWith("wss://")) ? dev.upstream_token : "";
+
+        const mcpWsInput = document.getElementById("currentRobotMcpWsInput");
+        const mcpBadge = document.getElementById("syncCardMcpStatusBadge");
+        if (mcpWsInput) {
+          mcpWsInput.value = dev.mcp_websocket_url || (dev.upstream_token && dev.upstream_token.startsWith("wss://") ? dev.upstream_token : "");
+        }
+        if (mcpBadge) {
+          const isMcp = dev.is_mcp_connected;
+          if (isMcp) {
+            mcpBadge.innerHTML = '<span class="badge badge-online" style="font-size: 11px;">🟢 MCP: Đã kết nối Live</span>';
+          } else {
+            mcpBadge.innerHTML = '<span class="badge badge-offline" style="font-size: 11px;">⚪ MCP: Chưa kết nối</span>';
+          }
+        }
 
         if (syncStatusBadge) {
           const st = dev.sync_status || "idle";
@@ -6078,6 +6104,41 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
         }
       } catch (e) {
         showToast(`❌ Lỗi: ${e.message}`, false);
+      }
+    }
+
+    async function saveCurrentRobotMcpWs() {
+      const targetId = activeDeviceId || "1";
+      const wsUrl = document.getElementById("currentRobotMcpWsInput")?.value?.trim() || "";
+      if (!wsUrl) {
+        showToast("Vui lòng dán URL điểm cuối MCP (wss://api.xiaozhi.me/mcp/?token=...)", false);
+        return;
+      }
+      const devName = document.getElementById("syncCardRobotName")?.innerText?.trim() || "Robot";
+      const agentId = document.getElementById("syncCardAgentIdBadge")?.innerText?.replace("ID:", "").trim() || targetId;
+
+      try {
+        const res = await fetch("/api/mcp/portal/devices", {
+          method: "POST",
+          headers: getAuthHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({
+            name: devName,
+            websocket_url: wsUrl,
+            agent_id: agentId,
+            device_id: agentId
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === "ok") {
+          showToast(`✓ Đã kết nối Điểm cuối MCP cho Robot [${devName}] thành công!`);
+          setTimeout(() => {
+            loadMyXiaozhiConfig(false);
+          }, 1500);
+        } else {
+          showToast("Lỗi kết nối MCP: " + (data.detail || data.message || "Không thể kết nối"), false);
+        }
+      } catch (e) {
+        showToast("Lỗi kết nối: " + e.message, false);
       }
     }
 

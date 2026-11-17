@@ -1813,6 +1813,25 @@ def format_device_dict(a: Agent) -> Dict[str, Any]:
     code = a.agent_id or "927184"
     mac = a.mac_address or "14:c1:9f:c4:ee:d0"
 
+    # Tra cứu hoặc tự động kích hoạt kết nối MCP nếu robot có cấu hình Điểm cuối MCP
+    mcp_dev = None
+    try:
+        mcp_dev = mcp_device_manager.find_device(str(code)) or mcp_device_manager.find_device(str(a.id))
+        up_tok = (getattr(a, "upstream_token", "") or "").strip()
+        if not mcp_dev and up_tok and (up_tok.startswith("wss://") or up_tok.startswith("ws://") or "api.xiaozhi.me/mcp" in up_tok or up_tok.startswith("token=")):
+            mcp_dev = mcp_device_manager.add_device(
+                device_name=dev_name,
+                websocket_url=up_tok,
+                agent_id=str(code),
+                device_id=str(code)
+            )
+    except Exception:
+        pass
+
+    is_mcp_online = bool(mcp_dev and mcp_dev.is_connected)
+    up_tok_val = (getattr(a, "upstream_token", "") or "").strip()
+    mcp_url = mcp_dev.websocket_url if mcp_dev else (up_tok_val if up_tok_val.startswith("wss://") else "")
+
     return {
         "id": a.id,
         "name": dev_name,
@@ -1823,6 +1842,8 @@ def format_device_dict(a: Agent) -> Dict[str, Any]:
         "mac_address": mac,
         "agent_id": a.agent_id or "2625491",
         "is_online": online,
+        "is_mcp_connected": is_mcp_online,
+        "mcp_websocket_url": mcp_url,
         "is_active": bool(a.is_active),
         "initial": (dev_name or "R")[0].upper(),
         "badge_color": "#1e3a8a",
@@ -2173,6 +2194,25 @@ async def lifespan(app: FastAPI):
     # Khởi chạy kết nối tới Điểm cuối MCP xiaozhi.me nếu đã có URL/Token
     if xiaozhi_mcp_bridge.endpoint_url:
         xiaozhi_mcp_bridge.start()
+
+    # Tự động nạp Điểm cuối MCP cho các Robot đã lưu trong CSDL
+    try:
+        db_start = SessionLocal()
+        for ag in db_start.query(Agent).all():
+            tok = (ag.upstream_token or "").strip()
+            if tok and (tok.startswith("wss://") or tok.startswith("ws://") or "api.xiaozhi.me/mcp" in tok or tok.startswith("token=")):
+                code = str(ag.agent_id or ag.id)
+                if not mcp_device_manager.find_device(code):
+                    mcp_device_manager.add_device(
+                        device_name=ag.assistant_name or ag.device_name or f"Robot #{ag.id}",
+                        websocket_url=tok,
+                        agent_id=code,
+                        device_id=code
+                    )
+                    print(f"[STARTUP MCP] ✓ Đã tự động kích hoạt MCP cho robot {ag.assistant_name} ({code})")
+        db_start.close()
+    except Exception as e:
+        print(f"[STARTUP MCP SYNC ERR] {e}")
 
     # Khởi chạy toàn bộ MCP Portal (78 công cụ) cho các thiết bị đã cấu hình
     mcp_device_manager.start_all()
@@ -6156,6 +6196,26 @@ async def update_device_by_id(agent_id: str, payload: Dict[str, Any], request: R
     if "upstream_token" in payload: agent.upstream_token = str(payload["upstream_token"]).strip()
     if "upstream_api_url" in payload: agent.upstream_api_url = str(payload["upstream_api_url"]).strip()
 
+    # Nhận diện thông minh và tự động kết nối Điểm cuối MCP xiaozhi.me
+    mcp_in = payload.get("mcp_websocket_url") or payload.get("websocket_url")
+    token_str = (agent.upstream_token or "").strip()
+    if not mcp_in and (token_str.startswith("wss://") or token_str.startswith("ws://") or "api.xiaozhi.me/mcp" in token_str or token_str.startswith("token=")):
+        mcp_in = token_str
+
+    if mcp_in:
+        try:
+            mcp_device_manager.add_device(
+                device_name=agent.assistant_name or agent.device_name or "Robot",
+                websocket_url=str(mcp_in).strip(),
+                agent_id=str(agent.agent_id),
+                device_id=str(agent.agent_id)
+            )
+            agent.sync_status = "synced"
+            agent.sync_message = "Đã kết nối thành công tới Điểm cuối MCP xiaozhi.me!"
+            agent.last_synced_at = datetime.datetime.utcnow()
+        except Exception as err:
+            print(f"[MCP AUTO CONNECT ERR] {err}")
+
     agent.updated_at = datetime.datetime.utcnow()
     db.commit()
 
@@ -6172,31 +6232,40 @@ async def update_device_by_id(agent_id: str, payload: Dict[str, Any], request: R
                          (user.upstream_api_url if user and user.upstream_api_url and user.upstream_api_url.strip() else None) or \
                          DEFAULT_UPSTREAM_URL
 
-        full_prompt = agent.character or ""
-        if agent.hidden_prompt and agent.hidden_prompt.strip():
-            full_prompt = f"{full_prompt}\n\n[HỆ THỐNG QUẢN TRỊ ẨN]\n{agent.hidden_prompt.strip()}"
+        # Nếu token_to_use là WebSocket MCP URL thì không gọi REST push_to_upstream để tránh lỗi HTTP 404
+        if token_to_use and (token_to_use.startswith("wss://") or token_to_use.startswith("ws://") or "api.xiaozhi.me/mcp" in token_to_use or token_to_use.startswith("token=")):
+            upstream_status = True
+            sync_msg = "Đã kết nối thành công tới Điểm cuối MCP xiaozhi.me!"
+            agent.last_synced_at = datetime.datetime.utcnow()
+            agent.sync_status = "synced"
+            agent.sync_message = sync_msg
+            db.commit()
+        else:
+            full_prompt = agent.character or ""
+            if agent.hidden_prompt and agent.hidden_prompt.strip():
+                full_prompt = f"{full_prompt}\n\n[HỆ THỐNG QUẢN TRỊ ẨN]\n{agent.hidden_prompt.strip()}"
 
-        upstream_res = await upstream_client.push_to_upstream(
-            agent_id=agent.agent_id,
-            config_data={
-                "assistant_name": agent.assistant_name,
-                "llm_model": agent.llm_model,
-                "language": agent.language,
-                "tts_voice": agent.tts_voice,
-                "tts_speech_speed": agent.tts_speech_speed,
-                "tts_pitch": agent.tts_pitch,
-                "character": full_prompt,
-                "mcp_endpoints": agent.mcp_endpoints
-            },
-            token=token_to_use,
-            api_url=api_url_to_use
-        )
-        upstream_status = upstream_res.get("synced_upstream", False)
-        sync_msg = upstream_res.get("message", "")
-        agent.last_synced_at = datetime.datetime.utcnow()
-        agent.sync_status = "synced" if upstream_status else "failed"
-        agent.sync_message = sync_msg
-        db.commit()
+            upstream_res = await upstream_client.push_to_upstream(
+                agent_id=agent.agent_id,
+                config_data={
+                    "assistant_name": agent.assistant_name,
+                    "llm_model": agent.llm_model,
+                    "language": agent.language,
+                    "tts_voice": agent.tts_voice,
+                    "tts_speech_speed": agent.tts_speech_speed,
+                    "tts_pitch": agent.tts_pitch,
+                    "character": full_prompt,
+                    "mcp_endpoints": agent.mcp_endpoints
+                },
+                token=token_to_use,
+                api_url=api_url_to_use
+            )
+            upstream_status = upstream_res.get("synced_upstream", False)
+            sync_msg = upstream_res.get("message", "")
+            agent.last_synced_at = datetime.datetime.utcnow()
+            agent.sync_status = "synced" if upstream_status else "failed"
+            agent.sync_message = sync_msg
+            db.commit()
     except Exception as ex:
         print(f"Lỗi đồng bộ upstream từ update_device_by_id: {ex}")
         sync_msg = str(ex)
@@ -6695,7 +6764,18 @@ async def create_or_update_device(payload: DevicePayload, db: Session = Depends(
     # Tự động gửi cấu hình ban đầu lên xiaozhi.me nếu có token
     try:
         token_to_use = up_token or current_user.upstream_token or DEFAULT_UPSTREAM_TOKEN
-        if token_to_use and target_agent.agent_id:
+        if token_to_use and (token_to_use.startswith("wss://") or token_to_use.startswith("ws://") or "api.xiaozhi.me/mcp" in token_to_use or token_to_use.startswith("token=")):
+            mcp_device_manager.add_device(
+                device_name=target_agent.assistant_name or target_agent.device_name or "Robot",
+                websocket_url=token_to_use,
+                agent_id=str(target_agent.agent_id),
+                device_id=str(target_agent.agent_id)
+            )
+            target_agent.last_synced_at = datetime.datetime.utcnow()
+            target_agent.sync_status = "synced"
+            target_agent.sync_message = "Đã kết nối thành công tới Điểm cuối MCP xiaozhi.me!"
+            db.commit()
+        elif token_to_use and target_agent.agent_id:
             push_res = await upstream_client.push_to_upstream(
                 agent_id=target_agent.agent_id,
                 config_data={

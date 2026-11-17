@@ -599,9 +599,14 @@
               Quản lý các kết nối WebSocket client tới xiaozhi.me và phân quyền công cụ mở rộng trí tuệ theo từng Robot.
             </p>
           </div>
-          <button onclick="fetchMcpStatus()" class="btn btn-secondary btn-sm">
-            <span>🔄</span> Cập nhật MCP Pool
-          </button>
+          <div style="display: flex; gap: 8px;">
+            <button onclick="openConnectMcpModal()" class="btn btn-cyan btn-sm">
+              <span>🔌</span> Thêm Kết Nối MCP
+            </button>
+            <button onclick="fetchMcpStatus()" class="btn btn-secondary btn-sm">
+              <span>🔄</span> Cập nhật MCP Pool
+            </button>
+          </div>
         </div>
 
         <div id="mcpPoolList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px;">
@@ -831,6 +836,35 @@
         <div class="modal-footer">
           <button type="button" onclick="closeModal('changeAdminPassModal')" class="btn btn-secondary">Hủy</button>
           <button type="submit" class="btn btn-amber"><span>💾</span> Lưu Mật Khẩu</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: KẾT NỐI ĐIỂM CUỐI MCP XIAOZHI.ME -->
+  <div id="connectMcpModal" class="modal-overlay">
+    <div class="modal-dialog" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3><span>🔌</span> Kết Nối Điểm Cuối MCP xiaozhi.me</h3>
+        <button onclick="closeModal('connectMcpModal')" style="background: transparent; border: none; color: #94a3b8; font-size: 18px; cursor: pointer;">✕</button>
+      </div>
+      <form onsubmit="handleConnectMcpSubmit(event)">
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
+          <div>
+            <label class="form-label">Chọn Robot trong hệ thống <span style="color: #ef4444;">*</span></label>
+            <select id="mcpConnectRobotSelect" class="form-control" required style="font-weight: bold; color: #38bdf8;"></select>
+          </div>
+          <div>
+            <label class="form-label">URL Điểm Cuối MCP (từ xiaozhi.me) <span style="color: #ef4444;">*</span></label>
+            <input type="text" id="mcpConnectWsUrl" class="form-control mono" required placeholder="wss://api.xiaozhi.me/mcp/?token=...">
+            <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 6px;">
+              💡 Vào xiaozhi.me &rarr; Chọn robot &rarr; <strong>Cấu hình &rarr; Mở rộng &rarr; Điểm cuối MCP</strong> &rarr; Bấm copy URL dán vào đây.
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" onclick="closeModal('connectMcpModal')" class="btn btn-secondary">Hủy</button>
+          <button type="submit" class="btn btn-cyan"><span>🔌</span> Kích Hoạt Kết Nối</button>
         </div>
       </form>
     </div>
@@ -1576,6 +1610,57 @@
         }
       } catch (e) {
         showToast("Lỗi kết nối lại: " + e.message, false);
+      }
+    }
+
+    function openConnectMcpModal() {
+      const sel = document.getElementById("mcpConnectRobotSelect");
+      if (sel) {
+        sel.innerHTML = allDevices.map(d => {
+          const devName = d.name || d.assistant_name || `Robot #${d.id}`;
+          const pin = d.agent_id || d.device_code || d.id;
+          return `<option value="${pin}" data-name="${devName}">${devName} (ID: ${pin})</option>`;
+        }).join('');
+      }
+      document.getElementById("mcpConnectWsUrl").value = "";
+      openModal("connectMcpModal");
+    }
+
+    async function handleConnectMcpSubmit(e) {
+      if (e) e.preventDefault();
+      const sel = document.getElementById("mcpConnectRobotSelect");
+      const agentId = sel.value;
+      const opt = sel.options[sel.selectedIndex];
+      const devName = opt ? opt.getAttribute("data-name") : "Robot";
+      const wsUrl = document.getElementById("mcpConnectWsUrl").value.trim();
+
+      if (!wsUrl) {
+        showToast("Vui lòng nhập URL điểm cuối MCP", false);
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/mcp/portal/devices", {
+          method: "POST",
+          headers: getAuthHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({
+            name: devName,
+            websocket_url: wsUrl,
+            agent_id: agentId,
+            device_id: agentId
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === "ok") {
+          showToast(`✓ Đã kết nối MCP cho Robot [${devName}] thành công!`);
+          closeModal("connectMcpModal");
+          await fetchMcpStatus();
+          await loadDevices();
+        } else {
+          showToast("Lỗi kết nối: " + (data.detail || data.message || "Thất bại"), false);
+        }
+      } catch (err) {
+        showToast("Lỗi kết nối: " + err.message, false);
       }
     }
 
