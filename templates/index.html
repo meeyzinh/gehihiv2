@@ -1912,11 +1912,27 @@ body {
           </div>
         </div>
 
-        <div style="margin-bottom: 14px;">
-          <label style="display: block; font-size: 12.5px; font-weight: 600; color: #e2e8f0; margin-bottom: 6px;">
-            🔑 Upstream Token riêng của Robot này (Tùy chọn)
-          </label>
-          <input type="password" id="quickAddToken" placeholder="Dán Token nếu robot dùng tài khoản xiaozhi.me khác (để trống để dùng token chung)" style="width: 100%; padding: 10px 12px; border-radius: 8px; background: #061224; border: 1px solid #334155; color: white; font-size: 12.5px; box-sizing: border-box;">
+        <div style="margin-bottom: 14px; background: rgba(15,23,42,0.6); padding: 12px; border-radius: 10px; border: 1px solid rgba(56,189,248,0.25);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label style="font-size: 12.5px; font-weight: 700; color: #38bdf8;">
+              🔑 Upstream Token xiaozhi.me (Tài khoản riêng)
+            </label>
+            <span style="font-size: 11px; color: #94a3b8;">Để trống nếu dùng TK mặc định</span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <input type="password" id="quickAddToken" placeholder="Dán Token nếu robot thuộc tài khoản xiaozhi.me khác..." style="flex: 1; padding: 9px 12px; border-radius: 8px; background: #061224; border: 1px solid #334155; color: white; font-size: 12px; box-sizing: border-box;">
+            <button type="button" onclick="inspectXiaozhiAccountForQuickAdd()" style="background: linear-gradient(135deg, #0284c7, #2563eb); border: none; color: white; padding: 9px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 4px;">
+              🔍 Quét Robot
+            </button>
+          </div>
+          <div id="quickAddDiscoveryBox" style="display: none; margin-top: 10px; padding: 10px; background: rgba(30,58,138,0.25); border: 1px dashed #38bdf8; border-radius: 8px;">
+            <label style="display: block; font-size: 11.5px; font-weight: 700; color: #4ade80; margin-bottom: 6px;">
+              ✨ Tìm thấy Robot trên xiaozhi.me (Chọn để tự động điền):
+            </label>
+            <select id="quickAddDiscoveredSelect" onchange="applyDiscoveredAgentToQuickAdd(this.value)" style="width: 100%; padding: 8px 10px; border-radius: 6px; background: #0f172a; border: 1px solid #38bdf8; color: #f8fafc; font-size: 12.5px; box-sizing: border-box;">
+              <option value="">-- Bấm vào đây để chọn Robot tự động điền --</option>
+            </select>
+          </div>
         </div>
 
         <div style="margin-bottom: 18px;">
@@ -3627,6 +3643,7 @@ Ví dụ:
                     <span>🔑 Upstream REST Token (Đồng bộ cấu hình Prompt/Voice):</span>
                     <input type="password" id="currentRobotTokenInput" placeholder="Token tài khoản xiaozhi.me..." style="background: #0f172a; border: 1px solid #334155; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; width: 220px;">
                     <button type="button" onclick="saveCurrentRobotToken()" style="background: #334155; border: none; color: #e2e8f0; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;">Lưu Token</button>
+                    <button type="button" onclick="inspectCurrentRobotToken()" style="background: #0284c7; border: none; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 600;" title="Kiểm tra Token và xem các robot trên tài khoản xiaozhi.me">🔍 Kiểm tra Token</button>
                 </div>
                 <div id="syncCardLastSyncTime" style="font-size: 11px; color: #64748b;">
                     Lần đồng bộ gần nhất: Chưa có
@@ -6119,6 +6136,90 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
       } catch (e) {
         showToast(`❌ Lỗi: ${e.message}`, false);
       }
+    }
+
+    async function inspectCurrentRobotToken() {
+      const token = document.getElementById("currentRobotTokenInput")?.value?.trim() || "";
+      showToast("⏳ Đang kiểm tra token trên máy chủ xiaozhi.me...");
+      try {
+        const res = await fetch("/api/upstream/inspect-account", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: token || undefined })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          const count = data.agents ? data.agents.length : 0;
+          const names = (data.agents || []).map(a => a.name).join(", ");
+          showToast(`✅ Token hợp lệ 100%! Tìm thấy ${count} robot: ${names}`);
+        } else {
+          showToast(`❌ ${data.message || 'Token không hợp lệ hoặc đã hết hạn'}`, false);
+        }
+      } catch (e) {
+        showToast(`❌ Lỗi kết nối: ${e.message}`, false);
+      }
+    }
+
+    let quickAddDiscoveredAgents = [];
+
+    async function inspectXiaozhiAccountForQuickAdd() {
+      const tokenVal = document.getElementById("quickAddToken")?.value?.trim() || "";
+      showToast("⏳ Đang quét danh sách robot từ tài khoản xiaozhi.me...");
+      try {
+        const res = await fetch("/api/upstream/inspect-account", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: tokenVal || undefined })
+        });
+        const data = await res.json();
+        if (res.ok && data.success && data.agents && data.agents.length > 0) {
+          quickAddDiscoveredAgents = data.agents;
+          const box = document.getElementById("quickAddDiscoveryBox");
+          const select = document.getElementById("quickAddDiscoveredSelect");
+          if (box && select) {
+            box.style.display = "block";
+            select.innerHTML = '<option value="">-- Bấm vào đây để chọn Robot tự động điền --</option>' + 
+              data.agents.map((a, idx) => `<option value="${idx}">🤖 ${a.name} (ID: ${a.agent_id} | Model: ${a.llm_model} | MAC: ${a.mac || 'N/A'})</option>`).join('');
+          }
+          showToast(`🎉 Tìm thấy ${data.agents.length} robot trên xiaozhi.me!`);
+        } else {
+          showToast(`❌ ${data.message || 'Không tìm thấy robot nào trên tài khoản này'}`, false);
+        }
+      } catch (e) {
+        showToast(`❌ Lỗi kết nối: ${e.message}`, false);
+      }
+    }
+
+    function applyDiscoveredAgentToQuickAdd(indexStr) {
+      if (indexStr === "" || indexStr === null || indexStr === undefined) return;
+      const idx = parseInt(indexStr);
+      const agent = quickAddDiscoveredAgents[idx];
+      if (!agent) return;
+
+      const nameInput = document.getElementById("quickAddName");
+      const macInput = document.getElementById("quickAddMac");
+      const agentIdInput = document.getElementById("quickAddAgentId");
+      const modelSelect = document.getElementById("quickAddModel");
+      const voiceSelect = document.getElementById("quickAddVoice");
+      const promptText = document.getElementById("quickAddPrompt");
+
+      if (nameInput) nameInput.value = agent.name || "Robot";
+      if (macInput && agent.mac) macInput.value = agent.mac;
+      if (agentIdInput) agentIdInput.value = agent.agent_id;
+      if (modelSelect && agent.llm_model) {
+        if (Array.from(modelSelect.options).some(o => o.value === agent.llm_model)) {
+          modelSelect.value = agent.llm_model;
+        }
+      }
+      if (voiceSelect && agent.tts_voice) {
+        if (Array.from(voiceSelect.options).some(o => o.value === agent.tts_voice)) {
+          voiceSelect.value = agent.tts_voice;
+        }
+      }
+      if (promptText && agent.character) {
+        promptText.value = agent.character;
+      }
+      showToast(`✓ Đã tự động điền thông số robot: ${agent.name}!`);
     }
 
     async function saveCurrentRobotMcpWs() {

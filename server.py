@@ -6409,6 +6409,79 @@ async def sync_device_upstream_endpoint(
         }
 
 
+class InspectAccountPayload(BaseModel):
+    token: Optional[str] = None
+    api_url: Optional[str] = DEFAULT_UPSTREAM_URL
+
+
+@app.post("/api/upstream/inspect-account")
+async def inspect_xiaozhi_account(
+    payload: Optional[InspectAccountPayload] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Quét và tự động lấy danh sách toàn bộ Robot trên tài khoản xiaozhi.me tương ứng với Token được cung cấp.
+    Nếu không truyền token, tự động dùng Developer Token mặc định của hệ thống.
+    """
+    raw_token = (payload.token if payload and payload.token else None) or \
+                (current_user.upstream_token if current_user and current_user.upstream_token else None)
+    token_to_use = raw_token
+    if not token_to_use or token_to_use.startswith("wss://") or token_to_use.startswith("ws://") or "api.xiaozhi.me/mcp" in token_to_use or token_to_use.startswith("token="):
+        token_to_use = DEFAULT_UPSTREAM_DEV_TOKEN or DEFAULT_UPSTREAM_TOKEN
+
+    if not token_to_use:
+        return {"success": False, "message": "Chưa có Token xiaozhi.me. Vui lòng nhập token để quét."}
+
+    clean_url = (payload.api_url if payload and payload.api_url else DEFAULT_UPSTREAM_URL).rstrip('/')
+    if not clean_url.startswith("http"):
+        clean_url = "https://" + clean_url
+    if "xiaozhi.me" in clean_url:
+        clean_url = "https://xiaozhi.me"
+
+    headers = upstream_client._get_headers(token_to_use)
+    try:
+        resp = await upstream_client.client.get(f"{clean_url}/api/agents", headers=headers, timeout=8.0)
+        if resp.status_code == 200:
+            res_data = resp.json().get("data", [])
+            agents_list = []
+            for a in res_data:
+                last_dev = a.get("lastDevice") or {}
+                mac = last_dev.get("mac_address") or ""
+                agents_list.append({
+                    "id": a.get("id"),
+                    "agent_id": str(a.get("id")),
+                    "name": a.get("assistant_name") or a.get("agent_name") or f"Robot #{a.get('id')}",
+                    "mac": mac,
+                    "llm_model": a.get("llm_model") or "xz-lite",
+                    "tts_voice": a.get("tts_voice") or "Vietnamese_kindhearted_girl",
+                    "language": a.get("language") or "vi",
+                    "character": a.get("character") or "",
+                    "tts_speech_speed": a.get("tts_speech_speed") or "normal",
+                    "tts_pitch": a.get("tts_pitch") or 0
+                })
+            return {
+                "success": True,
+                "message": f"Tìm thấy {len(agents_list)} robot trên tài khoản xiaozhi.me!",
+                "agents": agents_list,
+                "token_used": token_to_use
+            }
+        elif resp.status_code in [401, 403]:
+            return {
+                "success": False,
+                "message": "Token không hợp lệ hoặc đã hết hạn (Mã lỗi HTTP 401/403 từ xiaozhi.me)."
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"Máy chủ xiaozhi.me phản hồi HTTP {resp.status_code}"
+            }
+    except Exception as ex:
+        return {
+            "success": False,
+            "message": f"Không thể kết nối đến máy chủ xiaozhi.me: {ex}"
+        }
+
+
 @app.get("/api/my-xiaozhi-options")
 async def get_xiaozhi_options():
     """Trả về danh sách Model AI, Ngôn ngữ và Giọng nói chuẩn kèm Demo Audio"""
