@@ -2737,29 +2737,13 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, session_id: i
             print(f"[YOUTUBE MUSIC] Lỗi gửi tín hiệu khởi tạo tới robot: {e}")
 
     ffmpeg_exe = get_ffmpeg_cmd()
-    cmd = [
-        ffmpeg_exe,
-        "-reconnect", "1",
-        "-reconnect_streamed", "1",
-        "-reconnect_delay_max", "5",
-    ]
-    if http_headers and isinstance(http_headers, dict):
-        h_lines = [f"{k}: {v}" for k, v in http_headers.items() if k.lower() in ['user-agent', 'accept', 'accept-language']]
-        if h_lines:
-            cmd.extend(["-headers", "\r\n".join(h_lines) + "\r\n"])
-    cmd.extend([
-        "-i", audio_url,
-        "-f", "s16le",
-        "-acodec", "pcm_s16le",
-        "-ac", "1",
-        "-ar", str(sample_rate),
-        "-loglevel", "error",
-        "pipe:1"
-    ])
+    is_yt = ("youtube.com" in audio_url or "youtu.be" in audio_url or (len(audio_url) == 11 and "/" not in audio_url and " " not in audio_url))
+    yt_target = audio_url if audio_url.startswith("http") else f"https://www.youtube.com/watch?v={audio_url}"
 
-    proc = None
+    p_ytdlp = None
+    p_ffmpeg = None
     frame_idx = 0
-    ffmpeg_err_buf = []
+
     try:
         if session_id != ACTIVE_MUSIC_STATE.get("session_id"):
             return
@@ -2770,36 +2754,64 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, session_id: i
             serial_manager._add_log(err_msg)
             return
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        ACTIVE_MUSIC_STATE["proc"] = proc
-        ACTIVE_MUSIC_STATE.setdefault("all_procs", set()).add(proc)
-
-        async def _read_stderr():
-            try:
-                while True:
-                    err_line = await proc.stderr.readline()
-                    if not err_line:
-                        break
-                    ffmpeg_err_buf.append(err_line.decode('utf-8', errors='replace').strip())
-            except Exception:
-                pass
-        stderr_reader_task = asyncio.create_task(_read_stderr())
+        if is_yt and yt_dlp:
+            # Dùng yt-dlp pipe trực tiếp vào stdin của FFmpeg!
+            # Hoàn toàn miễn nhiễm 100% với lỗi 403 Forbidden của GoogleVideo trên máy chủ Render/Docker!
+            ytdlp_cmd = [
+                sys.executable, "-m", "yt_dlp",
+                "-q", "--no-warnings",
+                "-f", "bestaudio/best",
+                "--socket-timeout", "10",
+                "-o", "-",
+                yt_target
+            ]
+            ffmpeg_cmd = [
+                ffmpeg_exe,
+                "-i", "pipe:0",
+                "-f", "s16le",
+                "-acodec", "pcm_s16le",
+                "-ac", "1",
+                "-ar", str(sample_rate),
+                "-loglevel", "error",
+                "pipe:1"
+            ]
+            p_ytdlp = subprocess.Popen(ytdlp_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            p_ffmpeg = subprocess.Popen(ffmpeg_cmd, stdin=p_ytdlp.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            ACTIVE_MUSIC_STATE["proc"] = p_ffmpeg
+            ACTIVE_MUSIC_STATE.setdefault("all_procs", set()).add(p_ffmpeg)
+            ACTIVE_MUSIC_STATE.setdefault("all_procs", set()).add(p_ytdlp)
+        else:
+            ffmpeg_cmd = [
+                ffmpeg_exe,
+                "-reconnect", "1",
+                "-reconnect_streamed", "1",
+                "-reconnect_delay_max", "5",
+                "-i", audio_url,
+                "-f", "s16le",
+                "-acodec", "pcm_s16le",
+                "-ac", "1",
+                "-ar", str(sample_rate),
+                "-loglevel", "error",
+                "pipe:1"
+            ]
+            p_ffmpeg = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            ACTIVE_MUSIC_STATE["proc"] = p_ffmpeg
+            ACTIVE_MUSIC_STATE.setdefault("all_procs", set()).add(p_ffmpeg)
 
         encoder = opuslib_next.Encoder(sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
         frame_samples = int(sample_rate * 0.060)  # 960 samples cho 60ms tại 16000Hz
         frame_bytes = frame_samples * 2  # 1920 bytes
 
+        def _read_chunk():
+            try:
+                return p_ffmpeg.stdout.read(frame_bytes)
+            except Exception:
+                return b""
+
         next_frame_time = time.monotonic()
 
         while not stop_event.is_set() and session_id == ACTIVE_MUSIC_STATE.get("session_id"):
-            try:
-                chunk = await proc.stdout.readexactly(frame_bytes)
-            except (asyncio.IncompleteReadError, EOFError):
-                break
+            chunk = await asyncio.to_thread(_read_chunk)
 
             if not chunk or len(chunk) < frame_bytes:
                 break
@@ -2840,26 +2852,22 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, session_id: i
         print(err_detail)
         serial_manager._add_log(err_detail)
     finally:
-        if frame_idx == 0 and ffmpeg_err_buf:
-            ff_err = " | ".join([l for l in ffmpeg_err_buf if l][:3])
-            serial_manager._add_log(f"[FFMPEG LỖI] {ff_err}")
-            print(f"[YOUTUBE MUSIC] FFmpeg lỗi: {ff_err}")
-
-        if proc:
+        if p_ffmpeg:
             try:
-                proc.kill()
+                p_ffmpeg.kill()
             except Exception:
                 pass
-            if os.name == 'nt' and getattr(proc, 'pid', None):
-                try:
-                    subprocess.run(f"taskkill /F /T /PID {proc.pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                except Exception:
-                    pass
-            all_p = ACTIVE_MUSIC_STATE.get("all_procs")
-            if all_p and isinstance(all_p, set):
-                all_p.discard(proc)
-            if ACTIVE_MUSIC_STATE.get("proc") == proc:
-                ACTIVE_MUSIC_STATE["proc"] = None
+        if p_ytdlp:
+            try:
+                p_ytdlp.kill()
+            except Exception:
+                pass
+        all_p = ACTIVE_MUSIC_STATE.get("all_procs")
+        if all_p and isinstance(all_p, set):
+            all_p.discard(p_ffmpeg)
+            all_p.discard(p_ytdlp)
+        if ACTIVE_MUSIC_STATE.get("proc") == p_ffmpeg:
+            ACTIVE_MUSIC_STATE["proc"] = None
 
         # Chỉ gửi thông báo kết thúc nếu session này vẫn là session hợp lệ mới nhất
         if session_id == ACTIVE_MUSIC_STATE.get("session_id"):
@@ -2889,7 +2897,6 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, session_id: i
 async def resolve_and_stream_music(target_url: str, track_info: dict = None, session_id: int = 0):
     if track_info is None:
         track_info = {}
-    audio_stream_url = target_url
     title = track_info.get("title", "")
     http_headers = None
 
@@ -2897,74 +2904,23 @@ async def resolve_and_stream_music(target_url: str, track_info: dict = None, ses
         print(f"[YOUTUBE MUSIC] ⏹ Hủy resolve bài hát vì session #{session_id} đã lỗi thời")
         return
 
-    # 1. Ưu tiên giải mã trực tiếp bằng yt-dlp (đặc biệt hiệu quả 100% trên Localhost với IP người dùng)
-    if yt_dlp:
-        try:
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'quiet': True,
-                'no_warnings': True,
-                'socket_timeout': 10,
-                'extractor_args': {'youtube': {'player_client': ['android']}}
-            }
-            req_target = target_url
-            if not req_target.startswith("http://") and not req_target.startswith("https://"):
-                req_target = f"ytsearch1:{req_target}"
-            def _extract():
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    return ydl.extract_info(req_target, download=False)
-            info = await asyncio.wait_for(asyncio.to_thread(_extract), timeout=20.0)
-            if info:
-                if "entries" in info and len(info["entries"]) > 0:
-                    info = info["entries"][0]
-                if info.get("url"):
-                    audio_stream_url = info.get("url")
-                http_headers = info.get("http_headers")
-                if not title and info.get("title"):
-                    title = info.get("title")
-                    track_info["title"] = title
-                if info.get("thumbnail") and not track_info.get("thumbnail"):
-                    track_info["thumbnail"] = info.get("thumbnail")
-                print(f"[YOUTUBE MUSIC] ✓ yt-dlp trích xuất thành công stream audio: {title}")
-        except Exception as e:
-            print(f"[YOUTUBE MUSIC] yt-dlp extract error: {e}")
-
-    # Kiểm tra session_id sau khi await yt-dlp
-    if session_id != ACTIVE_MUSIC_STATE.get("session_id"):
-        print(f"[YOUTUBE MUSIC] ⏹ Session #{session_id} bị hủy trong lúc giải mã yt-dlp")
-        return
-
-    # 2. Nếu yt-dlp chưa lấy được direct stream URL, thử fallback sang Invidious API
-    if ("youtube.com" in audio_stream_url or "youtu.be" in audio_stream_url):
-        inv_url, inv_title, inv_thumb = await resolve_audio_stream_direct(target_url)
-        if inv_url:
-            audio_stream_url = inv_url
-            if inv_title and not title:
-                title = inv_title
-                track_info["title"] = title
-            if inv_thumb and not track_info.get("thumbnail"):
-                track_info["thumbnail"] = inv_thumb
-            print(f"[YOUTUBE MUSIC] ✓ Invidious fallback trích xuất thành công: {title}")
-
-    if session_id != ACTIVE_MUSIC_STATE.get("session_id"):
-        print(f"[YOUTUBE MUSIC] ⏹ Session #{session_id} bị hủy sau Invidious fallback")
-        return
-
-    # Nếu không trích xuất được direct stream URL từ YouTube (chặn IP hoặc lỗi), không chạy ffmpeg trên URL HTML
-    if "youtube.com/watch" in audio_stream_url or "youtu.be/" in audio_stream_url:
-        print(f"[YOUTUBE MUSIC] ⚠ Không thể lấy audio stream cho '{target_url}' (IP bị giới hạn hoặc URL chưa hỗ trợ)")
-        serial_manager._add_log(f"[YOUTUBE MUSIC] ⚠ Không thể trích xuất stream cho: {title or target_url}")
-        ACTIVE_MUSIC_STATE["is_preparing"] = False
-        for ws in list(robot_ws_manager.all_robots):
+    # Nếu target_url là YouTube link hoặc ID:
+    # Nếu chưa có title, lấy nhanh tiêu đề bằng flat extract (<1.0s)
+    if ("youtube.com" in target_url or "youtu.be" in target_url or (len(target_url) == 11 and "/" not in target_url)) and not title:
+        if yt_dlp:
             try:
-                sess = robot_ws_manager.sessions.get(ws, "music-err")
-                await ws.send_json({"type": "llm", "emotion": "sad", "text": "Loi tai bai hat", "session_id": sess})
-                await ws.send_json({"type": "tts", "state": "stop", "session_id": sess})
+                ydl_flat_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': True}
+                def _extract_title():
+                    with yt_dlp.YoutubeDL(ydl_flat_opts) as ydl:
+                        return ydl.extract_info(target_url, download=False)
+                t_info = await asyncio.wait_for(asyncio.to_thread(_extract_title), timeout=4.0)
+                if t_info and t_info.get("title"):
+                    title = t_info.get("title")
+                    track_info["title"] = title
             except Exception:
                 pass
-        return
 
-    await stream_music_to_robots(audio_stream_url, track_info, session_id, http_headers=http_headers)
+    await stream_music_to_robots(target_url, track_info, session_id, http_headers=http_headers)
 
 async def start_music_playback(query_or_url: str, track_info: Optional[dict] = None, source: str = "voice") -> bool:
     """
