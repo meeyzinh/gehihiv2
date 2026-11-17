@@ -363,7 +363,7 @@
 
     /* Admin Login Screen Gatekeeper */
     #adminLoginGatekeeper {
-      display: none;
+      display: flex;
       min-height: 100vh;
       align-items: center;
       justify-content: center;
@@ -848,7 +848,7 @@
     let currentMcpStatus = null;
 
     function getAuthToken() {
-      return localStorage.getItem("megabot_session_token") || "admin";
+      return localStorage.getItem("megabot_session_token") || "";
     }
 
     function getAuthHeaders(extra = {}) {
@@ -1400,8 +1400,6 @@
         tts_voice: voice,
         volume: volume,
         prompt: prompt,
-        character: prompt
-      };
         character: prompt
       };
 
