@@ -5716,7 +5716,10 @@ Ví dụ:
 
         if (syncName) syncName.innerText = dev.assistant_name || dev.device_name || dev.name || "Robot Sophia";
         if (syncIdBadge) syncIdBadge.innerText = `ID: ${dev.agent_id || dev.device_code || dev.id || 'N/A'}`;
-        if (tokenInput) tokenInput.value = (dev.upstream_token && !dev.upstream_token.startsWith("wss://")) ? dev.upstream_token : "";
+        if (tokenInput) {
+          tokenInput.value = (dev.upstream_token && !dev.upstream_token.startsWith("wss://")) ? dev.upstream_token : "";
+          tokenInput.placeholder = "Đang dùng Token hệ thống meeyzinh@gmail.com (Tự động đồng bộ lên xiaozhi.me)";
+        }
 
         const mcpWsInput = document.getElementById("currentRobotMcpWsInput");
         const mcpBadge = document.getElementById("syncCardMcpStatusBadge");
@@ -5739,7 +5742,7 @@ Ví dụ:
             syncStatusBadge.style.borderColor = "#22c55e";
             syncStatusBadge.style.color = "#4ade80";
             syncStatusBadge.innerText = "🟢 Đã đồng bộ xiaozhi.me";
-          } else if (st === "error") {
+          } else if (st === "error" || st === "failed") {
             syncStatusBadge.style.background = "rgba(239,68,68,0.2)";
             syncStatusBadge.style.borderColor = "#ef4444";
             syncStatusBadge.style.color = "#f87171";
@@ -6032,9 +6035,14 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
           const synced = resData.upstream_synced;
           const msg = synced 
             ? "✅ Đã lưu cấu hình và đồng bộ thời gian thực lên xiaozhi.me thành công!"
-            : "✅ Đã lưu cấu hình thành công vào hệ thống!";
+            : (resData.message || "✅ Đã lưu cấu hình vào server nội bộ");
           showToast(msg);
-          if (statusBox) statusBox.innerHTML = `<div style="padding:10px 14px;background:rgba(34,197,94,0.15);border:1px solid #22c55e;border-radius:8px;color:#4ade80;font-weight:600;">${msg}</div>`;
+          if (statusBox) {
+            const bg = synced ? "rgba(34,197,94,0.15)" : "rgba(234,179,8,0.15)";
+            const border = synced ? "#22c55e" : "#eab308";
+            const col = synced ? "#4ade80" : "#fde047";
+            statusBox.innerHTML = `<div style="padding:10px 14px;background:${bg};border:1px solid ${border};border-radius:8px;color:${col};font-weight:600;">${msg}</div>`;
+          }
           
           // Cập nhật ngay badge đồng bộ trên thẻ
           const syncStatusBadge = document.getElementById("syncCardStatusBadge");
@@ -6044,8 +6052,14 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
               syncStatusBadge.style.borderColor = "#22c55e";
               syncStatusBadge.style.color = "#4ade80";
               syncStatusBadge.innerText = "🟢 Đã đồng bộ xiaozhi.me";
+            } else {
+              syncStatusBadge.style.background = "rgba(239,68,68,0.2)";
+              syncStatusBadge.style.borderColor = "#ef4444";
+              syncStatusBadge.style.color = "#f87171";
+              syncStatusBadge.innerText = "🔴 Lỗi đồng bộ";
             }
           }
+          await loadMyXiaozhiConfig(false);
           await loadDevices();
         } else {
           showToast("Không thể lưu cấu hình", false);
