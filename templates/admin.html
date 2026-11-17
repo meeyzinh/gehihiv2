@@ -565,6 +565,7 @@
               <th>Robot & Trợ Lý</th>
               <th>Địa chỉ MAC ESP32</th>
               <th>Mã PIN / Agent ID</th>
+              <th>Tài Khoản Đăng Nhập</th>
               <th>Trạng Thái</th>
               <th>Đồng Bộ xiaozhi.me</th>
               <th>Mô Hình AI</th>
@@ -574,7 +575,7 @@
           </thead>
           <tbody id="devicesTableBody">
             <tr>
-              <td colspan="9" style="text-align: center; padding: 32px; color: var(--text-muted);">
+              <td colspan="10" style="text-align: center; padding: 32px; color: var(--text-muted);">
                 ⏳ Đang tải danh sách thiết bị từ máy chủ...
               </td>
             </tr>
@@ -638,6 +639,16 @@
               <input type="text" id="addDevAgentId" class="form-control mono" placeholder="Để trống sẽ tự sinh">
             </div>
           </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.25); border-radius: 8px; padding: 10px;">
+            <div>
+              <label class="form-label" style="color: #38bdf8;">👤 Tên Đăng Nhập Robot (Username)</label>
+              <input type="text" id="addDevUsername" class="form-control" placeholder="Để trống lấy theo Agent ID">
+            </div>
+            <div>
+              <label class="form-label" style="color: #38bdf8;">🔑 Mật Khẩu Đăng Nhập Robot</label>
+              <input type="text" id="addDevPassword" class="form-control" value="123456" placeholder="Mặc định: 123456">
+            </div>
+          </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div>
               <label class="form-label">Mô hình AI (LLM)</label>
@@ -696,6 +707,16 @@
             <div>
               <label class="form-label">Mã PIN / Agent ID</label>
               <input type="text" id="editDevAgentId" class="form-control mono">
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.25); border-radius: 8px; padding: 10px;">
+            <div>
+              <label class="form-label" style="color: #38bdf8;">👤 Tên Đăng Nhập Robot (Username)</label>
+              <input type="text" id="editDevUsername" class="form-control">
+            </div>
+            <div>
+              <label class="form-label" style="color: #38bdf8;">🔑 Mật Khẩu Đăng Nhập Robot</label>
+              <input type="text" id="editDevPassword" class="form-control" placeholder="Mặc định: 123456">
             </div>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
@@ -760,6 +781,8 @@
         <div style="background: #061124; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 14px; font-size: 13px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
           <div><span style="color: #64748b;">Mã PIN:</span> <strong id="viewDevPin" class="mono" style="color: #38bdf8;"></strong></div>
           <div><span style="color: #64748b;">Địa chỉ MAC:</span> <strong id="viewDevMac" class="mono" style="color: #cbd5e1;"></strong></div>
+          <div><span style="color: #64748b;">User đăng nhập:</span> <strong id="viewDevUsername" class="mono" style="color: #38bdf8;"></strong></div>
+          <div><span style="color: #64748b;">Mật khẩu robot:</span> <strong id="viewDevPassword" class="mono" style="color: #f59e0b;"></strong></div>
           <div><span style="color: #64748b;">Model AI:</span> <strong id="viewDevModel" style="color: #93c5fd;"></strong></div>
           <div><span style="color: #64748b;">Giọng TTS:</span> <strong id="viewDevVoice" style="color: #d8b4fe;"></strong></div>
         </div>
@@ -858,7 +881,6 @@
     // AUTHENTICATION GUARD
     // ==========================================
     async function checkAdminAuth() {
-      const isAdminSaved = localStorage.getItem("megabot_is_admin") === "true";
       const token = getAuthToken();
 
       if (!token) {
@@ -879,11 +901,8 @@
         console.warn("Lỗi kiểm tra session /api/auth/me:", e);
       }
 
-      if (isAdminSaved) {
-        showDashboardScreen("admin");
-      } else {
-        showLoginScreen();
-      }
+      localStorage.removeItem("megabot_is_admin");
+      showLoginScreen();
     }
 
     function showLoginScreen() {
@@ -1043,7 +1062,7 @@
       if (list.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="9" style="text-align: center; padding: 40px; color: var(--text-muted);">
+            <td colspan="10" style="text-align: center; padding: 40px; color: var(--text-muted);">
               🔍 Không tìm thấy thiết bị robot nào phù hợp. Hãy bấm "➕ Thêm Robot Mới"!
             </td>
           </tr>
@@ -1085,6 +1104,12 @@
               <td>
                 <span class="mono" style="color: #38bdf8; font-weight: 700;">${pin}</span>
                 <button onclick="copyText('${pin}')" style="background: none; border: none; cursor: pointer; color: #38bdf8; font-size: 11px; margin-left: 4px;" title="Copy PIN">📋</button>
+              </td>
+              <td>
+                <div style="font-size: 12px; line-height: 1.4;">
+                  <span style="color: #94a3b8;">User:</span> <strong style="color: #38bdf8;">${d.login_username || pin}</strong><br>
+                  <span style="color: #94a3b8;">Pass:</span> <code style="color: #f59e0b; background: rgba(245,158,11,0.12); padding: 1px 5px; border-radius: 4px; font-family: monospace;">${d.login_password || '123456'}</code>
+                </div>
               </td>
               <td>
                 <span class="badge ${isOnline ? 'badge-online' : 'badge-offline'}">
@@ -1160,6 +1185,9 @@
                     <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;" class="mono">
                       PIN: <span style="color: #38bdf8; font-weight: 700;">${pin}</span> | MAC: ${mac}
                     </div>
+                    <div style="font-size: 11.5px; color: #cbd5e1; margin-top: 3px;">
+                      🔑 <strong>Đăng nhập:</strong> <span style="color: #38bdf8; font-weight: 600;">${d.login_username || pin}</span> &bull; Pass: <span style="color: #f59e0b; font-weight: 600;">${d.login_password || '123456'}</span>
+                    </div>
                   </div>
                 </div>
                 <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
@@ -1231,6 +1259,8 @@
       `;
       document.getElementById("viewDevPin").innerText = dev.device_code || dev.agent_id || "927184";
       document.getElementById("viewDevMac").innerText = dev.mac_address || dev.device_mac || "14:c1:9f:c4:ee:d0";
+      document.getElementById("viewDevUsername").innerText = dev.login_username || dev.agent_id || dev.device_code || devName;
+      document.getElementById("viewDevPassword").innerText = dev.login_password || "123456";
       document.getElementById("viewDevModel").innerText = dev.model || dev.model_id || dev.llm_model || "Gemini 3.1 Flash Lite";
       document.getElementById("viewDevVoice").innerText = dev.voice_name || dev.voice || dev.tts_voice || "Hoài My";
       
@@ -1259,6 +1289,8 @@
       document.getElementById("addDevName").value = "";
       document.getElementById("addDevMac").value = "";
       document.getElementById("addDevAgentId").value = "";
+      document.getElementById("addDevUsername").value = "";
+      document.getElementById("addDevPassword").value = "123456";
       document.getElementById("addDevUpstreamToken").value = "";
       document.getElementById("addDevPrompt").value = "";
       openModal("addDeviceModal");
@@ -1269,6 +1301,8 @@
       const name = document.getElementById("addDevName").value.trim();
       const mac = document.getElementById("addDevMac").value.trim();
       const agentId = document.getElementById("addDevAgentId").value.trim();
+      const loginUsername = document.getElementById("addDevUsername")?.value.trim() || "";
+      const loginPassword = document.getElementById("addDevPassword")?.value.trim() || "123456";
       const token = document.getElementById("addDevUpstreamToken")?.value.trim() || "";
       const model = document.getElementById("addDevModel").value;
       const voice = document.getElementById("addDevVoice").value;
@@ -1288,6 +1322,8 @@
             assistant_name: name,
             mac_address: mac,
             agent_id: agentId,
+            login_username: loginUsername || undefined,
+            login_password: loginPassword || undefined,
             upstream_token: token || undefined,
             model: model,
             voice: voice,
@@ -1323,6 +1359,8 @@
       document.getElementById("editDevName").value = dev.name || dev.device_name || "";
       document.getElementById("editDevMac").value = dev.mac_address || dev.device_mac || "";
       document.getElementById("editDevAgentId").value = dev.device_code || dev.agent_id || "";
+      document.getElementById("editDevUsername").value = dev.login_username || dev.agent_id || "";
+      document.getElementById("editDevPassword").value = dev.login_password || "123456";
       document.getElementById("editDevUpstreamToken").value = dev.upstream_token || "";
       document.getElementById("editDevModel").value = dev.model || dev.model_id || dev.llm_model || "Gemini 3.1 Flash Lite";
       document.getElementById("editDevVoice").value = dev.voice || dev.tts_voice || "vi-VN-HoaiMyNeural";
@@ -1340,6 +1378,8 @@
       const name = document.getElementById("editDevName").value.trim();
       const mac = document.getElementById("editDevMac").value.trim();
       const agentId = document.getElementById("editDevAgentId").value.trim();
+      const loginUsername = document.getElementById("editDevUsername")?.value.trim() || "";
+      const loginPassword = document.getElementById("editDevPassword")?.value.trim() || "";
       const token = document.getElementById("editDevUpstreamToken")?.value.trim();
       const model = document.getElementById("editDevModel").value;
       const voice = document.getElementById("editDevVoice").value;
@@ -1351,6 +1391,8 @@
         assistant_name: name,
         device_mac: mac,
         device_code: agentId,
+        login_username: loginUsername,
+        login_password: loginPassword,
         upstream_token: token,
         model: model,
         model_id: model,
@@ -1358,6 +1400,8 @@
         tts_voice: voice,
         volume: volume,
         prompt: prompt,
+        character: prompt
+      };
         character: prompt
       };
 

@@ -1492,24 +1492,21 @@ body {
         </div>
       </div>
 
-      <!-- TABS CHUYỂN ĐỔI: ADMIN / ROBOT / KÍCH HOẠT ROBOT MỚI -->
+      <!-- TABS CHUYỂN ĐỔI: ROBOT / ADMIN -->
       <div style="display: flex; background: #061124; border-radius: 12px; padding: 4px; margin-bottom: 18px; border: 1px solid rgba(255,255,255,0.08); gap: 4px;">
-        <button type="button" id="tabAuthAdminBtn" onclick="switchAuthTab('admin')" style="flex: 1; padding: 9px 8px; border-radius: 8px; font-size: 12.5px; font-weight: 700; border: none; cursor: pointer; transition: all 0.2s; background: linear-gradient(135deg, #d97706, #f59e0b); color: white; box-shadow: 0 2px 8px rgba(217,119,6,0.4);">
-          👑 Admin
+        <button type="button" id="tabAuthLoginBtn" onclick="switchAuthTab('login')" style="flex: 1; padding: 9px 8px; border-radius: 8px; font-size: 12.5px; font-weight: 700; border: none; cursor: pointer; transition: all 0.2s; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; box-shadow: 0 2px 8px rgba(37,99,235,0.4);">
+          🤖 Đăng nhập Robot
         </button>
-        <button type="button" id="tabAuthLoginBtn" onclick="switchAuthTab('login')" style="flex: 1; padding: 9px 8px; border-radius: 8px; font-size: 12.5px; font-weight: 700; border: none; cursor: pointer; transition: all 0.2s; background: transparent; color: #94a3b8;">
-          🤖 Robot (PIN)
-        </button>
-        <button type="button" id="tabAuthRegisterBtn" onclick="switchAuthTab('register')" style="flex: 1; padding: 9px 8px; border-radius: 8px; font-size: 12.5px; font-weight: 700; border: none; cursor: pointer; transition: all 0.2s; background: transparent; color: #94a3b8;">
-          ➕ Kích hoạt mới
+        <button type="button" id="tabAuthAdminBtn" onclick="switchAuthTab('admin')" style="flex: 1; padding: 9px 8px; border-radius: 8px; font-size: 12.5px; font-weight: 700; border: none; cursor: pointer; transition: all 0.2s; background: transparent; color: #94a3b8;">
+          👑 Quản trị Admin (/admin)
         </button>
       </div>
 
       <!-- TAB 0: ĐĂNG NHẬP ADMIN TOÀN QUYỀN -->
-      <div id="authAdminTabContent" style="display: block;">
+      <div id="authAdminTabContent" style="display: none;">
         <form onsubmit="handleAuthAdminSubmit(event)" style="display: flex; flex-direction: column; gap: 14px; margin: 0;">
           <div style="background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.3); border-radius: 10px; padding: 10px 12px; font-size: 12px; color: #fde68a; line-height: 1.5;">
-            👑 <strong>Tài khoản Quản Trị Viên Tối Cao (Super Admin):</strong> Có toàn quyền xem thông tin chi tiết, sửa cấu hình, đổi mật khẩu và xóa mọi thiết bị robot.
+            👑 <strong>Tài khoản Super Admin:</strong> Quản lý toàn bộ danh sách robot, thêm/xóa thiết bị và cấu hình hệ thống trên trang <code>/admin</code>.
           </div>
 
           <div>
@@ -1533,13 +1530,13 @@ body {
           <div id="authAdminAlert" style="display: none; padding: 10px 14px; border-radius: 8px; font-size: 12.5px; line-height: 1.4;"></div>
 
           <button type="submit" id="btnSubmitAdminLogin" style="margin-top: 4px; width: 100%; padding: 12px; border-radius: 10px; background: linear-gradient(135deg, #d97706, #f59e0b); color: white; font-size: 14px; font-weight: 800; border: none; cursor: pointer; box-shadow: 0 4px 16px rgba(217,119,6,0.4); display: flex; align-items: center; justify-content: center; gap: 8px;">
-            <span>👑</span> ĐĂNG NHẬP VỚI QUYỀN ADMIN (TOÀN QUYỀN)
+            <span>👑</span> ĐĂNG NHẬP VÀO TRANG QUẢN TRỊ ADMIN
           </button>
         </form>
       </div>
 
       <!-- TAB 1: ĐĂNG NHẬP ROBOT (PIN) -->
-      <div id="authLoginTabContent" style="display: none;">
+      <div id="authLoginTabContent" style="display: block;">
         <form onsubmit="handleAuthLoginSubmit(event)" style="display: flex; flex-direction: column; gap: 14px; margin: 0;">
           <div>
             <label style="display: block; font-size: 12.5px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">
@@ -1960,7 +1957,7 @@ body {
     </div>
 
     <div class="menu">
-      <a href="/admin" class="menu-item" style="color: #fbbf24; font-weight: 800; background: linear-gradient(135deg, rgba(217,119,6,0.22), rgba(245,158,11,0.10)); border-left: 3px solid #f59e0b; margin: 4px 0; text-decoration: none; display: flex; align-items: center; justify-content: space-between;">
+      <a href="/admin" id="sidebarAdminLink" class="menu-item" style="display: none; color: #fbbf24; font-weight: 800; background: linear-gradient(135deg, rgba(217,119,6,0.22), rgba(245,158,11,0.10)); border-left: 3px solid #f59e0b; margin: 4px 0; text-decoration: none; align-items: center; justify-content: space-between;">
         <span>👑 Quản Trị Thiết Bị (Admin)</span>
         <span style="font-size: 10px; background: #d97706; color: white; padding: 2px 6px; border-radius: 6px; font-weight: 700;">PORTAL ↗</span>
       </a>
@@ -2010,26 +2007,24 @@ body {
           <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e;"></span>
           <span id="topServerStatusText">Server: Trực tuyến</span>
         </div>
-        <!-- MULTI-ROBOT FAST SWITCHER -->
-        <div style="display: flex; align-items: center; gap: 6px; background: #0c1a32; border: 1px solid #38bdf8; padding: 3px 10px; border-radius: 20px; font-size: 12px; box-shadow: 0 0 10px rgba(56,189,248,0.2);">
+        <!-- MULTI-ROBOT FAST SWITCHER (CHỈ DÀNH CHO ADMIN) -->
+        <div id="topRobotSelectorWrapper" style="display: none; align-items: center; gap: 6px; background: #0c1a32; border: 1px solid #38bdf8; padding: 3px 10px; border-radius: 20px; font-size: 12px; box-shadow: 0 0 10px rgba(56,189,248,0.2);">
           <span style="font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 4px; white-space: nowrap;">
-            <span>🤖</span> <span>Chọn Robot đang điều khiển:</span>
+            <span>🤖</span> <span>Chọn Robot:</span>
           </span>
           <select id="topRobotSelector" onchange="onSelectRobotFromDropdown(this.value)" style="background: #0f172a; color: #f8fafc; border: 1px solid #334155; border-radius: 12px; font-size: 12px; font-weight: 600; outline: none; cursor: pointer; padding: 4px 8px; max-width: 320px;">
             <option value="">Đang nạp danh sách robot...</option>
           </select>
         </div>
-        <div id="topRobotAccountBadge" onclick="showAuthModal()" style="display: flex; align-items: center; gap: 6px; background: #0c1a32; border: 1px solid #6366f1; padding: 4px 10px; border-radius: 20px; font-size: 12px; cursor: pointer; color:#c7d2fe;">
-          <strong id="topRobotNameDisplay" style="color: #38bdf8;">Robot Sophia</strong>
-          <span id="topRobotPinDisplay" style="color: #93c5fd; font-family: monospace;">927184</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: bold; padding: 4px 10px; border-radius: 20px; background: rgba(16,185,129,0.15); border: 1px solid #10b981; color: #6ee7b7;">
-          <span>Tài khoản Robot:</span>
-          <strong style="color: #a7f3d0;">gehihi</strong>
+        <div id="topRobotAccountBadge" style="display: flex; align-items: center; gap: 8px; background: #0c1a32; border: 1px solid #6366f1; padding: 4px 12px; border-radius: 20px; font-size: 12px; color:#c7d2fe;">
+          <span>🤖 Robot:</span>
+          <strong id="topRobotNameDisplay" style="color: #38bdf8; font-size: 13px;">Robot Sophia</strong>
+          <span id="topRobotPinDisplay" style="color: #93c5fd; font-family: monospace; background: rgba(56,189,248,0.15); padding: 1px 6px; border-radius: 6px;">2625491</span>
+          <span id="topRobotLiveStatus" style="font-size: 11px; color: #4ade80;">🟢 Live</span>
         </div>
       </div>
       <div style="display: flex; align-items: center; gap: 8px;">
-        <a href="/admin" style="background: linear-gradient(135deg, #d97706, #f59e0b); border: 1px solid #f59e0b; color: white; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; text-decoration: none; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 10px rgba(217,119,6,0.35);" title="Mở trang Quản trị danh sách thiết bị riêng biệt dành cho Admin">
+        <a id="topbarAdminBtn" href="/admin" style="display: none; background: linear-gradient(135deg, #d97706, #f59e0b); border: 1px solid #f59e0b; color: white; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; text-decoration: none; align-items: center; gap: 6px; box-shadow: 0 2px 10px rgba(217,119,6,0.35);" title="Mở trang Quản trị danh sách thiết bị riêng biệt dành cho Admin">
           <span>👑</span> <span>Quản Trị Admin ↗</span>
         </a>
         <button class="primary" onclick="switchSection('remoteControl')" style="background: #1e3a8a; border: 1px solid #3b82f6; color: #93c5fd; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;">
@@ -2038,8 +2033,8 @@ body {
         <button class="secondary" onclick="switchSection('liveChat')" style="background: #1e293b; border: 1px solid #475569; color: white; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;">
           💬 Chat AI
         </button>
-        <button onclick="logoutRobotAccount()" style="background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #fca5a5; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;" title="Đăng xuất khỏi robot này">
-          🚪 Đăng xuất
+        <button onclick="logoutRobotAccount()" style="background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #fca5a5; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;" title="Đăng xuất khỏi robot này">
+          <span>🚪</span> <span>Đăng xuất</span>
         </button>
       </div>
     </div>
@@ -2443,7 +2438,7 @@ body {
 <!-- ============================================================== -->
 <!-- CARD CHUYÊN DỤNG: QUẢN TRỊ & QUẢN LÝ TÀI KHOẢN THIẾT BỊ (WEBSOCKET) -->
 <!-- ============================================================== -->
-<div class="card" id="deviceManagerCard" style="display: block;">
+<div class="card" id="deviceManagerCard" style="display: none;">
     <div style="background: linear-gradient(135deg, #07152b 0%, #0c1a35 100%); border: 1px solid rgba(59,130,246,0.35); border-radius: 16px; padding: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.35);">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 16px;">
             <div>
@@ -3787,8 +3782,8 @@ Ví dụ:
 
       // Hiện card tương ứng
       const targetMap = {
-        'deviceManager': ['deviceManagerCard'],
-        'devices': ['deviceManagerCard', 'deviceProfileCard'],
+        'deviceManager': ['deviceProfileCard'],
+        'devices': ['deviceProfileCard'],
         'remoteControl': ['remoteControlCard'],
         'micMonitor': ['micMonitorCard'],
         'youtubeMusic': ['youtubeMusicCard'],
@@ -4312,26 +4307,12 @@ Ví dụ:
           localStorage.setItem("megabot_session_token", data.token || "admin");
           localStorage.setItem("megabot_is_admin", "true");
           localStorage.setItem("megabot_admin_username", data.user?.username || username);
-
-          // Gửi thông báo đăng nhập admin qua WebSocket nếu đang mở
-          try {
-            if (micMonitorWs && micMonitorWs.readyState === WebSocket.OPEN) {
-              micMonitorWs.send(JSON.stringify({
-                type: "admin_login",
-                action: "login",
-                username: username,
-                token: data.token
-              }));
-            }
-          } catch (wsErr) {}
-
-          updateAdminUI(true);
-          if (typeof updateAdminBadgeUI === "function") updateAdminBadgeUI();
           hideAuthModal();
-          showToast(`👑 Đăng nhập thành công với quyền Super Admin!`);
-          if (typeof loadMcpPortalData === "function") loadMcpPortalData();
-
-          await loadDevices();
+          showToast(`👑 Đăng nhập Super Admin thành công! Đang mở trang Quản trị...`);
+          setTimeout(() => {
+            window.location.href = "/admin";
+          }, 500);
+          return;
         } else {
           if (alertBox) {
             alertBox.style.display = "block";
@@ -4370,7 +4351,7 @@ Ví dụ:
           alertBox.style.background = "rgba(239,68,68,0.15)";
           alertBox.style.color = "#fca5a5";
           alertBox.style.border = "1px solid #ef4444";
-          alertBox.innerText = "Vui lòng nhập Mã PIN 6 số hoặc Tên Robot!";
+          alertBox.innerText = "Vui lòng nhập Mã PIN hoặc Tên Robot!";
         }
         return;
       }
@@ -4392,35 +4373,33 @@ Ví dụ:
         if (res.ok && data.success) {
           localStorage.setItem("megabot_session_token", data.token || username);
 
-          if (data.is_admin || data.role === "admin" || data.user?.role === "admin") {
+          if (data.is_admin || data.role === "admin") {
             window.currentUserRole = "admin";
             localStorage.setItem("megabot_is_admin", "true");
             localStorage.setItem("megabot_admin_username", data.user?.username || "admin");
-            updateAdminUI(true);
-            if (typeof updateAdminBadgeUI === "function") updateAdminBadgeUI();
             hideAuthModal();
-            showToast(`👑 Đăng nhập thành công với quyền Super Admin!`);
-            if (typeof loadMcpPortalData === "function") loadMcpPortalData();
-            await loadDevices();
+            showToast(`👑 Đăng nhập Admin thành công! Đang mở trang Quản trị...`);
+            setTimeout(() => {
+              window.location.href = "/admin";
+            }, 500);
             return;
           }
 
-          window.currentUserRole = "user";
+          window.currentUserRole = "robot";
           localStorage.setItem("megabot_is_admin", "false");
-          updateAdminUI(false);
-          if (typeof updateAdminBadgeUI === "function") updateAdminBadgeUI();
           if (data.device) {
             localStorage.setItem("megabot_active_robot_id", data.device.id);
-            localStorage.setItem("megabot_active_robot_name", data.device.name);
-            localStorage.setItem("megabot_active_robot_code", data.device.device_code || "");
-            activeDeviceId = data.device.id;
+            localStorage.setItem("megabot_active_robot_name", data.device.assistant_name || data.device.name);
+            localStorage.setItem("megabot_active_robot_code", data.device.agent_id || data.device.device_code || "");
+            activeDeviceId = String(data.device.id);
           }
 
+          applyRoleInterface(false, data);
           hideAuthModal();
-          showToast(`✓ Đăng nhập thành công vào: ${data.device ? data.device.name : 'Robot'}!`);
+          showToast(`✓ Đăng nhập thành công vào: ${data.device ? (data.device.assistant_name || data.device.name) : 'Robot'}!`);
 
           await loadDevices();
-          loadMyXiaozhiConfig();
+          await loadMyXiaozhiConfig();
         } else {
           if (alertBox) {
             alertBox.style.display = "block";
@@ -6468,30 +6447,87 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
       }
     }
 
-    // Tự động khởi động khi tải trang - Mở thẳng trang Quản lý tài khoản Thiết bị
-    window.addEventListener("DOMContentLoaded", () => {
-      // Mặc định kích hoạt quyền Quản trị viên Super Admin nếu chưa thiết lập
-      if (localStorage.getItem("megabot_is_admin") === null) {
-        localStorage.setItem("megabot_is_admin", "true");
-        localStorage.setItem("megabot_admin_username", "admin");
-        localStorage.setItem("megabot_session_token", "admin");
-      }
-      const isAdmin = localStorage.getItem("megabot_is_admin") === "true";
-      window.currentUserRole = isAdmin ? "admin" : "user";
-      updateAdminUI(isAdmin);
-      if (typeof updateAdminBadgeUI === "function") updateAdminBadgeUI();
-      if (typeof checkCurrentUserRole === "function") checkCurrentUserRole();
+    function applyRoleInterface(isAdmin, user = null) {
+      const topSelector = document.getElementById("topRobotSelectorWrapper");
+      const topAdminBtn = document.getElementById("topbarAdminBtn");
+      const sidebarAdmin = document.getElementById("sidebarAdminLink");
+      const devCard = document.getElementById("deviceManagerCard");
 
+      if (isAdmin) {
+        if (topSelector) topSelector.style.display = "flex";
+        if (topAdminBtn) topAdminBtn.style.display = "flex";
+        if (sidebarAdmin) sidebarAdmin.style.display = "flex";
+        if (devCard) devCard.style.display = "none";
+      } else {
+        // Tài khoản Robot độc lập: Ẩn hoàn toàn dropdown chuyển robot và quản trị admin
+        if (topSelector) topSelector.style.display = "none";
+        if (topAdminBtn) topAdminBtn.style.display = "none";
+        if (sidebarAdmin) sidebarAdmin.style.display = "none";
+        if (devCard) devCard.style.display = "none";
+      }
+
+      const badgeName = document.getElementById("topRobotNameDisplay");
+      const badgePin = document.getElementById("topRobotPinDisplay");
+      const savedName = localStorage.getItem("megabot_active_robot_name");
+      const savedCode = localStorage.getItem("megabot_active_robot_code");
+
+      if (badgeName) badgeName.innerText = user?.device?.assistant_name || user?.device?.name || savedName || "Robot Sophia";
+      if (badgePin) badgePin.innerText = user?.device?.agent_id || user?.device?.device_code || savedCode || "2625491";
+    }
+
+    async function logoutRobotAccount() {
+      try {
+        await fetch("/api/auth/logout", { method: "POST" });
+      } catch (e) {}
+      localStorage.removeItem("megabot_session_token");
+      localStorage.removeItem("megabot_is_admin");
+      localStorage.removeItem("megabot_user_role");
+      localStorage.removeItem("megabot_active_robot_id");
+      localStorage.removeItem("megabot_active_robot_name");
+      localStorage.removeItem("megabot_active_robot_code");
+      showToast("🚪 Đã đăng xuất khỏi tài khoản Robot!");
+      showAuthModal("login");
+    }
+
+    // Tự động khởi động khi tải trang
+    window.addEventListener("DOMContentLoaded", async () => {
+      let sessionUser = null;
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          sessionUser = await res.json();
+        }
+      } catch (e) {
+        console.warn("Lỗi kiểm tra session /api/auth/me:", e);
+      }
+
+      const token = localStorage.getItem("megabot_session_token");
       const savedRobotId = localStorage.getItem("megabot_active_robot_id");
-      if (savedRobotId) {
+
+      // Nếu chưa có phiên đăng nhập -> Bắt buộc mở modal đăng nhập Robot
+      if ((!sessionUser || !sessionUser.authenticated) && !token) {
+        showAuthModal("login");
+        return;
+      }
+
+      const isAdmin = (sessionUser?.is_admin === true || localStorage.getItem("megabot_is_admin") === "true");
+      window.currentUserRole = isAdmin ? "admin" : "robot";
+
+      applyRoleInterface(isAdmin, sessionUser);
+
+      if (sessionUser?.device_id) {
+        activeDeviceId = String(sessionUser.device_id);
+        localStorage.setItem("megabot_active_robot_id", activeDeviceId);
+      } else if (savedRobotId) {
         activeDeviceId = savedRobotId;
       }
+
       hideAuthModal();
 
-      switchSection('deviceManager');
+      // Mặc định vào thẳng mục Cấu hình của Robot đang chọn
       switchSection("xiaozhiConfig", document.querySelector(".sidebar .menu-item.active"));
-      loadDevices();
-      loadMyXiaozhiConfig();
+      await loadDevices();
+      await loadMyXiaozhiConfig();
       // Tự động làm mới trạng thái online mỗi 6 giây
       setInterval(loadDevices, 6000);
     });

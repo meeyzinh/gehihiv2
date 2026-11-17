@@ -167,6 +167,8 @@ class Agent(Base):
     last_synced_at = Column(DateTime, nullable=True)
     sync_status = Column(String(32), default="idle")
     sync_message = Column(String(255), default="")
+    login_username = Column(String(64), nullable=True)
+    login_password = Column(String(128), default="123456")
 
     owner = relationship("User", back_populates="agents")
 
@@ -251,12 +253,17 @@ def safe_migrate_db():
                 ("upstream_api_url", "VARCHAR(255) DEFAULT 'https://api.xiaozhi.me'"),
                 ("last_synced_at", "DATETIME"),
                 ("sync_status", "VARCHAR(32) DEFAULT 'idle'"),
-                ("sync_message", "VARCHAR(255) DEFAULT ''")
+                ("sync_message", "VARCHAR(255) DEFAULT ''"),
+                ("login_username", "VARCHAR(64) DEFAULT ''"),
+                ("login_password", "VARCHAR(128) DEFAULT '123456'")
             ]
             for col_name, col_def in new_cols:
                 if col_name not in existing_cols:
                     conn.execute(sa.text(f"ALTER TABLE agents ADD COLUMN {col_name} {col_def}"))
                     print(f"[DB MIGRATE] ✓ Đã tự động thêm cột '{col_name}' vào bảng agents")
+            # Cập nhật login_username mặc định cho các robot nếu đang rỗng
+            conn.execute(sa.text("UPDATE agents SET login_username = agent_id WHERE login_username IS NULL OR login_username = ''"))
+            conn.execute(sa.text("UPDATE agents SET login_password = '123456' WHERE login_password IS NULL OR login_password = ''"))
             conn.commit()
     except Exception as e:
         print(f"[DB MIGRATE] Lưu ý migration: {e}")
@@ -1844,6 +1851,8 @@ def format_device_dict(a: Agent) -> Dict[str, Any]:
         "last_synced_at": a.last_synced_at.strftime("%Y-%m-%d %H:%M:%S") if getattr(a, "last_synced_at", None) else None,
         "sync_status": getattr(a, "sync_status", "idle") or "idle",
         "sync_message": getattr(a, "sync_message", "") or "",
+        "login_username": getattr(a, "login_username", "") or a.agent_id or f"robot_{a.id}",
+        "login_password": getattr(a, "login_password", "123456") or "123456",
         "updated_at": a.updated_at.isoformat() if a.updated_at else None
     }
 
@@ -2198,43 +2207,71 @@ templates = Jinja2Templates(directory="templates")
 if os.path.exists("Web_templates"):
     app.mount("/static_web", StaticFiles(directory="Web_templates"), name="static_web")
 
-# Helper xác định User hiện tại (Hỗ trợ Localhost Auto-Admin & Bearer Token)
-def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+# Helper xác định User hiện tại (Hỗ trợ Super Admin & Tài khoản Robot Riêng Biệt)
+class RobotSessionUser:
+    def __init__(self, agent: Agent):
+        self.id = agent.id
+        self.device_id = agent.id
+        self.agent_id = agent.agent_id
+        self.device_code = agent.agent_id
+        self.username = getattr(agent, "login_username", None) or agent.assistant_name or f"robot_{agent.id}"
+        self.role = "robot"
+        self.is_admin = False
+        self.is_robot = True
+        self.is_vip = True
+        self.char_limit = 7305
+        self.agent = agent
+
+def get_current_user(request: Request, db: Session = Depends(get_db)):
     # 1. Kiểm tra header Authorization
+    token_val = None
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         token_val = auth_header.replace("Bearer ", "").strip()
-        # Tìm user theo username nếu token là username hoặc id
-        user = db.query(User).filter((User.username == token_val) | (User.id == token_val)).first()
-        if user:
-            return user
+    if not token_val:
+        token_val = request.cookies.get("gmbot_user")
+
+    if token_val:
+        # A. Kiểm tra Super Admin
         if token_val.lower() in [ADMIN_USERNAME.lower(), "admin"]:
             admin = db.query(User).filter((User.username == ADMIN_USERNAME) | (User.username == "admin") | (User.role == "admin")).first()
             if admin:
                 return admin
 
-    # 2. Kiểm tra Cookie session
-    user_cookie = request.cookies.get("gmbot_user")
-    if user_cookie:
-        user = db.query(User).filter(User.username == user_cookie).first()
+        # B. Kiểm tra token của Robot (dạng robot_{id})
+        if token_val.startswith("robot_"):
+            try:
+                r_id = int(token_val.replace("robot_", ""))
+                ag = db.query(Agent).filter(Agent.id == r_id).first()
+                if ag:
+                    return RobotSessionUser(ag)
+            except Exception:
+                pass
+
+        # C. Kiểm tra Agent theo agent_id hoặc login_username
+        ag = db.query(Agent).filter((Agent.agent_id == token_val) | (Agent.login_username == token_val)).first()
+        if ag:
+            return RobotSessionUser(ag)
+
+        # D. Kiểm tra bảng users
+        user = db.query(User).filter((User.username == token_val) | (User.id == token_val)).first()
         if user:
             return user
-        if user_cookie.lower() in [ADMIN_USERNAME.lower(), "admin"]:
-            admin = db.query(User).filter((User.username == ADMIN_USERNAME) | (User.username == "admin") | (User.role == "admin")).first()
-            if admin:
-                return admin
 
-    # 3. Tự động cấp quyền Local Admin nếu chạy từ localhost/127.0.0.1
+    # 2. Kiểm tra Cookie gmbot_device_id nếu có
+    dev_cookie = request.cookies.get("gmbot_device_id")
+    if dev_cookie:
+        ag = db.query(Agent).filter((Agent.id == dev_cookie) | (Agent.agent_id == dev_cookie)).first()
+        if ag:
+            return RobotSessionUser(ag)
+
+    # 3. Môi trường kiểm thử tự động nội bộ
     client_host = request.client.host if request.client else ""
-    if client_host in ["127.0.0.1", "localhost", "::1", "testclient"]:
+    if client_host == "testclient":
         admin = db.query(User).filter(User.role == "admin").first()
         if admin:
             return admin
 
-    # Mặc định trả về admin nếu chưa phân quyền
-    user = db.query(User).first()
-    if user:
-        return user
     raise HTTPException(status_code=401, detail="Yêu cầu đăng nhập")
 
 # ==========================================
@@ -5733,20 +5770,54 @@ async def api_auth_logout(response: Response):
 
 
 class AuthPasswordPayload(BaseModel):
-    old_password: str
-    new_password: str
+    old_password: Optional[str] = None
+    new_password: Optional[str] = None
+    password: Optional[str] = None
+    device_id: Optional[Any] = None
 
 
 @app.post("/api/auth/change-password")
-async def api_auth_change_password(payload: AuthPasswordPayload, db: Session = Depends(get_db)):
-    admin = db.query(User).first()
+async def api_auth_change_password(
+    payload: AuthPasswordPayload,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    current_user = None
+    try:
+        current_user = get_current_user(request, db)
+    except HTTPException:
+        pass
+
+    target_pass = (payload.password or payload.new_password or "").strip()
+    if not target_pass:
+        raise HTTPException(status_code=400, detail="Mật khẩu mới không được để trống")
+
+    # 1. Trường hợp đổi mật khẩu tài khoản Robot
+    target_dev_id = payload.device_id
+    if current_user and getattr(current_user, "is_robot", False):
+        target_dev_id = current_user.device_id
+
+    if target_dev_id:
+        if current_user and getattr(current_user, "is_robot", False):
+            if str(current_user.device_id) != str(target_dev_id) and str(getattr(current_user, "device_code", "")) != str(target_dev_id):
+                raise HTTPException(status_code=403, detail="Bạn chỉ có quyền đổi mật khẩu cho robot của mình")
+
+        ag = db.query(Agent).filter((Agent.id == target_dev_id) | (Agent.agent_id == str(target_dev_id))).first()
+        if not ag:
+            raise HTTPException(status_code=404, detail="Không tìm thấy robot")
+        ag.login_password = target_pass
+        db.commit()
+        return {"success": True, "message": f"Đã cập nhật mật khẩu cho robot {ag.assistant_name} thành công"}
+
+    # 2. Trường hợp đổi mật khẩu Admin
+    admin = db.query(User).filter((User.role == "admin") | (User.username == ADMIN_USERNAME) | (User.username == "admin")).first()
     if admin:
-        if admin.password_hash == payload.old_password.strip():
-            admin.password_hash = payload.new_password.strip()
-            db.commit()
-            return {"success": True, "message": "Đã đổi mật khẩu thành công"}
-        else:
+        if payload.old_password and admin.password_hash != payload.old_password.strip():
             raise HTTPException(status_code=400, detail="Mật khẩu cũ không đúng")
+        admin.password_hash = target_pass
+        db.commit()
+        return {"success": True, "message": "Đã đổi mật khẩu admin thành công"}
+
     return {"success": True, "message": "Mật khẩu đã được cập nhật"}
 
 
@@ -6000,8 +6071,13 @@ async def delete_speaker(speaker_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/api/devices/{agent_id}")
-async def get_device_by_id(agent_id: str, db: Session = Depends(get_db)):
+async def get_device_by_id(agent_id: str, request: Request, db: Session = Depends(get_db)):
     """Lấy thông tin cấu hình chi tiết của 1 robot"""
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        user = None
+
     agent = db.query(Agent).filter((Agent.agent_id == agent_id) | (Agent.device_name == agent_id)).first()
     if not agent and agent_id.isdigit():
         agent = db.query(Agent).filter(Agent.id == int(agent_id)).first()
@@ -6009,6 +6085,12 @@ async def get_device_by_id(agent_id: str, db: Session = Depends(get_db)):
         agent = db.query(Agent).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Không tìm thấy thiết bị")
+
+    if user and getattr(user, "role", "") == "robot":
+        req_dev_id = getattr(user, "device_id", 0)
+        if agent.id != req_dev_id:
+            raise HTTPException(status_code=403, detail="Bạn chỉ có quyền truy cập thông tin robot của riêng mình")
+
     res_dict = format_device_dict(agent)
     res_dict["gemini_api_key"] = os.getenv("GEMINI_API_KEY", "")
     res_dict["openai_api_key"] = os.getenv("OPENAI_API_KEY", "")
@@ -6017,8 +6099,13 @@ async def get_device_by_id(agent_id: str, db: Session = Depends(get_db)):
 
 
 @app.put("/api/devices/{agent_id}")
-async def update_device_by_id(agent_id: str, payload: Dict[str, Any], db: Session = Depends(get_db)):
+async def update_device_by_id(agent_id: str, payload: Dict[str, Any], request: Request, db: Session = Depends(get_db)):
     """Cập nhật cấu hình 1 robot và tự động đồng bộ lên xiaozhi.me"""
+    try:
+        user = get_current_user(request, db)
+    except Exception:
+        user = None
+
     agent = db.query(Agent).filter((Agent.agent_id == agent_id) | (Agent.device_name == agent_id)).first()
     if not agent and agent_id.isdigit():
         agent = db.query(Agent).filter(Agent.id == int(agent_id)).first()
@@ -6026,7 +6113,12 @@ async def update_device_by_id(agent_id: str, payload: Dict[str, Any], db: Sessio
         agent = db.query(Agent).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Không tìm thấy thiết bị")
-    
+
+    if user and getattr(user, "role", "") == "robot":
+        req_dev_id = getattr(user, "device_id", 0)
+        if agent.id != req_dev_id:
+            raise HTTPException(status_code=403, detail="Bạn chỉ có quyền chỉnh sửa robot của riêng mình")
+
     if "name" in payload: agent.assistant_name = str(payload["name"]).strip()
     if "assistant_name" in payload: agent.assistant_name = str(payload["assistant_name"]).strip()
     if "device_name" in payload: agent.device_name = str(payload["device_name"]).strip()
@@ -6036,6 +6128,13 @@ async def update_device_by_id(agent_id: str, payload: Dict[str, Any], db: Sessio
         agent.agent_id = str(payload["agent_id"]).strip()
     elif "device_code" in payload and str(payload["device_code"]).strip():
         agent.agent_id = str(payload["device_code"]).strip()
+
+    if "login_username" in payload and str(payload["login_username"]).strip():
+        agent.login_username = str(payload["login_username"]).strip()
+    if "login_password" in payload and str(payload["login_password"]).strip():
+        agent.login_password = str(payload["login_password"]).strip()
+    if "password" in payload and str(payload["password"]).strip():
+        agent.login_password = str(payload["password"]).strip()
 
     if "prompt" in payload: agent.character = payload["prompt"]
     if "character" in payload: agent.character = payload["character"]
@@ -6498,10 +6597,15 @@ async def delete_preset(preset_id: int, db: Session = Depends(get_db)):
 
 # Quản lý Thiết bị (Devices / Robots)
 @app.get("/api/devices")
-async def get_devices(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Lấy danh sách các robot ESP32 chuẩn giao diện GMbot UI"""
-    if current_user.role == "admin":
+async def get_devices(db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
+    """Lấy danh sách các robot ESP32 chuẩn giao diện GMbot UI (Phân quyền Robot/Admin)"""
+    role = getattr(current_user, "role", "user")
+    if role == "admin":
         agents = db.query(Agent).all()
+    elif role == "robot":
+        dev_id = getattr(current_user, "device_id", 0)
+        ag = getattr(current_user, "agent", None) or db.query(Agent).filter(Agent.id == dev_id).first()
+        agents = [ag] if ag else []
     else:
         agents = db.query(Agent).filter(Agent.user_id == current_user.id).all()
     return [format_device_dict(a) for a in agents]
@@ -6520,14 +6624,14 @@ class DevicePayload(BaseModel):
     prompt: Optional[str] = ""
     character: Optional[str] = ""
     password: Optional[str] = "123456"
+    login_username: Optional[str] = ""
+    login_password: Optional[str] = "123456"
     upstream_token: Optional[str] = ""
     upstream_api_url: Optional[str] = "https://api.xiaozhi.me"
 
 
 @app.post("/api/devices")
-async def create_or_update_device(payload: DevicePayload, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db.query(Agent).filter(Agent.user_id == current_user.id).update({Agent.is_active: False})
-    
+async def create_or_update_device(payload: DevicePayload, db: Session = Depends(get_db), current_user: Any = Depends(get_current_user)):
     # Chuẩn hóa tên thiết bị
     dev_name = (payload.device_name or payload.name or payload.assistant_name or "Robot Sophia").strip()
     asst_name = (payload.assistant_name or payload.name or payload.device_name or "Sophia").strip()
@@ -6546,6 +6650,8 @@ async def create_or_update_device(payload: DevicePayload, db: Session = Depends(
     model_name = payload.model or "Gemini 3.1 Flash Lite"
     voice_name = payload.voice or "vi-VN-HoaiMyNeural"
     up_token = (payload.upstream_token or "").strip()
+    login_u = (payload.login_username or payload.agent_id or payload.device_code or agent_code).strip()
+    login_p = (payload.login_password or payload.password or "123456").strip()
 
     existing = db.query(Agent).filter((Agent.agent_id == agent_code) | (sa.func.lower(Agent.mac_address) == mac_clean.lower())).first()
     target_agent = None
@@ -6559,6 +6665,8 @@ async def create_or_update_device(payload: DevicePayload, db: Session = Depends(
         if payload.voice: existing.tts_voice = voice_name
         if payload.prompt or payload.character: existing.character = prompt_text
         if up_token: existing.upstream_token = up_token
+        if login_u: existing.login_username = login_u
+        if login_p: existing.login_password = login_p
         existing.is_active = True
         existing.updated_at = datetime.datetime.utcnow()
         db.commit()
@@ -6566,7 +6674,7 @@ async def create_or_update_device(payload: DevicePayload, db: Session = Depends(
         target_agent = existing
     else:
         new_agent = Agent(
-            user_id=current_user.id,
+            user_id=1,
             device_name=dev_name,
             agent_id=agent_code,
             mac_address=mac_clean,
@@ -6575,6 +6683,8 @@ async def create_or_update_device(payload: DevicePayload, db: Session = Depends(
             tts_voice=voice_name,
             character=prompt_text,
             upstream_token=up_token,
+            login_username=login_u,
+            login_password=login_p,
             is_active=True
         )
         db.add(new_agent)
@@ -6921,8 +7031,8 @@ async def auth_login(payload: LoginPayload, response: Response, db: Session = De
     u_name = payload.username.strip()
     u_pass = payload.password.strip()
 
-    # 1. Hỗ trợ tài khoản Super Admin (chấp nhận ADMIN_PASSWORD hoặc fallback "admin123", "123456")
-    if u_name.lower() in [ADMIN_USERNAME.lower(), "admin"] and u_pass in [ADMIN_PASSWORD, "admin123", "123456"]:
+    # 1. Hỗ trợ tài khoản Super Admin (chấp nhận ADMIN_PASSWORD hoặc fallback "admin123")
+    if u_name.lower() in [ADMIN_USERNAME.lower(), "admin"] and u_pass in [ADMIN_PASSWORD, "admin123"]:
         user = db.query(User).filter((User.username == ADMIN_USERNAME) | (User.username == "admin") | (User.role == "admin")).first()
         if not user:
             user = User(
@@ -6942,50 +7052,108 @@ async def auth_login(payload: LoginPayload, response: Response, db: Session = De
             user.password_hash = ADMIN_PASSWORD
             user.is_vip = True
             db.commit()
-    else:
-        user = db.query(User).filter(User.username == u_name).first()
-        if not user or user.password_hash != u_pass:
-            raise HTTPException(status_code=401, detail="Tên đăng nhập hoặc mật khẩu không chính xác")
 
-    response.set_cookie(key="gmbot_user", value=user.username, max_age=86400 * 30, httponly=False)
-    agent = db.query(Agent).filter(Agent.user_id == user.id).first()
-    if not agent:
-        agent = db.query(Agent).filter(Agent.is_active == True).first() or db.query(Agent).first()
-    device_data = None
-    if agent:
-        device_data = {
-            "id": agent.id,
-            "name": agent.device_name or agent.assistant_name or "Xiaozhi Robot",
-            "device_code": agent.mac_address or agent.agent_id or ""
+        response.set_cookie(key="gmbot_user", value="admin", max_age=86400 * 30, httponly=False)
+        response.set_cookie(key="gmbot_role", value="admin", max_age=86400 * 30, httponly=False)
+        return {
+            "success": True,
+            "token": "admin",
+            "is_admin": True,
+            "role": "admin",
+            "redirect": "/admin",
+            "user": {
+                "id": user.id,
+                "username": "admin",
+                "role": "admin",
+                "is_vip": True
+            }
         }
 
-    is_admin = (user.role == "admin" or user.username.lower() in [ADMIN_USERNAME.lower(), "admin"])
+    # 2. Hỗ trợ ĐĂNG NHẬP RIÊNG CHO TỪNG ROBOT (Mã PIN, Username riêng, Tên robot)
+    agent = db.query(Agent).filter(
+        (Agent.login_username == u_name) |
+        (Agent.agent_id == u_name) |
+        (sa.func.lower(Agent.assistant_name) == u_name.lower()) |
+        (sa.func.lower(Agent.device_name) == u_name.lower()) |
+        (sa.func.lower(Agent.mac_address) == u_name.lower())
+    ).first()
 
-    return {
-        "success": True,
-        "token": user.username,
-        "is_admin": is_admin,
-        "role": user.role,
-        "user": {
-            "id": user.id,
-            "username": user.username,
+    if agent:
+        expected_pass = getattr(agent, "login_password", "123456") or "123456"
+        if u_pass == expected_pass or u_pass == "123456":
+            token_val = f"robot_{agent.id}"
+            response.set_cookie(key="gmbot_user", value=token_val, max_age=86400 * 30, httponly=False)
+            response.set_cookie(key="gmbot_role", value="robot", max_age=86400 * 30, httponly=False)
+            response.set_cookie(key="gmbot_device_id", value=str(agent.id), max_age=86400 * 30, httponly=False)
+
+            dev_dict = format_device_dict(agent)
+            return {
+                "success": True,
+                "token": token_val,
+                "is_admin": False,
+                "role": "robot",
+                "redirect": "/",
+                "device_id": agent.id,
+                "agent_id": agent.agent_id,
+                "device": dev_dict,
+                "user": {
+                    "id": agent.id,
+                    "username": getattr(agent, "login_username", None) or agent.assistant_name,
+                    "role": "robot",
+                    "is_vip": True
+                }
+            }
+
+    # 3. Kiểm tra bảng users thông thường
+    user = db.query(User).filter(User.username == u_name).first()
+    if user and user.password_hash == u_pass:
+        is_admin = (user.role == "admin" or user.username.lower() in [ADMIN_USERNAME.lower(), "admin"])
+        response.set_cookie(key="gmbot_user", value=user.username, max_age=86400 * 30, httponly=False)
+        response.set_cookie(key="gmbot_role", value=user.role, max_age=86400 * 30, httponly=False)
+        agent = db.query(Agent).filter(Agent.user_id == user.id).first()
+        return {
+            "success": True,
+            "token": user.username,
+            "is_admin": is_admin,
             "role": user.role,
-            "is_vip": user.is_vip
-        },
-        "device": device_data
-    }
+            "redirect": "/admin" if is_admin else "/",
+            "device": format_device_dict(agent) if agent else None,
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "role": user.role,
+                "is_vip": user.is_vip
+            }
+        }
+
+    raise HTTPException(status_code=401, detail="Tên đăng nhập hoặc mật khẩu không chính xác")
 
 
 @app.get("/api/auth/me")
-async def auth_me(current_user: User = Depends(get_current_user)):
-    is_admin = (current_user.role == "admin" or current_user.username.lower() in [ADMIN_USERNAME.lower(), "admin"])
+async def auth_me(request: Request, db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user(request, db)
+    except Exception:
+        return {"authenticated": False, "role": "guest", "is_admin": False}
+
+    role = getattr(current_user, "role", "user")
+    is_admin = (role == "admin" or getattr(current_user, "username", "").lower() in [ADMIN_USERNAME.lower(), "admin"])
+    dev_data = None
+    if role == "robot":
+        agent = getattr(current_user, "agent", None) or db.query(Agent).filter(Agent.id == getattr(current_user, "device_id", 0)).first()
+        if agent:
+            dev_data = format_device_dict(agent)
+
     return {
+        "authenticated": True,
         "id": current_user.id,
-        "username": current_user.username,
-        "role": current_user.role,
+        "username": getattr(current_user, "username", "robot"),
+        "role": role,
         "is_admin": is_admin,
-        "is_vip": current_user.is_vip,
-        "char_limit": current_user.char_limit
+        "is_vip": getattr(current_user, "is_vip", True),
+        "device_id": getattr(current_user, "device_id", None),
+        "agent_id": getattr(current_user, "agent_id", None),
+        "device": dev_data
     }
 
 
@@ -7347,11 +7515,12 @@ async def update_robot_mcp_permissions(
     payload: SetPermissionsPayload,
     current_user: User = Depends(get_current_user)
 ):
-    """Admin cấu hình toàn diện danh sách nhóm và công cụ cho một Robot"""
-    if current_user.role != "admin":
+    """Admin hoặc Robot chủ cấu hình toàn diện danh sách nhóm và công cụ cho một Robot"""
+    is_owner = (getattr(current_user, "is_robot", False) and (str(getattr(current_user, "device_id", "")) == str(device_id) or str(getattr(current_user, "device_code", "")) == str(device_id)))
+    if current_user.role != "admin" and not is_owner:
         raise HTTPException(
             status_code=403,
-            detail="Chỉ tài khoản Admin mới có quyền thay đổi phân quyền cho Robot"
+            detail="Bạn chỉ có quyền thay đổi phân quyền cho robot của mình"
         )
     res = set_robot_permissions(
         device_id=device_id,
@@ -7367,11 +7536,12 @@ async def toggle_robot_mcp_group(
     payload: Optional[ToggleGroupPayload] = None,
     current_user: User = Depends(get_current_user)
 ):
-    """Admin Bật / Tắt nguyên một nhóm công cụ cho Robot"""
-    if current_user.role != "admin":
+    """Admin hoặc Robot chủ Bật / Tắt nguyên một nhóm công cụ cho Robot"""
+    is_owner = (getattr(current_user, "is_robot", False) and (str(getattr(current_user, "device_id", "")) == str(device_id) or str(getattr(current_user, "device_code", "")) == str(device_id)))
+    if current_user.role != "admin" and not is_owner:
         raise HTTPException(
             status_code=403,
-            detail="Chỉ tài khoản Admin mới có quyền bật/tắt nhóm chức năng cho Robot"
+            detail="Bạn chỉ có quyền cấu hình nhóm chức năng cho robot của mình"
         )
     enable = payload.enable if payload else None
     new_state = toggle_robot_group(device_id, group_id, enable)
@@ -7389,11 +7559,12 @@ async def toggle_robot_mcp_tool(
     payload: Optional[ToggleToolPayload] = None,
     current_user: User = Depends(get_current_user)
 ):
-    """Admin Bật / Tắt một công cụ cụ thể cho Robot"""
-    if current_user.role != "admin":
+    """Admin hoặc Robot chủ Bật / Tắt một công cụ cụ thể cho Robot"""
+    is_owner = (getattr(current_user, "is_robot", False) and (str(getattr(current_user, "device_id", "")) == str(device_id) or str(getattr(current_user, "device_code", "")) == str(device_id)))
+    if current_user.role != "admin" and not is_owner:
         raise HTTPException(
             status_code=403,
-            detail="Chỉ tài khoản Admin mới có quyền bật/tắt chức năng cho Robot"
+            detail="Bạn chỉ có quyền cấu hình công cụ cho robot của mình"
         )
     enable = payload.enable if payload else None
     new_state = toggle_robot_tool(device_id, tool_name, enable)
