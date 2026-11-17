@@ -2898,29 +2898,118 @@ async def resolve_and_stream_music(target_url: str, track_info: dict = None, ses
     if track_info is None:
         track_info = {}
     title = track_info.get("title", "")
-    http_headers = None
+    audio_stream_url = None
 
     if session_id != ACTIVE_MUSIC_STATE.get("session_id"):
         print(f"[YOUTUBE MUSIC] ⏹ Hủy resolve bài hát vì session #{session_id} đã lỗi thời")
         return
 
-    # Nếu target_url là YouTube link hoặc ID:
-    # Nếu chưa có title, lấy nhanh tiêu đề bằng flat extract (<1.0s)
-    if ("youtube.com" in target_url or "youtu.be" in target_url or (len(target_url) == 11 and "/" not in target_url)) and not title:
-        if yt_dlp:
+    clean_target = target_url.strip()
+
+    # 1. Tìm tiêu đề bài hát nếu chưa có
+    if not title:
+        for s in POPULAR_CHILDREN_SONGS:
+            if s.get("id") == clean_target or s.get("url") == clean_target:
+                title = s.get("title", "")
+                track_info["title"] = title
+                if s.get("thumbnail") and not track_info.get("thumbnail"):
+                    track_info["thumbnail"] = s.get("thumbnail")
+                break
+
+    # Nếu target là YouTube URL/ID và vẫn chưa có title, lấy nhanh bằng flat extract (<1.5s)
+    is_yt = ("youtube.com" in clean_target or "youtu.be" in clean_target or (len(clean_target) == 11 and "/" not in clean_target and " " not in clean_target))
+    if is_yt and not title and yt_dlp:
+        try:
+            ydl_flat_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': True}
+            yt_link = clean_target if clean_target.startswith("http") else f"https://www.youtube.com/watch?v={clean_target}"
+            def _extract_title():
+                with yt_dlp.YoutubeDL(ydl_flat_opts) as ydl:
+                    return ydl.extract_info(yt_link, download=False)
+            t_info = await asyncio.wait_for(asyncio.to_thread(_extract_title), timeout=3.5)
+            if t_info and t_info.get("title"):
+                title = t_info.get("title")
+                track_info["title"] = title
+                if t_info.get("thumbnail") and not track_info.get("thumbnail"):
+                    track_info["thumbnail"] = t_info.get("thumbnail")
+        except Exception:
+            pass
+
+    # Nếu không phải URL http, coi chính target_url là tên bài hát cần tìm
+    if not title and not clean_target.startswith("http"):
+        title = clean_target
+        track_info["title"] = title
+
+    search_query = title or clean_target
+    print(f"[MUSIC RESOLVER] Đang tìm stream âm thanh cho: '{search_query}' (Session #{session_id})")
+
+    # 2. ƯU TIÊN 1: Phân giải trực tiếp qua SoundCloud bằng yt-dlp (scsearch1:query)
+    # Cực kỳ nhanh (<2s), KHÔNG BAO GIỜ bị chặn bởi datacenter Render/AWS/GCP, không bị lỗi 403 Forbidden!
+    if yt_dlp and search_query and not clean_target.endswith(".mp3"):
+        try:
+            sc_target = f"scsearch1:{search_query}"
+            def _get_sc_url():
+                cmd = [
+                    sys.executable, "-m", "yt_dlp",
+                    "-q", "--no-warnings",
+                    "-f", "bestaudio/best",
+                    "--socket-timeout", "8",
+                    "-g", sc_target
+                ]
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+                return r.stdout.strip()
+            sc_url = await asyncio.wait_for(asyncio.to_thread(_get_sc_url), timeout=9.0)
+            if sc_url and sc_url.startswith("http"):
+                audio_stream_url = sc_url
+                print(f"[MUSIC RESOLVER] ✓ Đã trích xuất stream thành công qua SoundCloud: {title or search_query}")
+                serial_manager._add_log(f"[MUSIC RESOLVER] ✓ Tìm thấy stream nhạc cho: {title or search_query}")
+        except Exception as e:
+            print(f"[MUSIC RESOLVER] SoundCloud resolve error: {e}")
+
+    # 3. ƯU TIÊN 2: Nếu chưa có và target_url là link/ID YouTube, thử lấy direct stream từ YouTube
+    if not audio_stream_url and yt_dlp:
+        try:
+            yt_link = clean_target if clean_target.startswith("http") else f"https://www.youtube.com/watch?v={clean_target}"
+            def _get_yt_url():
+                cmd = [
+                    sys.executable, "-m", "yt_dlp",
+                    "-q", "--no-warnings",
+                    "-f", "bestaudio/best",
+                    "--socket-timeout", "8",
+                    "-g", yt_link
+                ]
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+                return r.stdout.strip()
+            yt_url = await asyncio.wait_for(asyncio.to_thread(_get_yt_url), timeout=9.0)
+            if yt_url and yt_url.startswith("http"):
+                audio_stream_url = yt_url
+                print(f"[MUSIC RESOLVER] ✓ Đã trích xuất stream YouTube: {title or search_query}")
+        except Exception as e:
+            print(f"[MUSIC RESOLVER] YouTube resolve error: {e}")
+
+    # 4. Nếu target_url vốn là một direct audio stream link (.mp3, .aac, .m4a, soundcloud cloud stream)
+    if not audio_stream_url and clean_target.startswith("http"):
+        audio_stream_url = clean_target
+
+    # Kiểm tra session trước khi bắt đầu stream
+    if session_id != ACTIVE_MUSIC_STATE.get("session_id"):
+        print(f"[MUSIC RESOLVER] ⏹ Hủy stream vì session #{session_id} đã thay đổi")
+        return
+
+    if not audio_stream_url:
+        err_msg = f"[MUSIC RESOLVER] ⚠ Không thể tìm luồng phát âm thanh cho: '{search_query}'"
+        print(err_msg)
+        serial_manager._add_log(err_msg)
+        ACTIVE_MUSIC_STATE["is_preparing"] = False
+        for ws in list(robot_ws_manager.all_robots):
             try:
-                ydl_flat_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': True}
-                def _extract_title():
-                    with yt_dlp.YoutubeDL(ydl_flat_opts) as ydl:
-                        return ydl.extract_info(target_url, download=False)
-                t_info = await asyncio.wait_for(asyncio.to_thread(_extract_title), timeout=4.0)
-                if t_info and t_info.get("title"):
-                    title = t_info.get("title")
-                    track_info["title"] = title
+                sess = robot_ws_manager.sessions.get(ws, "music-err")
+                await ws.send_json({"type": "llm", "emotion": "sad", "text": "Khong tim thay bai hat", "session_id": sess})
+                await ws.send_json({"type": "tts", "state": "stop", "session_id": sess})
             except Exception:
                 pass
+        return
 
-    await stream_music_to_robots(target_url, track_info, session_id, http_headers=http_headers)
+    await stream_music_to_robots(audio_stream_url, track_info, session_id)
 
 async def start_music_playback(query_or_url: str, track_info: Optional[dict] = None, source: str = "voice") -> bool:
     """
@@ -4569,7 +4658,30 @@ async def api_music_debug(id: str = "BwN3NiZt-PU"):
         "track": ACTIVE_MUSIC_STATE.get("track")
     }
 
-    # 5. yt-dlp check
+    # 5. SoundCloud resolver test
+    sc_test = {}
+    if yt_dlp:
+        try:
+            t0 = time.time()
+            cmd_sc = [
+                sys.executable, "-m", "yt_dlp",
+                "-q", "--no-warnings",
+                "-f", "bestaudio/best",
+                "--socket-timeout", "8",
+                "-g", "scsearch1:Bong Bong Bang Bang"
+            ]
+            r = subprocess.run(cmd_sc, capture_output=True, text=True, timeout=8)
+            sc_url = r.stdout.strip()
+            sc_test = {
+                "success": bool(sc_url and sc_url.startswith("http")),
+                "url_prefix": sc_url[:60] if sc_url else "",
+                "elapsed": round(time.time() - t0, 2)
+            }
+        except Exception as e:
+            sc_test = {"success": False, "error": str(e)}
+    debug_info["soundcloud_resolver"] = sc_test
+
+    # 6. yt-dlp check
     vid = extract_video_id(id) or id
     debug_info["vid"] = vid
     if yt_dlp:
