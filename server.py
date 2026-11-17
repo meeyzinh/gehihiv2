@@ -162,6 +162,11 @@ class Agent(Base):
     mcp_endpoints = Column(Text, default=f'["http://localhost:{PORT}/mcp"]')
     is_active = Column(Boolean, default=True)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    upstream_token = Column(Text, default="")
+    upstream_api_url = Column(String(255), default="https://api.xiaozhi.me")
+    last_synced_at = Column(DateTime, nullable=True)
+    sync_status = Column(String(32), default="idle")
+    sync_message = Column(String(255), default="")
 
     owner = relationship("User", back_populates="agents")
 
@@ -234,6 +239,29 @@ class EnglishSession(Base):
     completed_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 Base.metadata.create_all(bind=engine)
+
+def safe_migrate_db():
+    """Tự động bổ sung các cột mới vào SQLite DB một cách an toàn mà không làm mất dữ liệu cũ"""
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(sa.text("PRAGMA table_info(agents)"))
+            existing_cols = {row[1] for row in result.fetchall()}
+            new_cols = [
+                ("upstream_token", "TEXT DEFAULT ''"),
+                ("upstream_api_url", "VARCHAR(255) DEFAULT 'https://api.xiaozhi.me'"),
+                ("last_synced_at", "DATETIME"),
+                ("sync_status", "VARCHAR(32) DEFAULT 'idle'"),
+                ("sync_message", "VARCHAR(255) DEFAULT ''")
+            ]
+            for col_name, col_def in new_cols:
+                if col_name not in existing_cols:
+                    conn.execute(sa.text(f"ALTER TABLE agents ADD COLUMN {col_name} {col_def}"))
+                    print(f"[DB MIGRATE] ✓ Đã tự động thêm cột '{col_name}' vào bảng agents")
+            conn.commit()
+    except Exception as e:
+        print(f"[DB MIGRATE] Lưu ý migration: {e}")
+
+safe_migrate_db()
 
 def get_db():
     db = SessionLocal()
@@ -498,7 +526,7 @@ class XiaozhiUpstreamClient:
         return {"connected": False, "message": "Không thể kết nối đến máy chủ Upstream xiaozhi.me (kiểm tra mạng hoặc URL)."}
 
     async def sync_from_upstream(self, agent_id: str, token: str, api_url: str = DEFAULT_UPSTREAM_URL) -> Dict[str, Any]:
-        """Tải cấu hình từ xiaozhi.me về server nội bộ"""
+        """Tải cấu hình từ xiaozhi.me về server nội bộ cho 1 robot cụ thể"""
         if not token:
             return {"success": False, "offline": True, "message": "Không có Upstream Token, đang dùng cấu hình cục bộ."}
         headers = self._get_headers(token)
@@ -510,34 +538,34 @@ class XiaozhiUpstreamClient:
 
         urls = [
             f"{clean_url}/api/agents/{agent_id}",
-            f"{clean_url}/api/agents",
             f"{clean_url}/agents/{agent_id}",
+            f"{clean_url}/api/agents",
             f"{clean_url}/agents"
         ]
         for url in urls:
             try:
-                resp = await self.client.get(url, headers=headers)
+                resp = await self.client.get(url, headers=headers, timeout=6.0)
                 if resp.status_code == 200:
                     data = resp.json()
-                    # Phân tích dữ liệu phản hồi
                     agent_data = data.get("data")
                     if isinstance(agent_data, dict) and "agent" in agent_data:
                         agent_data = agent_data["agent"]
                     elif isinstance(agent_data, list):
                         for a in agent_data:
-                            if str(a.get("id")) == str(agent_id):
-                                return {"success": True, "offline": False, "data": a}
+                            if str(a.get("id")) == str(agent_id) or str(a.get("agent_id")) == str(agent_id):
+                                return {"success": True, "offline": False, "data": a, "message": f"Tải cấu hình thành công từ xiaozhi.me (ID: {agent_id})!"}
                         if agent_data:
-                            return {"success": True, "offline": False, "data": agent_data[0]}
-                    return {"success": True, "offline": False, "data": agent_data}
+                            return {"success": True, "offline": False, "data": agent_data[0], "message": f"Tải cấu hình thành công từ xiaozhi.me (ID: {agent_id})!"}
+                    if agent_data:
+                        return {"success": True, "offline": False, "data": agent_data, "message": f"Tải cấu hình thành công từ xiaozhi.me (ID: {agent_id})!"}
             except Exception:
                 continue
-        return {"success": False, "offline": True, "message": "Không tải được từ Upstream, chuyển sang chế độ cục bộ."}
+        return {"success": False, "offline": True, "message": f"Không thể tải cấu hình từ Upstream xiaozhi.me cho Agent ID '{agent_id}'."}
 
     async def push_to_upstream(self, agent_id: str, config_data: Dict[str, Any], token: str, api_url: str = DEFAULT_UPSTREAM_URL) -> Dict[str, Any]:
-        """Gửi cấu hình đã cập nhật lên xiaozhi.me"""
+        """Gửi cấu hình đã cập nhật lên xiaozhi.me cho 1 robot cụ thể"""
         if not token:
-            return {"success": True, "synced_upstream": False, "message": "Đã lưu cấu hình thành công vào hệ thống GMbot! (Robot sẽ áp dụng ngay)"}
+            return {"success": True, "synced_upstream": False, "message": "Đã lưu cấu hình nội bộ. (Chưa cấu hình Upstream Token xiaozhi.me)"}
 
         headers = self._get_headers(token)
         headers["Content-Type"] = "application/json"
@@ -551,24 +579,49 @@ class XiaozhiUpstreamClient:
             (f"{clean_url}/api/agents/{agent_id}/config", "POST"),
             (f"{clean_url}/agents/{agent_id}/config", "POST"),
             (f"{clean_url}/api/agents/{agent_id}", "PUT"),
-            (f"{clean_url}/agents/{agent_id}", "PUT")
+            (f"{clean_url}/agents/{agent_id}", "PUT"),
+            (f"{clean_url}/api/agents/{agent_id}", "POST")
         ]
+
+        raw_model = config_data.get("llm_model") or config_data.get("model") or "xz-lite"
+        target_model = raw_model
+        if target_model in ["xz-lite", "Gemini 3.1 Flash Lite"]:
+            target_model = "qwen"
+
+        full_char = config_data.get("character") or config_data.get("prompt") or ""
+        asst_name = config_data.get("assistant_name") or config_data.get("name") or "Sophia"
+        tts_v = config_data.get("tts_voice") or config_data.get("voice") or "Vietnamese_kindhearted_girl"
+        speech_spd = config_data.get("tts_speech_speed") or config_data.get("voice_speed") or "normal"
+        speech_pitch = int(config_data.get("tts_pitch", 0) or config_data.get("voice_pitch", 0) or 0)
+
         payload = {
-            "assistant_name": config_data.get("assistant_name", "Sophia"),
+            "name": asst_name,
+            "assistant_name": asst_name,
             "user_name": config_data.get("user_name", "Chủ nhân"),
             "language": config_data.get("language", "vi"),
-            "tts_voice": config_data.get("tts_voice", "Vietnamese_kindhearted_girl"),
-            "llm_model": config_data.get("llm_model", "xz-lite"),
-            "tts_speech_speed": config_data.get("tts_speech_speed", "normal"),
-            "tts_pitch": int(config_data.get("tts_pitch", 0) or 0),
-            "character": config_data.get("character", "")
+            "voice": tts_v,
+            "tts_voice": tts_v,
+            "model": target_model,
+            "llm_model": target_model,
+            "speed": speech_spd,
+            "tts_speech_speed": speech_spd,
+            "pitch": speech_pitch,
+            "tts_pitch": speech_pitch,
+            "prompt": full_char,
+            "character": full_char
         }
+        if config_data.get("mcp_endpoints"):
+            payload["mcp_endpoints"] = config_data.get("mcp_endpoints")
+
+        last_error = ""
+        now_time = datetime.datetime.now().strftime("%H:%M:%S")
+
         for url, method in endpoints:
             try:
                 if method == "PUT":
-                    resp = await self.client.put(url, headers=headers, json=payload)
+                    resp = await self.client.put(url, headers=headers, json=payload, timeout=5.0)
                 else:
-                    resp = await self.client.post(url, headers=headers, json=payload)
+                    resp = await self.client.post(url, headers=headers, json=payload, timeout=5.0)
                 if resp.status_code in [200, 201, 204]:
                     res_json = {}
                     try:
@@ -576,11 +629,27 @@ class XiaozhiUpstreamClient:
                     except Exception:
                         pass
                     if res_json.get("success") is not False:
-                        return {"success": True, "synced_upstream": True, "message": "Đã đồng bộ thành công 100% lên máy chủ gốc xiaozhi.me!"}
-            except Exception:
+                        print(f"[XIAOZHI.ME SYNC] ✓ Đã đồng bộ thành công lên {url} (Agent: {agent_id})")
+                        return {
+                            "success": True,
+                            "synced_upstream": True,
+                            "message": f"Đã đồng bộ thành công lên xiaozhi.me lúc {now_time}!",
+                            "timestamp": now_time
+                        }
+                elif resp.status_code in [401, 403]:
+                    last_error = f"Token không hợp lệ hoặc hết hạn (HTTP {resp.status_code})"
+                else:
+                    last_error = f"Máy chủ trả về HTTP {resp.status_code}"
+            except Exception as ex:
+                last_error = str(ex)
                 continue
 
-        return {"success": True, "synced_upstream": False, "message": "Đã lưu vào database.db máy tính. (Upstream xiaozhi.me chưa phản hồi hoặc chưa hỗ trợ endpoint này)"}
+        return {
+            "success": True,
+            "synced_upstream": False,
+            "message": f"Đã lưu vào server nội bộ. (Upstream: {last_error or 'Chưa hỗ trợ endpoint'})",
+            "timestamp": now_time
+        }
 
 upstream_client = XiaozhiUpstreamClient()
 
@@ -1770,6 +1839,11 @@ def format_device_dict(a: Agent) -> Dict[str, Any]:
         "volume": 8,
         "toy_settings": {"speed": 85, "auto_avoid": True},
         "mcp_endpoints": a.mcp_endpoints or f'["http://localhost:{PORT}/mcp"]',
+        "upstream_token": getattr(a, "upstream_token", "") or "",
+        "upstream_api_url": getattr(a, "upstream_api_url", DEFAULT_UPSTREAM_URL) or DEFAULT_UPSTREAM_URL,
+        "last_synced_at": a.last_synced_at.strftime("%Y-%m-%d %H:%M:%S") if getattr(a, "last_synced_at", None) else None,
+        "sync_status": getattr(a, "sync_status", "idle") or "idle",
+        "sync_message": getattr(a, "sync_message", "") or "",
         "updated_at": a.updated_at.isoformat() if a.updated_at else None
     }
 
@@ -5953,28 +6027,52 @@ async def update_device_by_id(agent_id: str, payload: Dict[str, Any], db: Sessio
     if not agent:
         raise HTTPException(status_code=404, detail="Không tìm thấy thiết bị")
     
-    if "name" in payload: agent.assistant_name = payload["name"]
-    if "assistant_name" in payload: agent.assistant_name = payload["assistant_name"]
+    if "name" in payload: agent.assistant_name = str(payload["name"]).strip()
+    if "assistant_name" in payload: agent.assistant_name = str(payload["assistant_name"]).strip()
+    if "device_name" in payload: agent.device_name = str(payload["device_name"]).strip()
+    if "mac" in payload or "mac_address" in payload or "device_mac" in payload:
+        agent.mac_address = str(payload.get("mac_address") or payload.get("device_mac") or payload.get("mac")).strip()
+    if "agent_id" in payload and str(payload["agent_id"]).strip():
+        agent.agent_id = str(payload["agent_id"]).strip()
+    elif "device_code" in payload and str(payload["device_code"]).strip():
+        agent.agent_id = str(payload["device_code"]).strip()
+
     if "prompt" in payload: agent.character = payload["prompt"]
     if "character" in payload: agent.character = payload["character"]
     if "model_id" in payload: agent.llm_model = payload["model_id"]
     if "llm_model" in payload: agent.llm_model = payload["llm_model"]
+    if "model" in payload: agent.llm_model = payload["model"]
     if "voice" in payload: agent.tts_voice = payload["voice"]
     if "tts_voice" in payload: agent.tts_voice = payload["tts_voice"]
     if "language" in payload: agent.language = payload["language"]
-    if "voice_speed" in payload: agent.tts_speech_speed = payload["voice_speed"]
-    if "tts_speech_speed" in payload: agent.tts_speech_speed = payload["tts_speech_speed"]
-    if "voice_pitch" in payload: agent.tts_pitch = int(payload["voice_pitch"])
-    if "tts_pitch" in payload: agent.tts_pitch = int(payload["tts_pitch"])
+    if "voice_speed" in payload: agent.tts_speech_speed = str(payload["voice_speed"])
+    if "tts_speech_speed" in payload: agent.tts_speech_speed = str(payload["tts_speech_speed"])
+    if "voice_pitch" in payload: 
+        try: agent.tts_pitch = int(payload["voice_pitch"])
+        except Exception: pass
+    if "tts_pitch" in payload: 
+        try: agent.tts_pitch = int(payload["tts_pitch"])
+        except Exception: pass
     if "hidden_prompt" in payload: agent.hidden_prompt = payload["hidden_prompt"]
+    if "upstream_token" in payload: agent.upstream_token = str(payload["upstream_token"]).strip()
+    if "upstream_api_url" in payload: agent.upstream_api_url = str(payload["upstream_api_url"]).strip()
+
+    agent.updated_at = datetime.datetime.utcnow()
     db.commit()
 
     # Tự động đẩy lên Xiaozhi Upstream nếu đã có token
-    upstream_status = None
+    upstream_status = False
+    sync_msg = ""
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         user = db.query(User).filter(User.id == agent.user_id).first()
-        token_to_use = (user.upstream_token if user else None) or DEFAULT_UPSTREAM_TOKEN
-        api_url_to_use = (user.upstream_api_url if user else None) or DEFAULT_UPSTREAM_URL
+        token_to_use = (agent.upstream_token if agent.upstream_token and agent.upstream_token.strip() else None) or \
+                       (user.upstream_token if user and user.upstream_token and user.upstream_token.strip() else None) or \
+                       DEFAULT_UPSTREAM_TOKEN
+        api_url_to_use = (agent.upstream_api_url if agent.upstream_api_url and agent.upstream_api_url.strip() else None) or \
+                         (user.upstream_api_url if user and user.upstream_api_url and user.upstream_api_url.strip() else None) or \
+                         DEFAULT_UPSTREAM_URL
+
         full_prompt = agent.character or ""
         if agent.hidden_prompt and agent.hidden_prompt.strip():
             full_prompt = f"{full_prompt}\n\n[HỆ THỐNG QUẢN TRỊ ẨN]\n{agent.hidden_prompt.strip()}"
@@ -5994,12 +6092,135 @@ async def update_device_by_id(agent_id: str, payload: Dict[str, Any], db: Sessio
             token=token_to_use,
             api_url=api_url_to_use
         )
-        upstream_status = upstream_res.get("success", False)
+        upstream_status = upstream_res.get("synced_upstream", False)
+        sync_msg = upstream_res.get("message", "")
+        agent.last_synced_at = datetime.datetime.utcnow()
+        agent.sync_status = "synced" if upstream_status else "failed"
+        agent.sync_message = sync_msg
+        db.commit()
     except Exception as ex:
         print(f"Lỗi đồng bộ upstream từ update_device_by_id: {ex}")
+        sync_msg = str(ex)
 
-    msg = "Đã cập nhật cấu hình robot và đồng bộ lên Xiaozhi.me thành công" if upstream_status else "Đã lưu cấu hình vào server"
-    return {"status": "ok", "message": msg, "upstream_synced": upstream_status}
+    msg = f"Đã cập nhật cấu hình robot và đồng bộ lên xiaozhi.me thành công (Agent: {agent.agent_id})" if upstream_status else f"Đã lưu cấu hình vào server. ({sync_msg})"
+    return {
+        "status": "ok",
+        "message": msg,
+        "upstream_synced": upstream_status,
+        "last_synced_at": now_str,
+        "device": format_device_dict(agent)
+    }
+
+
+class DeviceSyncPayload(BaseModel):
+    direction: Optional[str] = "push"  # "push" | "pull"
+
+
+@app.post("/api/devices/{agent_id}/sync-upstream")
+async def sync_device_upstream_endpoint(
+    agent_id: str,
+    payload: Optional[DeviceSyncPayload] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Đồng bộ cấu hình 2 chiều giữa Server và máy chủ gốc xiaozhi.me cho 1 robot cụ thể:
+    - direction="push": Gửi cấu hình hiện tại của Robot lên xiaozhi.me
+    - direction="pull": Tải cấu hình từ xiaozhi.me về cập nhật vào SQLite Server
+    """
+    agent = db.query(Agent).filter((Agent.agent_id == agent_id) | (Agent.device_name == agent_id)).first()
+    if not agent and agent_id.isdigit():
+        agent = db.query(Agent).filter(Agent.id == int(agent_id)).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Không tìm thấy thiết bị robot")
+
+    token_to_use = (agent.upstream_token if agent.upstream_token and agent.upstream_token.strip() else None) or \
+                   (current_user.upstream_token if current_user and current_user.upstream_token and current_user.upstream_token.strip() else None) or \
+                   DEFAULT_UPSTREAM_TOKEN
+    api_url_to_use = (agent.upstream_api_url if agent.upstream_api_url and agent.upstream_api_url.strip() else None) or \
+                     (current_user.upstream_api_url if current_user and current_user.upstream_api_url and current_user.upstream_api_url.strip() else None) or \
+                     DEFAULT_UPSTREAM_URL
+
+    direction = (payload.direction if payload and payload.direction else "push").lower()
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if direction == "pull":
+        pull_res = await upstream_client.sync_from_upstream(
+            agent_id=agent.agent_id,
+            token=token_to_use,
+            api_url=api_url_to_use
+        )
+        if pull_res.get("success") and pull_res.get("data"):
+            d = pull_res["data"]
+            if d.get("name") or d.get("assistant_name"):
+                agent.assistant_name = d.get("assistant_name") or d.get("name")
+            if d.get("character") or d.get("prompt"):
+                agent.character = d.get("character") or d.get("prompt")
+            if d.get("llm_model") or d.get("model"):
+                agent.llm_model = d.get("llm_model") or d.get("model")
+            if d.get("tts_voice") or d.get("voice"):
+                agent.tts_voice = d.get("tts_voice") or d.get("voice")
+            if d.get("tts_speech_speed") or d.get("speed"):
+                agent.tts_speech_speed = str(d.get("tts_speech_speed") or d.get("speed"))
+            if d.get("tts_pitch") or d.get("pitch"):
+                try: agent.tts_pitch = int(d.get("tts_pitch") or d.get("pitch"))
+                except Exception: pass
+            agent.last_synced_at = datetime.datetime.utcnow()
+            agent.sync_status = "synced"
+            agent.sync_message = "Đã kéo cấu hình từ xiaozhi.me về server thành công"
+            db.commit()
+            db.refresh(agent)
+            return {
+                "success": True,
+                "direction": "pull",
+                "synced_upstream": True,
+                "message": f"✓ Đã tải cấu hình từ xiaozhi.me về robot '{agent.assistant_name}' thành công!",
+                "timestamp": now_str,
+                "device": format_device_dict(agent)
+            }
+        else:
+            return {
+                "success": False,
+                "direction": "pull",
+                "synced_upstream": False,
+                "message": pull_res.get("message", "Không thể tải cấu hình từ xiaozhi.me"),
+                "timestamp": now_str
+            }
+    else:
+        # Push to xiaozhi.me
+        full_prompt = agent.character or ""
+        if agent.hidden_prompt and agent.hidden_prompt.strip():
+            full_prompt = f"{full_prompt}\n\n[HỆ THỐNG QUẢN TRỊ ẨN]\n{agent.hidden_prompt.strip()}"
+
+        push_res = await upstream_client.push_to_upstream(
+            agent_id=agent.agent_id,
+            config_data={
+                "assistant_name": agent.assistant_name,
+                "llm_model": agent.llm_model,
+                "language": agent.language,
+                "tts_voice": agent.tts_voice,
+                "tts_speech_speed": agent.tts_speech_speed,
+                "tts_pitch": agent.tts_pitch,
+                "character": full_prompt,
+                "mcp_endpoints": agent.mcp_endpoints
+            },
+            token=token_to_use,
+            api_url=api_url_to_use
+        )
+        is_synced = push_res.get("synced_upstream", False)
+        agent.last_synced_at = datetime.datetime.utcnow()
+        agent.sync_status = "synced" if is_synced else "failed"
+        agent.sync_message = push_res.get("message", "")
+        db.commit()
+        db.refresh(agent)
+        return {
+            "success": True,
+            "direction": "push",
+            "synced_upstream": is_synced,
+            "message": push_res.get("message", "Đã lưu vào server"),
+            "timestamp": now_str,
+            "device": format_device_dict(agent)
+        }
 
 
 @app.get("/api/my-xiaozhi-options")
@@ -6068,6 +6289,8 @@ async def get_xiaozhi_config(request: Request, db: Session = Depends(get_db), cu
 
 
 class SaveConfigPayload(BaseModel):
+    agent_id: Optional[str] = None
+    device_id: Optional[Any] = None
     assistant_name: Optional[str] = "Sophia"
     llm_model: Optional[str] = "xz-lite"
     language: Optional[str] = "vi"
@@ -6077,6 +6300,7 @@ class SaveConfigPayload(BaseModel):
     character: Optional[str] = None
     hidden_prompt: Optional[str] = None
     mcp_endpoints: Optional[str] = None
+    upstream_token: Optional[str] = None
 
 
 @app.post("/api/my-xiaozhi-config")
@@ -6087,8 +6311,18 @@ async def save_xiaozhi_config(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Lưu cấu hình vào SQLite và đồng bộ lên xiaozhi.me"""
-    agent = db.query(Agent).filter(Agent.user_id == current_user.id, Agent.is_active == True).first()
+    """Lưu cấu hình vào SQLite và đồng bộ lên xiaozhi.me cho đúng robot đang điều khiển"""
+    target_id = payload.agent_id or payload.device_id
+    agent = None
+    if target_id:
+        target_str = str(target_id).strip()
+        if target_str.isdigit():
+            agent = db.query(Agent).filter(Agent.id == int(target_str)).first()
+        if not agent:
+            agent = db.query(Agent).filter((Agent.agent_id == target_str) | (Agent.device_name == target_str)).first()
+
+    if not agent:
+        agent = db.query(Agent).filter(Agent.user_id == current_user.id, Agent.is_active == True).first()
     if not agent:
         agent = db.query(Agent).first()
 
@@ -6116,6 +6350,8 @@ async def save_xiaozhi_config(
     agent.tts_pitch = payload.tts_pitch if payload.tts_pitch is not None else agent.tts_pitch
     agent.character = char_clean
 
+    if payload.upstream_token is not None:
+        agent.upstream_token = payload.upstream_token.strip()
     if payload.mcp_endpoints:
         agent.mcp_endpoints = payload.mcp_endpoints
     if current_user.role == "admin" and payload.hidden_prompt is not None:
@@ -6131,8 +6367,12 @@ async def save_xiaozhi_config(
         full_prompt_to_sync = f"{char_clean}\n\n[HỆ THỐNG QUẢN TRỊ ẨN]\n{agent.hidden_prompt.strip()}"
 
     # Thực hiện Upstream Sync
-    token_to_use = current_user.upstream_token or DEFAULT_UPSTREAM_TOKEN
-    api_url_to_use = current_user.upstream_api_url or DEFAULT_UPSTREAM_URL
+    token_to_use = (agent.upstream_token if agent.upstream_token and agent.upstream_token.strip() else None) or \
+                   (current_user.upstream_token if current_user and current_user.upstream_token.strip() else None) or \
+                   DEFAULT_UPSTREAM_TOKEN
+    api_url_to_use = (agent.upstream_api_url if agent.upstream_api_url and agent.upstream_api_url.strip() else None) or \
+                     (current_user.upstream_api_url if current_user and current_user.upstream_api_url.strip() else None) or \
+                     DEFAULT_UPSTREAM_URL
 
     sync_result = await upstream_client.push_to_upstream(
         agent_id=agent.agent_id,
@@ -6149,6 +6389,12 @@ async def save_xiaozhi_config(
         token=token_to_use,
         api_url=api_url_to_use
     )
+
+    is_synced = sync_result.get("synced_upstream", False)
+    agent.last_synced_at = datetime.datetime.utcnow()
+    agent.sync_status = "synced" if is_synced else "failed"
+    agent.sync_message = sync_result.get("message", "")
+    db.commit()
 
     # 1. Đồng bộ Prompt, Giọng nói và Model lên Upstream AI (gehihi.onrender.com)
     target_mac = agent.mac_address or "14:c1:9f:c4:ee:d0"
@@ -6262,51 +6508,104 @@ async def get_devices(db: Session = Depends(get_db), current_user: User = Depend
 
 
 class DevicePayload(BaseModel):
-    device_name: str
+    device_name: Optional[str] = None
+    name: Optional[str] = None
     agent_id: Optional[str] = ""
-    mac_address: str
+    device_code: Optional[str] = ""
+    mac_address: Optional[str] = ""
+    device_mac: Optional[str] = ""
     assistant_name: Optional[str] = "Sophia"
     model: Optional[str] = "Gemini 3.1 Flash Lite"
     voice: Optional[str] = "vi-VN-HoaiMyNeural"
     prompt: Optional[str] = ""
     character: Optional[str] = ""
     password: Optional[str] = "123456"
+    upstream_token: Optional[str] = ""
+    upstream_api_url: Optional[str] = "https://api.xiaozhi.me"
 
 
 @app.post("/api/devices")
 async def create_or_update_device(payload: DevicePayload, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db.query(Agent).filter(Agent.user_id == current_user.id).update({Agent.is_active: False})
-    agent_code = payload.agent_id.strip() if payload.agent_id and payload.agent_id.strip() else f"{random.randint(100000, 999999)}"
-    mac_clean = payload.mac_address.strip()
+    
+    # Chuẩn hóa tên thiết bị
+    dev_name = (payload.device_name or payload.name or payload.assistant_name or "Robot Sophia").strip()
+    asst_name = (payload.assistant_name or payload.name or payload.device_name or "Sophia").strip()
+
+    # Chuẩn hóa Agent ID
+    agent_code = (payload.agent_id or payload.device_code or "").strip()
+    if not agent_code:
+        agent_code = f"{random.randint(100000, 999999)}"
+
+    # Chuẩn hóa MAC Address
+    mac_clean = (payload.mac_address or payload.device_mac or "").strip()
+    if not mac_clean:
+        mac_clean = f"14:c1:9f:{random.randint(10,99):02x}:{random.randint(10,99):02x}:{random.randint(10,99):02x}"
+
+    prompt_text = payload.prompt or payload.character or DEFAULT_CHARACTER_PROMPT
+    model_name = payload.model or "Gemini 3.1 Flash Lite"
+    voice_name = payload.voice or "vi-VN-HoaiMyNeural"
+    up_token = (payload.upstream_token or "").strip()
 
     existing = db.query(Agent).filter((Agent.agent_id == agent_code) | (sa.func.lower(Agent.mac_address) == mac_clean.lower())).first()
+    target_agent = None
+
     if existing:
-        existing.device_name = payload.device_name
+        existing.device_name = dev_name
+        existing.assistant_name = asst_name
         existing.mac_address = mac_clean
-        existing.assistant_name = payload.assistant_name or payload.device_name or existing.assistant_name
-        if payload.model: existing.llm_model = payload.model
-        if payload.voice: existing.tts_voice = payload.voice
-        if payload.prompt or payload.character: existing.character = payload.prompt or payload.character
+        existing.agent_id = agent_code
+        if payload.model: existing.llm_model = model_name
+        if payload.voice: existing.tts_voice = voice_name
+        if payload.prompt or payload.character: existing.character = prompt_text
+        if up_token: existing.upstream_token = up_token
         existing.is_active = True
+        existing.updated_at = datetime.datetime.utcnow()
         db.commit()
         db.refresh(existing)
-        return format_device_dict(existing)
+        target_agent = existing
     else:
         new_agent = Agent(
             user_id=current_user.id,
-            device_name=payload.device_name,
+            device_name=dev_name,
             agent_id=agent_code,
             mac_address=mac_clean,
-            assistant_name=payload.assistant_name or payload.device_name or "Sophia",
-            llm_model=payload.model or "Gemini 3.1 Flash Lite",
-            tts_voice=payload.voice or "vi-VN-HoaiMyNeural",
-            character=payload.prompt or payload.character or DEFAULT_CHARACTER_PROMPT,
+            assistant_name=asst_name,
+            llm_model=model_name,
+            tts_voice=voice_name,
+            character=prompt_text,
+            upstream_token=up_token,
             is_active=True
         )
         db.add(new_agent)
         db.commit()
         db.refresh(new_agent)
-        return format_device_dict(new_agent)
+        target_agent = new_agent
+
+    # Tự động gửi cấu hình ban đầu lên xiaozhi.me nếu có token
+    try:
+        token_to_use = up_token or current_user.upstream_token or DEFAULT_UPSTREAM_TOKEN
+        if token_to_use and target_agent.agent_id:
+            push_res = await upstream_client.push_to_upstream(
+                agent_id=target_agent.agent_id,
+                config_data={
+                    "assistant_name": target_agent.assistant_name,
+                    "llm_model": target_agent.llm_model,
+                    "language": target_agent.language,
+                    "tts_voice": target_agent.tts_voice,
+                    "character": target_agent.character
+                },
+                token=token_to_use
+            )
+            is_synced = push_res.get("synced_upstream", False)
+            target_agent.last_synced_at = datetime.datetime.utcnow()
+            target_agent.sync_status = "synced" if is_synced else "failed"
+            target_agent.sync_message = push_res.get("message", "")
+            db.commit()
+    except Exception as ex:
+        print(f"[DEVICE CREATE SYNC] Lưu ý đồng bộ xiaozhi.me: {ex}")
+
+    return format_device_dict(target_agent)
 
 
 @app.get("/api/upstream/status")
