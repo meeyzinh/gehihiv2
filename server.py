@@ -1248,26 +1248,23 @@ class RobotConnectionManager:
                     "emotion": "sleepy",
                     "text": "Da tat robot"
                 })
-                # 2. Dừng lắng nghe mic
+                # 2. Dừng lắng nghe mic và đưa firmware về Idle
                 await ws.send_json({
                     "session_id": sess_id,
                     "type": "listen",
+                    "state": "stop"
+                })
+                await ws.send_json({
+                    "session_id": sess_id,
+                    "type": "tts",
                     "state": "stop"
                 })
                 sent_count += 1
             except Exception as e:
                 print(f"[WS ERR] send_sleep_command error: {e}")
 
-        # Cho màn hình OLED hiển thị biểu cảm sleepy trước khi ngắt kênh Audio
-        await asyncio.sleep(0.35)
-
-        for ws in targets:
-            try:
-                # Đóng kết nối WebSocket -> Firmware kích hoạt OnAudioChannelClosed -> kDeviceStateIdle (Ngắt hoàn toàn mic lắng nghe, chỉ chờ WakeNet 'Sophia')
-                await ws.close(code=1000, reason="sleep")
-                print(f"[WS] 💤 Đã đóng Audio WebSocket để Robot vào Standby hoàn toàn (Tắt mic lắng nghe)")
-            except Exception:
-                pass
+        # KHÔNG BAO GIỜ đóng kết nối WebSocket! Giữ persistent connection để nhận lệnh phát nhạc, đánh thức và điều khiển 24/7!
+        print(f"[WS] 💤 Robot đã chuyển sang chế độ Standby (Idle), giữ nguyên kết nối WebSocket 24/7.")
 
         # Đồng thời cập nhật trạng thái UI Mic Monitor
         mic_monitor_manager.current_state["state"] = "idle"
@@ -2204,20 +2201,20 @@ POPULAR_CHILDREN_SONGS = [
         "url": "https://www.youtube.com/watch?v=oIStM-HF_kc"
     },
     {
-        "id": "jz_wc4D6y8c",
-        "title": "Chú Ếch Con Kìa Chú Là Chú Ếch Con",
-        "uploader": "Vườn Cổ Tích",
-        "duration_str": "3:15",
-        "thumbnail": "https://i.ytimg.com/vi/jz_wc4D6y8c/hqdefault.jpg",
-        "url": "https://www.youtube.com/watch?v=jz_wc4D6y8c"
+        "id": "X0wxLzTe5rE",
+        "title": "Nhạc Thiếu Nhi Tập Thể Dục Buổi Sáng - Vui Nhộn",
+        "uploader": "Con Heo Đất",
+        "duration_str": "3:54",
+        "thumbnail": "https://i.ytimg.com/vi/X0wxLzTe5rE/hqdefault.jpg",
+        "url": "https://www.youtube.com/watch?v=X0wxLzTe5rE"
     },
     {
-        "id": "Ypz3bsr6SZc",
-        "title": "ABC Phonics Song - Bài Hát Học Tiếng Anh Trẻ Em",
-        "uploader": "CoComelon",
-        "duration_str": "3:40",
-        "thumbnail": "https://i.ytimg.com/vi/Ypz3bsr6SZc/hqdefault.jpg",
-        "url": "https://www.youtube.com/watch?v=Ypz3bsr6SZc"
+        "id": "UL4lDzpz6yk",
+        "title": "Kìa Con Bướm Vàng - Nhạc Thiếu Nhi Vui Nhộn",
+        "uploader": "Xuân Mai",
+        "duration_str": "3:10",
+        "thumbnail": "https://i.ytimg.com/vi/UL4lDzpz6yk/hqdefault.jpg",
+        "url": "https://www.youtube.com/watch?v=UL4lDzpz6yk"
     }
 ]
 
@@ -2692,6 +2689,19 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, session_id: i
         print(f"[YOUTUBE MUSIC] ⏹ Session #{session_id} đã hết hạn trước khi stream (hiện tại #{ACTIVE_MUSIC_STATE.get('session_id')})")
         return
 
+    # Lọc danh sách robot đang thực sự kết nối WebSocket (loại bỏ các kết nối stale/closed)
+    valid_robots = []
+    for ws in list(robot_ws_manager.all_robots):
+        c_state = getattr(ws, "client_state", None)
+        if c_state and getattr(c_state, "name", "") == "CONNECTED":
+            valid_robots.append(ws)
+        else:
+            try:
+                robot_ws_manager.all_robots.remove(ws)
+            except Exception:
+                pass
+            robot_ws_manager.sessions.pop(ws, None)
+
     stop_event = asyncio.Event()
     ACTIVE_MUSIC_STATE["stop_event"] = stop_event
     ACTIVE_MUSIC_STATE["is_playing"] = True
@@ -2701,12 +2711,17 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, session_id: i
     stream_uuid = str(uuid.uuid4())[:8]
     raw_title = track_info.get("title", "Bài hát yêu thích")
     title_clean = raw_title.split("-")[0].split("|")[0].strip()[:24]
-    print(f"[YOUTUBE MUSIC] ▶ Bắt đầu stream tới Robot ({len(robot_ws_manager.all_robots)} robot online): '{title_clean}' (Session #{session_id})")
+    
+    start_msg = f"[YOUTUBE MUSIC] ▶ Bắt đầu stream tới {len(valid_robots)} robot online: '{title_clean}' (Session #{session_id})"
+    print(start_msg)
+    serial_manager._add_log(start_msg)
+    if not valid_robots:
+        serial_manager._add_log("[YOUTUBE MUSIC] ⚠ Cảnh báo: Hiện chưa có robot nào kết nối WebSocket để nhận âm thanh!")
 
     sample_rate = 16000  # Chuẩn âm thanh 16kHz của MAX98357A trên bo mạch RobotMiniS3
 
     # 1. Báo hiển thị OLED & khởi tạo luồng âm thanh chuẩn xác cho firmware ESP32
-    for ws in list(robot_ws_manager.all_robots):
+    for ws in valid_robots:
         try:
             sess = robot_ws_manager.sessions.get(ws, stream_uuid)
             await ws.send_json({"type": "llm", "emotion": "happy", "session_id": sess})
@@ -2738,30 +2753,46 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, session_id: i
         "-acodec", "pcm_s16le",
         "-ac", "1",
         "-ar", str(sample_rate),
+        "-loglevel", "error",
         "pipe:1"
     ])
 
     proc = None
+    frame_idx = 0
+    ffmpeg_err_buf = []
     try:
         if session_id != ACTIVE_MUSIC_STATE.get("session_id"):
+            return
+
+        if not opuslib_next:
+            err_msg = "[YOUTUBE MUSIC] ⚠ Thư viện opuslib_next chưa được nạp! Không thể mã hóa âm thanh cho loa robot."
+            print(err_msg)
+            serial_manager._add_log(err_msg)
             return
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL
+            stderr=asyncio.subprocess.PIPE
         )
         ACTIVE_MUSIC_STATE["proc"] = proc
         ACTIVE_MUSIC_STATE.setdefault("all_procs", set()).add(proc)
 
-        if not opuslib_next:
-            raise RuntimeError("opuslib_next is not installed")
+        async def _read_stderr():
+            try:
+                while True:
+                    err_line = await proc.stderr.readline()
+                    if not err_line:
+                        break
+                    ffmpeg_err_buf.append(err_line.decode('utf-8', errors='replace').strip())
+            except Exception:
+                pass
+        stderr_reader_task = asyncio.create_task(_read_stderr())
 
         encoder = opuslib_next.Encoder(sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
         frame_samples = int(sample_rate * 0.060)  # 960 samples cho 60ms tại 16000Hz
         frame_bytes = frame_samples * 2  # 1920 bytes
 
-        frame_idx = 0
         next_frame_time = time.monotonic()
 
         while not stop_event.is_set() and session_id == ACTIVE_MUSIC_STATE.get("session_id"):
@@ -2779,10 +2810,16 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, session_id: i
             for ws in list(robot_ws_manager.all_robots):
                 try:
                     await ws.send_bytes(encoded_opus)
-                except Exception:
-                    pass
+                except Exception as ex:
+                    print(f"[WS SEND AUDIO ERR] {ex}")
 
             frame_idx += 1
+            if frame_idx == 1:
+                serial_manager._add_log(f"[YOUTUBE MUSIC] 🔊 Đã phát khung âm thanh đầu tiên ra loa ({title_clean})")
+            elif frame_idx % 200 == 0:
+                cur_sec = int(frame_idx * 0.06)
+                serial_manager._add_log(f"[YOUTUBE MUSIC] 🎵 Đang phát '{title_clean}' [{cur_sec//60:02d}:{cur_sec%60:02d}]")
+
             if frame_idx <= 5:
                 # Pre-buffer 5 frames (300ms) để buffer ESP32 đầy, không ngắt quãng
                 await asyncio.sleep(0.005)
@@ -2799,8 +2836,15 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, session_id: i
     except asyncio.CancelledError:
         print(f"[YOUTUBE MUSIC] ⏹ Stream bị hủy cho bài '{title_clean}' (Session #{session_id})")
     except Exception as e:
-        print(f"[YOUTUBE MUSIC] ⚠ Lỗi luồng phát nhạc: {e}")
+        err_detail = f"[YOUTUBE MUSIC] ⚠ Lỗi luồng phát nhạc: {e}"
+        print(err_detail)
+        serial_manager._add_log(err_detail)
     finally:
+        if frame_idx == 0 and ffmpeg_err_buf:
+            ff_err = " | ".join([l for l in ffmpeg_err_buf if l][:3])
+            serial_manager._add_log(f"[FFMPEG LỖI] {ff_err}")
+            print(f"[YOUTUBE MUSIC] FFmpeg lỗi: {ff_err}")
+
         if proc:
             try:
                 proc.kill()
@@ -2830,7 +2874,9 @@ async def stream_music_to_robots(audio_url: str, track_info: dict, session_id: i
             ACTIVE_MUSIC_STATE["is_playing"] = False
             ACTIVE_MUSIC_STATE["is_preparing"] = False
             ACTIVE_MUSIC_STATE["stop_event"] = None
-            print(f"[YOUTUBE MUSIC] ✓ Đã dừng/hoàn thành bài: '{title_clean}' (Session #{session_id})")
+            finish_msg = f"[YOUTUBE MUSIC] ✓ Đã dừng/hoàn thành bài: '{title_clean}' (Tổng {frame_idx} khung âm thanh)"
+            print(finish_msg)
+            serial_manager._add_log(finish_msg)
 
             # Trả robot về trạng thái rảnh / standby bình thường
             for ws in list(robot_ws_manager.all_robots):
@@ -2909,6 +2955,13 @@ async def resolve_and_stream_music(target_url: str, track_info: dict = None, ses
         print(f"[YOUTUBE MUSIC] ⚠ Không thể lấy audio stream cho '{target_url}' (IP bị giới hạn hoặc URL chưa hỗ trợ)")
         serial_manager._add_log(f"[YOUTUBE MUSIC] ⚠ Không thể trích xuất stream cho: {title or target_url}")
         ACTIVE_MUSIC_STATE["is_preparing"] = False
+        for ws in list(robot_ws_manager.all_robots):
+            try:
+                sess = robot_ws_manager.sessions.get(ws, "music-err")
+                await ws.send_json({"type": "llm", "emotion": "sad", "text": "Loi tai bai hat", "session_id": sess})
+                await ws.send_json({"type": "tts", "state": "stop", "session_id": sess})
+            except Exception:
+                pass
         return
 
     await stream_music_to_robots(audio_stream_url, track_info, session_id, http_headers=http_headers)
@@ -3474,7 +3527,6 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                 serial_manager._add_log(f"[TỰ ĐỘNG NGỦ] 💤 Không có tương tác trong {int(idle_duration)}s -> Robot vào chế độ ngủ (Standby).")
                 is_listening = False
                 await robot_ws_manager.send_sleep_command(dev_mac)
-                break
 
     watchdog_task = asyncio.create_task(auto_sleep_watchdog())
 
@@ -3647,8 +3699,8 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     except Exception:
                         pass
                     try:
-                        # Khi đang phát nhạc: Chặn toàn bộ tin nhắn thoại/TTS/STT từ Upstream AI gửi xuống Robot để không ngắt quãng nhạc
-                        if not ACTIVE_MUSIC_STATE.get("is_playing"):
+                        # Khi đang phát nhạc hoặc đang tải bài hát: Chặn toàn bộ tin nhắn thoại/TTS/STT từ Upstream AI gửi xuống Robot để không ngắt quãng nhạc
+                        if not (ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing")):
                             await websocket.send_text(msg)
                     except Exception:
                         break
@@ -3656,12 +3708,11 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                 print(f"[VOICE PROXY] Kênh Upstream tạm ngắt: {err}")
                 upstream_ws = None
                 now_err = time.time()
-                # Nếu Upstream ngắt kết nối do không có hoạt động trong hơn 25 giây -> Đưa robot vào Standby luôn
+                # Nếu Upstream ngắt kết nối do không có hoạt động trong hơn 25 giây -> Đưa robot vào Standby (không break task!)
                 if (now_err - last_activity_time >= 25.0) and not (ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing")):
-                    print(f"[AUTO SLEEP] 💤 Kênh Upstream đã ngắt do người dùng không nói chuyện ({int(now_err - last_activity_time)}s) -> Chuyển Robot vào Standby!")
-                    serial_manager._add_log("[ROBOT] 💤 Không có tương tác và Upstream đã ngắt -> Robot vào chế độ ngủ (Standby).")
+                    print(f"[AUTO SLEEP] 💤 Kênh Upstream đã ngắt do nhàn rỗi ({int(now_err - last_activity_time)}s) -> Chuyển Robot vào Standby!")
+                    serial_manager._add_log("[ROBOT] 💤 Robot tạm chuyển sang chế độ Standby.")
                     await robot_ws_manager.send_sleep_command(dev_mac)
-                    break
                 await asyncio.sleep(1)
 
     upstream_task = asyncio.create_task(forward_upstream_to_robot())
@@ -3768,10 +3819,10 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
                     "message": f"Gói âm thanh Mic Opus #{mic_monitor_manager.packet_index} ({len(raw_chunk)}B | Peak: {peak_val})"
                 }))
-                # KHI ĐANG PHÁT NHẠC: Tuyệt đối KHÔNG chuyển tiếp âm thanh mic lên Upstream AI!
+                # KHI ĐANG PHÁT HOẶC ĐANG TẢI BÀI HÁT: Tuyệt đối KHÔNG chuyển tiếp âm thanh mic lên Upstream AI!
                 # Giúp robot phát nhạc liên tục, không bị tiếng ồn/tiếng nói xung quanh làm gián đoạn
                 # Chỉ khi người dùng gọi "Sophia" (phần cứng WakeNet gửi 'abort') hoặc bấm nút, robot mới dừng nhạc để lắng nghe.
-                if ACTIVE_MUSIC_STATE.get("is_playing"):
+                if ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing"):
                     continue
 
                 if not is_ws_alive(upstream_ws):
@@ -4432,28 +4483,160 @@ async def api_music_info(id: str = Query(...)):
     }
 
 
-@app.get("/api/music/debug")
-async def api_music_debug(id: str = "ZEFjgndKTmA"):
-    debug_info = {}
-    vid = extract_video_id(id)
-    debug_info["vid"] = vid
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-    for inst in INVIDIOUS_APIS:
+@app.get("/api/music/test-beep")
+async def api_music_test_beep():
+    """Phát âm thanh mẫu (Beep Tone 880Hz) 2 giây ra loa Robot để kiểm tra phần cứng I2S và Opus"""
+    valid_robots = [ws for ws in list(robot_ws_manager.all_robots) if getattr(ws, "client_state", None) and getattr(ws.client_state, "name", "") == "CONNECTED"]
+    if not valid_robots:
+        return {
+            "success": False,
+            "error": "Không có robot nào đang kết nối WebSocket (clients_connected=0)!",
+            "clients_connected": 0
+        }
+
+    if not opuslib_next:
+        return {
+            "success": False,
+            "error": "opuslib_next chưa được nạp trên server!"
+        }
+
+    sample_rate = 16000
+    ffmpeg_exe = get_ffmpeg_cmd()
+    cmd = [
+        ffmpeg_exe,
+        "-f", "lavfi",
+        "-i", "sine=frequency=880:duration=2",
+        "-f", "s16le",
+        "-acodec", "pcm_s16le",
+        "-ac", "1",
+        "-ar", str(sample_rate),
+        "-loglevel", "error",
+        "pipe:1"
+    ]
+
+    for ws in valid_robots:
         try:
-            async with httpx.AsyncClient(timeout=5.0, headers=headers) as client:
-                r = await client.get(f"{inst}/api/v1/videos/{vid}")
-                info = {"status": r.status_code}
-                if r.status_code == 200:
-                    d = r.json()
-                    formats = d.get("adaptiveFormats", [])
-                    audio_formats = [f for f in formats if "audio" in f.get("type", "")]
-                    info["audio_streams"] = len(audio_formats)
-                    info["title"] = d.get("title")
-                else:
-                    info["body_preview"] = r.text[:100]
-                debug_info[inst] = info
+            sess = robot_ws_manager.sessions.get(ws, "test-beep")
+            await ws.send_json({"type": "llm", "emotion": "happy", "session_id": sess})
+            await ws.send_json({"type": "tts", "state": "start", "session_id": sess, "sample_rate": sample_rate})
+            await asyncio.sleep(0.04)
+            await ws.send_json({"type": "tts", "state": "sentence_start", "text": "🔊 Kiem tra loa...", "session_id": sess})
         except Exception as e:
-            debug_info[inst] = {"error": f"{type(e).__name__}: {str(e)}"}
+            print(f"[TEST BEEP] Init error: {e}")
+
+    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+    encoder = opuslib_next.Encoder(sample_rate, 1, opuslib_next.APPLICATION_AUDIO)
+    frame_samples = int(sample_rate * 0.060)  # 960 samples
+    frame_bytes = frame_samples * 2  # 1920 bytes
+    frames_sent = 0
+
+    while True:
+        try:
+            chunk = await proc.stdout.readexactly(frame_bytes)
+        except (asyncio.IncompleteReadError, EOFError):
+            break
+        if not chunk or len(chunk) < frame_bytes:
+            break
+        encoded = encoder.encode(chunk, frame_samples)
+        for ws in valid_robots:
+            try:
+                await ws.send_bytes(encoded)
+            except Exception:
+                pass
+        frames_sent += 1
+        await asyncio.sleep(0.055)
+
+    for ws in valid_robots:
+        try:
+            sess = robot_ws_manager.sessions.get(ws, "test-beep")
+            await ws.send_json({"type": "tts", "state": "sentence_end", "session_id": sess})
+            await ws.send_json({"type": "tts", "state": "stop", "session_id": sess})
+        except Exception:
+            pass
+
+    serial_manager._add_log(f"[TEST LOA] 🔊 Đã phát âm thanh test 880Hz tới {len(valid_robots)} robot ({frames_sent} khung).")
+    return {
+        "success": True,
+        "frames_sent": frames_sent,
+        "robots_count": len(valid_robots),
+        "msg": f"Đã phát âm thanh kiểm tra loa 880Hz thành công ({frames_sent} frames)."
+    }
+
+@app.get("/api/music/debug")
+async def api_music_debug(id: str = "BwN3NiZt-PU"):
+    debug_info = {}
+
+    # 1. Opuslib check
+    opus_ok = False
+    opus_err = None
+    if opuslib_next:
+        try:
+            enc = opuslib_next.Encoder(16000, 1, opuslib_next.APPLICATION_AUDIO)
+            test_chunk = b"\x00" * 1920
+            out = enc.encode(test_chunk, 960)
+            opus_ok = len(out) > 0
+        except Exception as e:
+            opus_err = str(e)
+    debug_info["opuslib"] = {
+        "loaded": bool(opuslib_next),
+        "encode_test": opus_ok,
+        "error": opus_err
+    }
+
+    # 2. FFmpeg check
+    ff_cmd = get_ffmpeg_cmd()
+    ff_ok = False
+    try:
+        r = subprocess.run([ff_cmd, "-version"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=3)
+        ff_ok = (r.returncode == 0)
+    except Exception as e:
+        ff_ok = False
+    debug_info["ffmpeg"] = {
+        "command": ff_cmd,
+        "available": ff_ok
+    }
+
+    # 3. Robots connected check
+    valid_robots = [ws for ws in list(robot_ws_manager.all_robots) if getattr(ws, "client_state", None) and getattr(ws.client_state, "name", "") == "CONNECTED"]
+    debug_info["robots"] = {
+        "all_count": len(robot_ws_manager.all_robots),
+        "valid_count": len(valid_robots),
+        "connected_macs": list(robot_ws_manager.connected_macs),
+        "active_connections": {k: len(v) for k, v in robot_ws_manager.active_connections.items()}
+    }
+
+    # 4. Music state
+    debug_info["music_state"] = {
+        "session_id": ACTIVE_MUSIC_STATE.get("session_id"),
+        "is_playing": ACTIVE_MUSIC_STATE.get("is_playing"),
+        "is_preparing": ACTIVE_MUSIC_STATE.get("is_preparing"),
+        "track": ACTIVE_MUSIC_STATE.get("track")
+    }
+
+    # 5. yt-dlp check
+    vid = extract_video_id(id) or id
+    debug_info["vid"] = vid
+    if yt_dlp:
+        try:
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'quiet': True,
+                'no_warnings': True,
+                'socket_timeout': 8,
+                'extractor_args': {'youtube': {'player_client': ['android']}}
+            }
+            def _ext():
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    return ydl.extract_info(f"https://www.youtube.com/watch?v={vid}", download=False)
+            info = await asyncio.wait_for(asyncio.to_thread(_ext), timeout=12.0)
+            debug_info["yt_dlp"] = {
+                "success": bool(info and info.get("url")),
+                "title": info.get("title") if info else None,
+                "url_prefix": (info.get("url") or "")[:60] if info else None
+            }
+        except Exception as ex:
+            debug_info["yt_dlp"] = {"success": False, "error": str(ex)}
+
     return debug_info
 
 
