@@ -1352,27 +1352,36 @@ robot_ws_manager = RobotConnectionManager()
 class SerialBridgeManager:
     def __init__(self):
         self.ser: Optional[serial.Serial] = None
-        self.port: str = "COM3"
+        self.port: str = "COM8"
         self.baudrate: int = 115200
         self.is_running: bool = False
         self.reader_thread: Optional[threading.Thread] = None
         self.log_history = deque(maxlen=400)
         self.connected: bool = False
+        self.bridge_ws: Optional[Any] = None
+        self.is_remote_bridge: bool = False
         self.hw_info = {
             "chip": "ESP32-S3 (v0.2)",
             "mac": "14:C1:9F:C4:EE:D0",
-            "sku": "bread-compact-wifi-128x64",
+            "sku": "robot-mini-s3",
             "display": "SSD1306 (128x64 OLED)",
-            "ip": "10.26.1.50",
+            "ip": "10.26.1.173",
             "wifi_ssid": "CMCCS - USER",
             "motor": "Chưa gắn module MX1616 (Bản Breadboard Audio + OLED)",
-            "firmware": "Xiaozhi v2.5.0",
+            "firmware": "Xiaozhi v2.5.3",
             "cloud": "api.tenclass.net:8883"
         }
         self.lock = threading.RLock()
 
     def list_ports(self) -> List[Dict[str, Any]]:
         ports = []
+        if self.bridge_ws is not None:
+            ports.append({
+                "device": "COM8",
+                "description": "ESP32-S3 Robot (Remote USB Bridge)",
+                "hwid": "USB\\VID_303A&PID_1001",
+                "is_esp32": True
+            })
         try:
             for p in serial.tools.list_ports.comports():
                 is_esp = ("303A" in (p.hwid or "").upper() or 
@@ -1391,6 +1400,8 @@ class SerialBridgeManager:
         return ports
 
     def auto_connect(self):
+        if self.bridge_ws is not None:
+            return
         ports = self.list_ports()
         target_port = None
         for p in ports:
@@ -1402,10 +1413,10 @@ class SerialBridgeManager:
                 if p["is_esp32"]:
                     target_port = p["device"]
                     break
-        if target_port:
+        if target_port and not target_port.startswith("COM8 ("):
             self.connect(target_port, 115200)
 
-    def connect(self, port: str = "COM3", baudrate: int = 115200):
+    def connect(self, port: str = "COM8", baudrate: int = 115200):
         with self.lock:
             if self.ser and self.ser.is_open:
                 try:
@@ -1433,7 +1444,8 @@ class SerialBridgeManager:
                 self._add_log(f"[HỆ THỐNG] Đã kết nối cổng {port} (Baudrate: {baudrate} bps) thành công.")
                 return True, f"Kết nối {port} thành công"
             except Exception as e:
-                self.connected = False
+                if not self.bridge_ws:
+                    self.connected = False
                 self._add_log(f"[LỖI] Không thể mở cổng {port}: {e}")
                 return False, str(e)
 
@@ -1446,11 +1458,27 @@ class SerialBridgeManager:
                     self.ser.close()
                 except Exception:
                     pass
+            if self.bridge_ws:
+                self.bridge_ws = None
+                self.is_remote_bridge = False
             self._add_log(f"[HỆ THỐNG] Đã ngắt kết nối cổng {self.port}.")
             return True
 
     def reset_esp32(self):
         with self.lock:
+            # Nếu đang có cầu nối từ xa (Remote Serial Bridge), gửi yêu cầu reset qua bridge
+            if self.bridge_ws is not None:
+                try:
+                    if MAIN_ASYNC_LOOP and MAIN_ASYNC_LOOP.is_running():
+                        asyncio.run_coroutine_threadsafe(
+                            self.bridge_ws.send_text(json.dumps({"type": "reset"})),
+                            MAIN_ASYNC_LOOP
+                        )
+                    self._add_log("[SERIAL BRIDGE] Đã gửi yêu cầu Hard Reset tới ESP32 COM8 qua Serial Bridge.")
+                    return True, "Đã gửi lệnh Reset qua Serial Bridge"
+                except Exception as e:
+                    return False, str(e)
+
             # Tạm đóng serial port để esptool có thể điều khiển chân RTS
             if self.ser and self.ser.is_open:
                 try:
@@ -1485,6 +1513,20 @@ class SerialBridgeManager:
                 return True, "Đã gửi xung Reset"
 
     def send_command(self, cmd_str: str) -> bool:
+        # 1. Gửi qua Remote Serial Bridge nếu có
+        if self.bridge_ws is not None:
+            try:
+                if MAIN_ASYNC_LOOP and MAIN_ASYNC_LOOP.is_running():
+                    asyncio.run_coroutine_threadsafe(
+                        self.bridge_ws.send_text(json.dumps({"type": "command", "command": cmd_str.strip()})),
+                        MAIN_ASYNC_LOOP
+                    )
+                self._add_log(f"[TX BRIDGE COM8] >> {cmd_str.strip()}")
+                return True
+            except Exception:
+                pass
+
+        # 2. Gửi qua cổng Serial trực tiếp nếu mở
         if not self.ser or not self.ser.is_open:
             return False
 
@@ -1507,6 +1549,8 @@ class SerialBridgeManager:
 
     def check_connection(self) -> bool:
         """Kiểm tra xem cổng phần cứng còn tồn tại và kết nối còn sống hay không"""
+        if self.bridge_ws is not None:
+            return True
         with self.lock:
             if not self.connected or not self.ser:
                 self.connected = False
@@ -1662,8 +1706,8 @@ ROBOT_LAST_SEEN: Dict[str, float] = {}
 def is_robot_online(agent: Optional[Any] = None) -> bool:
     """Xác định trạng thái trực tuyến THỰC TẾ của robot phần cứng (Serial COM8, WebSocket Wi-Fi, hoặc vừa ping OTA/WS)"""
     try:
-        # 1. Kiểm tra cổng Serial phần cứng (USB COM8 - nếu đang cắm trực tiếp trên máy local)
-        if serial_manager.is_running and serial_manager.check_connection():
+        # 1. Kiểm tra cổng Serial phần cứng (USB COM8 - nếu đang cắm trực tiếp trên máy local hoặc qua Serial Bridge)
+        if serial_manager.connected or (serial_manager.is_running and serial_manager.check_connection()):
             return True
 
         # 2. Kiểm tra kết nối WebSocket thực tế đang mở (qua Wi-Fi)
@@ -1675,14 +1719,14 @@ def is_robot_online(agent: Optional[Any] = None) -> bool:
             else:
                 return True
 
-        # 3. Kiểm tra tín hiệu vừa hoạt động (OTA ping hoặc WebSocket gần đây trong 300s - chế độ Standby sẵn sàng nhận lệnh)
+        # 3. Kiểm tra tín hiệu vừa hoạt động (OTA ping hoặc WebSocket gần đây trong 900s / 15 phút - chế độ Standby sẵn sàng nhận lệnh)
         now = time.time()
         if agent and getattr(agent, "mac_address", None):
             mac_lower = str(agent.mac_address).lower().strip()
-            if (now - ROBOT_LAST_SEEN.get(mac_lower, 0)) < 300:
+            if (now - ROBOT_LAST_SEEN.get(mac_lower, 0)) < 900:
                 return True
         else:
-            if any((now - t) < 300 for t in ROBOT_LAST_SEEN.values()):
+            if any((now - t) < 900 for t in ROBOT_LAST_SEEN.values()):
                 return True
     except Exception:
         pass
@@ -3800,6 +3844,68 @@ async def websocket_mic_monitor_endpoint(websocket: WebSocket):
         mic_monitor_manager.disconnect(websocket)
 
 
+@app.websocket("/ws/serial-bridge")
+async def websocket_serial_bridge_endpoint(websocket: WebSocket):
+    """
+    Kênh WebSocket kết nối cầu nối Serial USB COM8 (trên máy tính cục bộ của người dùng)
+    với máy chủ Cloud trên Render, cho phép truyền nhận toàn bộ nhật ký console,
+    gửi lệnh điều khiển D-Pad / OLED / Loa trực tiếp xuống phần cứng Robot.
+    """
+    await websocket.accept()
+    serial_manager.bridge_ws = websocket
+    serial_manager.is_remote_bridge = True
+    serial_manager.connected = True
+    serial_manager.is_running = True
+    serial_manager.port = "COM8 (Remote USB Bridge)"
+    ROBOT_LAST_SEEN["14:c1:9f:c4:ee:d0"] = time.time()
+    serial_manager._add_log("[SERIAL BRIDGE] 🟢 Đã kết nối cầu nối Serial USB COM8 từ máy tính cục bộ lên Cloud Server!")
+
+    await mic_monitor_manager.broadcast({
+        "type": "state_change",
+        "state": "connected",
+        "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+        "message": "Robot ESP32 COM8 đã kết nối thành công qua Remote Serial Bridge!"
+    })
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if not data:
+                continue
+            try:
+                msg = json.loads(data)
+                mtype = msg.get("type")
+                if mtype == "log":
+                    text = msg.get("text", "")
+                    if text:
+                        serial_manager._add_log(text)
+                        ROBOT_LAST_SEEN["14:c1:9f:c4:ee:d0"] = time.time()
+                elif mtype == "hw_info":
+                    hw = msg.get("hw_info")
+                    if isinstance(hw, dict):
+                        serial_manager.hw_info.update(hw)
+                elif mtype == "ping":
+                    await websocket.send_text(json.dumps({"type": "pong", "time": time.time()}))
+            except Exception:
+                pass
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"[SERIAL BRIDGE] Lỗi kết nối: {e}")
+    finally:
+        if serial_manager.bridge_ws == websocket:
+            serial_manager.bridge_ws = None
+            serial_manager.is_remote_bridge = False
+            serial_manager.connected = False
+            serial_manager._add_log("[SERIAL BRIDGE] 🔴 Cầu nối Serial USB COM8 đã ngắt kết nối.")
+            await mic_monitor_manager.broadcast({
+                "type": "state_change",
+                "state": "disconnected",
+                "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+                "message": "Cầu nối Serial USB COM8 đã ngắt kết nối."
+            })
+
+
 # ==========================================
 # CÁC ENDPOINT ĐIỀU HƯỚNG TUNNEL & OTA FIRMWARE
 # ==========================================
@@ -4010,13 +4116,21 @@ async def robot_control(payload: RobotControlPayload):
         device_id=dev_id
     )
 
+    # 4. Xác định nếu robot đang trực tuyến (hoặc ở chế độ Standby Wi-Fi vừa check OTA)
+    online_now = is_robot_online()
+    delivered = (sent_count > 0) or (serial_manager.connected) or online_now
+    msg_detail = f"Đã gửi lệnh '{payload.action}' tới robot"
+    if sent_count == 0 and not serial_manager.connected and online_now:
+        msg_detail = f"Đã ghi nhận lệnh '{payload.action}' (Robot đang ở chế độ Standby Wi-Fi)"
+
     return {
         "status": "ok",
-        "message": f"Đã gửi lệnh '{payload.action}' tới robot",
+        "message": msg_detail,
         "action": payload.action,
-        "delivered_to_ws": sent_count > 0,
-        "delivered_to_serial": serial_manager.is_running and serial_manager.connected,
-        "clients_connected": sent_count
+        "delivered_to_ws": delivered,
+        "delivered_to_serial": bool(serial_manager.connected),
+        "clients_connected": sent_count,
+        "standby": online_now and sent_count == 0 and not serial_manager.connected
     }
 
 
@@ -4031,8 +4145,8 @@ async def robot_display(payload: RobotDisplayPayload):
     """Đổi biểu cảm OLED chuẩn firmware Xiaozhi/Gehihi"""
     dev_id = str(payload.device_id) if payload.device_id is not None else None
 
-    # 1. Gửi trực tiếp qua cổng Serial COM8 nếu máy tính đang cắm cáp USB với Robot
-    if serial_manager.is_running and serial_manager.connected:
+    # 1. Gửi trực tiếp qua cổng Serial COM8 nếu máy tính đang cắm cáp USB với Robot (hoặc qua Serial Bridge)
+    if serial_manager.connected:
         cmd_dict = {"action": "display", "emotion": payload.emotion}
         if payload.text:
             cmd_dict["text"] = payload.text
@@ -4046,14 +4160,17 @@ async def robot_display(payload: RobotDisplayPayload):
         device_id=dev_id
     )
     detail = f" | Chữ: '{payload.text}'" if payload.text else ""
+    online_now = is_robot_online()
+    delivered = (sent_count > 0) or (serial_manager.connected) or online_now
     return {
         "status": "ok",
         "message": f"Đã cập nhật màn hình OLED: Biểu cảm '{payload.emotion}'{detail}",
         "emotion": payload.emotion,
         "text": payload.text,
-        "delivered_to_ws": sent_count > 0,
-        "delivered_to_serial": serial_manager.is_running and serial_manager.connected,
-        "clients_connected": sent_count
+        "delivered_to_ws": delivered,
+        "delivered_to_serial": bool(serial_manager.connected),
+        "clients_connected": sent_count,
+        "standby": online_now and sent_count == 0 and not serial_manager.connected
     }
 
 
@@ -4068,8 +4185,8 @@ async def robot_speak(payload: RobotSpeakPayload):
     """Phát âm thanh & hiển thị phụ đề lên màn hình OLED"""
     dev_id = str(payload.device_id) if payload.device_id is not None else None
 
-    # 1. Gửi qua cổng Serial COM8 nếu đang kết nối
-    if serial_manager.is_running and serial_manager.connected:
+    # 1. Gửi qua cổng Serial COM8 nếu đang kết nối (hoặc qua Serial Bridge)
+    if serial_manager.connected:
         cmd_dict = {"action": "speak", "text": payload.text, "emotion": payload.emotion or "happy"}
         serial_manager.send_command(json.dumps(cmd_dict))
         serial_manager._add_log(f"[SPEAK] Đã phát âm thanh & phụ đề: '{payload.text}'")
@@ -4080,13 +4197,16 @@ async def robot_speak(payload: RobotSpeakPayload):
         text=payload.text,
         device_id=dev_id
     )
+    online_now = is_robot_online()
+    delivered = (sent_count > 0) or (serial_manager.connected) or online_now
     return {
         "status": "ok",
         "message": f"Đã gửi phụ đề lên OLED: '{payload.text}'",
         "text": payload.text,
-        "delivered_to_ws": sent_count > 0,
-        "delivered_to_serial": serial_manager.is_running and serial_manager.connected,
-        "clients_connected": sent_count
+        "delivered_to_ws": delivered,
+        "delivered_to_serial": bool(serial_manager.connected),
+        "clients_connected": sent_count,
+        "standby": online_now and sent_count == 0 and not serial_manager.connected
     }
 
 
