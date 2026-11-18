@@ -4024,7 +4024,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                                     continue
 
                                 last_activity_time = time.time()
-                                is_ai_thinking = True
+                                is_ai_thinking = False  # Giữ luồng mic liên tục, không chặn mic khi đang STT
                                 user_spoke_in_turn = False
                                 fast_vad_triggered = False
                                 print(f"[VOICE ASR] Người dùng nói: \"{txt}\"")
@@ -4068,7 +4068,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             txt = p.get("text", "")
                             emo = p.get("emotion", "happy")
                             last_activity_time = time.time()
-                            is_ai_thinking = False
+                            is_ai_thinking = True  # AI đang suy nghĩ / sinh câu trả lời
                             if txt:
                                 if is_youtube_hallucination(txt):
                                     suppress_spam_audio = True
@@ -4252,6 +4252,12 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             })
                         except Exception:
                             pass
+                        if is_ws_alive(upstream_ws):
+                            try:
+                                await upstream_ws.send(json.dumps({"session_id": session_id, "type": "abort"}))
+                                await upstream_ws.send(json.dumps({"session_id": session_id, "type": "listen", "state": "start", "mode": "auto"}))
+                            except Exception:
+                                pass
                     elif p_type == "listen":
                         st = payload.get("state")
                         md = payload.get("mode", "manual")
@@ -4372,74 +4378,24 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     "message": f"Gói mic #{mic_monitor_manager.packet_index} ({len(opus_data)}B | Peak: {peak_val} | RMS: {rms_val})"
                 }))
 
-                # 4. Khi đang phát nhạc hoặc AI đang nói / suy nghĩ: Không gửi mic lên Upstream để tránh vọng âm
+                # 3. Cập nhật hoạt động: Chỉ reset đồng hồ Standby khi có tiếng nói thực sự
+                if is_active_speech:
+                    last_activity_time = now_b
+
+                # 4. Khi đang phát nhạc hoặc loa robot đang phát tiếng nói (TTS) hoặc AI đang trả lời (LLM):
+                # Không gửi mic lên Upstream để chống hú / vọng âm loa
                 if ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing") or is_robot_speaking or is_ai_thinking:
                     continue
 
-                # 5. Fast VAD: Phát hiện khi người dùng cất giọng nói
-                if is_active_speech:
-                    if not user_spoke_in_turn:
-                        user_spoke_in_turn = True
-                        speech_start_time = now_b
-                        fast_vad_triggered = False
-                    last_voice_time = now_b
-                    last_activity_time = now_b
-
-                # 6. Fast VAD: Phát hiện khoảng lặng khi người dùng dứt câu
-                if user_spoke_in_turn and not fast_vad_triggered:
-                    speech_dur = now_b - speech_start_time
-                    silence_dur = now_b - last_voice_time
-                    silence_thresh = 1.3 if current_english_lesson.get("active") else 0.9
-                    if speech_dur >= 0.35 and silence_dur >= silence_thresh:
-                        fast_vad_triggered = True
-                        user_spoke_in_turn = False
-                        is_ai_thinking = True
-                        last_activity_time = now_b
-
-                        stop_payload = {
-                            "session_id": session_id,
-                            "type": "listen",
-                            "state": "stop"
-                        }
-                        # A. Gửi lệnh STOP lên Upstream AI để chốt STT và tạo phản hồi ngay
-                        if is_ws_alive(upstream_ws):
-                            try:
-                                await upstream_ws.send(json.dumps(stop_payload))
-                            except Exception:
-                                pass
-
-                        # B. GỬI LỆNH STOP XUỐNG ROBOT ESP32 ĐỂ TẮT MIC NGAY LẬP TỨC
-                        try:
-                            await websocket.send_json(stop_payload)
-                        except Exception:
-                            pass
-                    elif silence_dur >= 1.5 and speech_dur < 0.35:
-                        # Tiếng ồn ngắn (click chuột, quạt, va chạm) không phải giọng nói -> reset
-                        user_spoke_in_turn = False
-
-                        # C. ĐỔI BIỂU CẢM OLED ROBOT SANG "ĐANG SUY NGHĨ" (mắt neutral)
-                        try:
-                            await websocket.send_json({
-                                "session_id": session_id,
-                                "type": "llm",
-                                "emotion": "neutral",
-                                "text": "Dang suy nghi..."
-                            })
-                        except Exception:
-                            pass
-
-                        print(f"[FAST VAD] ⚡ Đã chốt câu nói ({speech_dur:.1f}s, im lặng {silence_dur:.1f}s) -> Ngắt mic Robot & yêu cầu AI trả lời ngay!")
-                        serial_manager._add_log(f"[FAST VAD] ⚡ Dứt câu ({speech_dur:.1f}s) -> AI đang trả lời...")
-
-                # 7. Chuyển tiếp âm thanh mic lên Upstream AI khi đang lắng nghe
-                if not is_ai_thinking:
-                    if not is_ws_alive(upstream_ws):
-                        await connect_upstream_ai()
-                    if is_ws_alive(upstream_ws):
-                        try:
-                            await upstream_ws.send(raw_chunk)
-                        except Exception:
-                            pass
+                # 5. Chuyển tiếp luồng âm thanh Opus trực tiếp lên Upstream AI (Zero-latency Passthrough)
+                # Để Silero VAD và SenseVoice ASR trên Cloud của Xiaozhi tự nhận diện dứt câu chuẩn xác 100%
+                if not is_ws_alive(upstream_ws):
+                    await connect_upstream_ai()
+                if is_ws_alive(upstream_ws):
+                    try:
+                        await upstream_ws.send(raw_chunk)
+                    except Exception:
+                        pass
     except WebSocketDisconnect:
         pass
     except Exception as e:
