@@ -13,6 +13,7 @@ import re
 import urllib.parse
 import urllib.request
 import struct
+import math
 from collections import deque
 from typing import Optional, List, Dict, Any, Tuple
 from contextlib import asynccontextmanager
@@ -3635,7 +3636,15 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
     # 1. Khởi tạo kết nối song công với Máy chủ AI Giọng nói Upstream (Gehihi AI / Xiaozhi)
     upstream_ws = None
     upstream_url = CURRENT_UPSTREAM_WS_URL
-    token = os.getenv("UPSTREAM_AUTH_TOKEN", "").strip()
+    agent_custom_token = ""
+    try:
+        with SessionLocal() as db_s:
+            ag_row = db_s.query(Agent).filter(sa.func.lower(Agent.mac_address) == dev_mac).first()
+            if ag_row and ag_row.upstream_token:
+                agent_custom_token = ag_row.upstream_token.strip()
+    except Exception:
+        pass
+    token = agent_custom_token or os.getenv("UPSTREAM_AUTH_TOKEN", "").strip() or DEFAULT_UPSTREAM_DEV_TOKEN
 
     def is_ws_alive(ws):
         return ws is not None and getattr(ws, "close_code", None) is None
@@ -3727,6 +3736,15 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
     speech_start_time = 0.0
     last_voice_time = 0.0
     fast_vad_triggered = False
+    ambient_noise_rms = 300.0  # Mức ồn nền động
+
+    # Bộ giải mã Opus độc lập riêng cho kết nối này (tránh xung đột dữ liệu)
+    local_opus_dec = None
+    if opuslib_next:
+        try:
+            local_opus_dec = opuslib_next.Decoder(16000, 1)
+        except Exception:
+            local_opus_dec = None
 
     # Task tự động đưa Robot vào chế độ ngủ (Standby) khi không có người tương tác
     async def auto_sleep_watchdog():
@@ -3917,6 +3935,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             now_t = time.time()
                             last_activity_time = now_t
                             is_robot_speaking = False
+                            is_ai_thinking = False
                             is_listening = True
                             user_spoke_in_turn = False
                             fast_vad_triggered = False
@@ -3935,6 +3954,27 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                                     await asyncio.sleep(0.6)  # Đợi 600ms để loa phát xong gói âm thanh cuối cùng
                                     await robot_ws_manager.send_sleep_command(dev_mac)
                                 asyncio.create_task(_do_sleep_after_tts())
+                            elif ROBOT_INACTIVITY_TIMEOUT <= 0:
+                                # Sau khi robot nói xong: Tự động mở lại mic để tiếp tục lắng nghe câu thoại tiếp theo
+                                async def _rearm_listening():
+                                    await asyncio.sleep(0.4)
+                                    try:
+                                        await websocket.send_json({
+                                            "session_id": session_id,
+                                            "type": "listen",
+                                            "state": "start",
+                                            "mode": "auto"
+                                        })
+                                        if is_ws_alive(upstream_ws):
+                                            await upstream_ws.send(json.dumps({
+                                                "session_id": session_id,
+                                                "type": "listen",
+                                                "state": "start",
+                                                "mode": "auto"
+                                            }))
+                                    except Exception:
+                                        pass
+                                asyncio.create_task(_rearm_listening())
                     except Exception:
                         pass
                     try:
@@ -4034,43 +4074,73 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                 # Chuyển tiếp luồng âm thanh Mic INMP441 lên Upstream AI để nhận diện giọng nói!
                 raw_chunk = msg_data["bytes"]
                 now_b = time.time()
-                # Không cập nhật last_activity_time ở đây vì mic luôn gửi 16 gói âm thanh mỗi giây
                 is_listening = True
                 mic_monitor_manager.packet_index += 1
-                peak_val = 2500
-                try:
-                    if opuslib_next:
-                        if not hasattr(websocket_robot_endpoint, "_opus_dec"):
-                            websocket_robot_endpoint._opus_dec = opuslib_next.Decoder(16000, 1)
-                        pcm_chunk = websocket_robot_endpoint._opus_dec.decode(raw_chunk, 960)
-                        shorts = struct.unpack(f"{len(pcm_chunk)//2}h", pcm_chunk)
-                        peak_val = max(abs(s) for s in shorts)
-                except Exception:
-                    peak_val = min(32767, int(len(raw_chunk) * 110))
 
-                if peak_val > 4500:
-                    last_mic_audio_time = now_b
+                # 1. Bóc tách BinaryProtocol2 header (16 bytes) nếu có từ firmware ESP32
+                opus_data = raw_chunk
+                if len(raw_chunk) >= 16:
+                    try:
+                        ver, ptype, res, ts, sz = struct.unpack('>HHIII', raw_chunk[:16])
+                        if sz == len(raw_chunk) - 16 and ptype == 0:
+                            opus_data = raw_chunk[16:]
+                    except Exception:
+                        pass
+
+                # 2. Giải mã Opus sang PCM và tính biên độ Đỉnh (Peak) & Năng lượng hiệu dụng (RMS)
+                peak_val = 0
+                rms_val = 0
+                decoded_ok = False
+                if local_opus_dec:
+                    try:
+                        pcm_chunk = local_opus_dec.decode(opus_data, 960)
+                        shorts = struct.unpack(f"{len(pcm_chunk)//2}h", pcm_chunk)
+                        if shorts:
+                            peak_val = max(abs(s) for s in shorts)
+                            sum_sq = sum(s * s for s in shorts)
+                            rms_val = int(math.sqrt(sum_sq / len(shorts)))
+                            decoded_ok = True
+                    except Exception:
+                        try:
+                            local_opus_dec = opuslib_next.Decoder(16000, 1)
+                        except Exception:
+                            pass
+
+                # 3. Phân loại tiếng nói người dùng vs Tiếng ồn nền (VAD)
+                if not decoded_ok:
+                    # Dự phòng khi không có bộ giải mã Opus: Dựa theo độ lớn nén Entropy
+                    # Khung âm thanh tiếng nói người dùng thường > 55 bytes
+                    # Khung im lặng / nhiễu nền thường < 40 bytes (hoặc DTX 3 bytes)
+                    is_active_speech = (len(opus_data) > 55)
+                    peak_val = 15000 if is_active_speech else 1200
+                    rms_val = 2200 if is_active_speech else 200
+                else:
+                    # Tự động học và thích ứng với tiếng ồn nền (quạt, điều hòa) trong phòng
+                    if rms_val < 500:
+                        ambient_noise_rms = 0.95 * ambient_noise_rms + 0.05 * float(rms_val)
+                    voice_rms_thresh = max(600, int(ambient_noise_rms * 1.8))
+                    is_active_speech = (rms_val > voice_rms_thresh) or (peak_val > 4200 and rms_val > 450)
 
                 lvl = min(1.0, round(peak_val / 32767.0, 3))
                 asyncio.create_task(mic_monitor_manager.broadcast({
                     "type": "audio_packet",
                     "peak": peak_val,
+                    "rms": rms_val,
                     "level": lvl,
-                    "state": "recording",
+                    "state": "speaking" if is_active_speech else "recording",
                     "packet_index": mic_monitor_manager.packet_index,
                     "duration_ms": 60,
                     "total_bytes": mic_monitor_manager.packet_index * len(raw_chunk),
                     "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
-                    "message": f"Gói âm thanh Mic Opus #{mic_monitor_manager.packet_index} ({len(raw_chunk)}B | Peak: {peak_val})"
+                    "message": f"Gói mic #{mic_monitor_manager.packet_index} ({len(opus_data)}B | Peak: {peak_val} | RMS: {rms_val})"
                 }))
-                # KHI ĐANG PHÁT HOẶC ĐANG TẢI BÀI HÁT: Tuyệt đối KHÔNG chuyển tiếp âm thanh mic lên Upstream AI!
-                # Giúp robot phát nhạc liên tục, không bị tiếng ồn/tiếng nói xung quanh làm gián đoạn
-                # Chỉ khi người dùng gọi "Sophia" (phần cứng WakeNet gửi 'abort') hoặc bấm nút, robot mới dừng nhạc để lắng nghe.
-                if ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing"):
+
+                # 4. Khi đang phát nhạc hoặc AI đang nói / suy nghĩ: Không gửi mic lên Upstream để tránh vọng âm
+                if ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing") or is_robot_speaking or is_ai_thinking:
                     continue
 
-                # Fast VAD (Voice Activity Detection): Phát hiện người dùng nói và chốt câu ngay sau khi im lặng
-                if peak_val > 3500 and not is_robot_speaking:
+                # 5. Fast VAD: Phát hiện khi người dùng cất giọng nói
+                if is_active_speech:
                     if not user_spoke_in_turn:
                         user_spoke_in_turn = True
                         speech_start_time = now_b
@@ -4078,35 +4148,58 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     last_voice_time = now_b
                     last_activity_time = now_b
 
-                # Nếu người dùng đã nói ít nhất 0.5s và im lặng >= 1.2s -> Chủ động gửi listen: stop chốt câu tới Upstream AI
-                if user_spoke_in_turn and not fast_vad_triggered and not is_robot_speaking and not is_ai_thinking:
+                # 6. Fast VAD: Phát hiện khoảng lặng khi người dùng dứt câu
+                if user_spoke_in_turn and not fast_vad_triggered:
                     speech_dur = now_b - speech_start_time
                     silence_dur = now_b - last_voice_time
-                    if speech_dur >= 0.5 and silence_dur >= 1.2:
+                    silence_thresh = 1.3 if current_english_lesson.get("active") else 0.9
+                    if speech_dur >= 0.4 and silence_dur >= silence_thresh:
                         fast_vad_triggered = True
                         user_spoke_in_turn = False
                         is_ai_thinking = True
                         last_activity_time = now_b
+
+                        stop_payload = {
+                            "session_id": session_id,
+                            "type": "listen",
+                            "state": "stop"
+                        }
+                        # A. Gửi lệnh STOP lên Upstream AI để chốt STT và tạo phản hồi ngay
                         if is_ws_alive(upstream_ws):
                             try:
-                                await upstream_ws.send(json.dumps({
-                                    "session_id": session_id,
-                                    "type": "listen",
-                                    "state": "stop"
-                                }))
-                                print(f"[FAST VAD] ⚡ Đã chốt câu nói sau {speech_dur:.1f}s (khoảng lặng {silence_dur:.1f}s) -> AI phản hồi tức thì!")
-                                serial_manager._add_log(f"[FAST VAD] ⚡ Đã chốt câu ({speech_dur:.1f}s) -> AI đang trả lời...")
-                                asyncio.create_task(robot_ws_manager.send_oled_emotion("neutral", text="Dang suy nghi..."))
+                                await upstream_ws.send(json.dumps(stop_payload))
                             except Exception:
                                 pass
 
-                if not is_ws_alive(upstream_ws):
-                    await connect_upstream_ai()
-                if is_ws_alive(upstream_ws):
-                    try:
-                        await upstream_ws.send(raw_chunk)
-                    except Exception:
-                        pass
+                        # B. GỬI LỆNH STOP XUỐNG ROBOT ESP32 ĐỂ TẮT MIC NGAY LẬP TỨC
+                        try:
+                            await websocket.send_json(stop_payload)
+                        except Exception:
+                            pass
+
+                        # C. ĐỔI BIỂU CẢM OLED ROBOT SANG "ĐANG SUY NGHĨ" (mắt neutral)
+                        try:
+                            await websocket.send_json({
+                                "session_id": session_id,
+                                "type": "llm",
+                                "emotion": "neutral",
+                                "text": "Dang suy nghi..."
+                            })
+                        except Exception:
+                            pass
+
+                        print(f"[FAST VAD] ⚡ Đã chốt câu nói ({speech_dur:.1f}s, im lặng {silence_dur:.1f}s) -> Ngắt mic Robot & yêu cầu AI trả lời ngay!")
+                        serial_manager._add_log(f"[FAST VAD] ⚡ Dứt câu ({speech_dur:.1f}s) -> AI đang trả lời...")
+
+                # 7. Chuyển tiếp âm thanh mic lên Upstream AI khi đang lắng nghe
+                if not is_ai_thinking:
+                    if not is_ws_alive(upstream_ws):
+                        await connect_upstream_ai()
+                    if is_ws_alive(upstream_ws):
+                        try:
+                            await upstream_ws.send(raw_chunk)
+                        except Exception:
+                            pass
     except WebSocketDisconnect:
         pass
     except Exception as e:
