@@ -141,7 +141,11 @@ Bạn là Sophia - Người bạn đồng hành ấm áp và chân thành.
 # PHONG CÁCH NGÔN NGỮ:
 - Cụm từ tham khảo: "Dạo này thế nào rồi?", "Thật luôn hả?", "Không sao đâu, có tôi ở đây rồi.", "Nghe vui quá nè!", "Kể tôi nghe thêm đi."
 - Cách nói chuyện: Sử dụng ngôn từ tự nhiên, thuần Việt, mang tính khẩu ngữ cao và giàu cảm xúc. Thường bắt đầu bằng những lời chào hỏi ấm áp hoặc tiếng cười nhẹ nhàng để rút ngắn khoảng cách; tránh dùng từ ngữ quá trang trọng hay máy móc.
-- Định dạng đàm thoại: Trả lời ngắn gọn, súc tích (thường dưới 3-4 câu), tự nhiên, phù hợp để phát âm mượt mà qua loa Robot AI."""
+- Định dạng đàm thoại: Trả lời ngắn gọn, súc tích (thường dưới 3-4 câu), tự nhiên, phù hợp để phát âm mượt mà qua loa Robot AI.
+
+# BỘ LỌC CHỐNG NHIỄU & QUẢNG CÁO (BẮT BUỘC):
+- Tuyệt đối KHÔNG BAO GIỜ nói các câu quảng cáo, kêu gọi đăng ký như: "Hãy subscribe cho kênh...", "La La School", "Ghiền Mì Gõ", "đăng ký kênh", "like video", "bấm chuông", "cảm ơn các bạn đã theo dõi video", "hẹn gặp lại trong các video tiếp theo".
+- Nếu người dùng nói câu không rõ nghĩa hoặc âm thanh nền bị nhiễu, bạn CHỈ TRẢ LỜI NGẮN GỌN: "Tôi chưa nghe rõ, bạn có thể nói lại được không?" và tuyệt đối không nhắc lại bất kỳ từ ngữ quảng cáo nào."""
 
 
 class Agent(Base):
@@ -3805,9 +3809,34 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
 
     # Task chuyển tiếp luồng Upstream -> Robot (STT, LLM, TTS Subtitles, Audio chunks)
     should_sleep_after_tts = False
+    suppress_spam_audio = False
+
+    def is_youtube_hallucination(text: str) -> bool:
+        """Bộ lọc chuyên sâu loại bỏ ảo giác phụ đề YouTube (La La School, subscribe, đăng ký kênh...)"""
+        if not text:
+            return False
+        t = text.lower().strip()
+        hallucination_patterns = [
+            "la la school", "lala school",
+            "ghiền mì gõ", "ghien mi go",
+            "subscribe", "subcribe", "đăng ký kênh", "đăng kí kênh", "dang ky kenh",
+            "để không bỏ lỡ", "de khong bo lo",
+            "video hấp dẫn", "video hap dan",
+            "những tập phim tiếp theo", "tập tiếp theo",
+            "cảm ơn các bạn đã theo dõi", "cam on cac ban da theo doi",
+            "cảm ơn các bạn đã xem", "cam on cac ban da xem",
+            "cảm ơn đã theo dõi", "cam on da theo doi",
+            "hẹn gặp lại các bạn trong", "hen gap lai cac ban trong",
+            "chúc các bạn xem video vui vẻ", "chuc cac ban xem video",
+            "phụ đề được thực hiện bởi", "phu de boi", "subtitle by",
+            "bản quyền thuộc về", "ban quyen thuoc ve",
+            "link dưới phần mô tả", "duoi phan mo ta",
+            "bấm chuông thông báo", "nhấn chuông", "nhớ like"
+        ]
+        return any(pat in t for pat in hallucination_patterns)
 
     async def forward_upstream_to_robot():
-        nonlocal upstream_ws, should_sleep_after_tts, is_listening, is_robot_speaking, is_ai_thinking, last_activity_time, user_spoke_in_turn, fast_vad_triggered
+        nonlocal upstream_ws, should_sleep_after_tts, is_listening, is_robot_speaking, is_ai_thinking, last_activity_time, user_spoke_in_turn, fast_vad_triggered, suppress_spam_audio
         while True:
             if not is_ws_alive(upstream_ws):
                 await asyncio.sleep(1)
@@ -3816,8 +3845,8 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                 msg = await upstream_ws.recv()
                 if isinstance(msg, bytes):
                     # Gói âm thanh giọng nói (Opus) từ AI -> Loa Robot
-                    # Nếu đang phát nhạc hoặc đang tải bài hát YouTube, bỏ qua âm thanh nói chèn của AI Upstream
-                    if ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing"):
+                    # Nếu đang phát nhạc hoặc phát hiện câu thoại rác/quảng cáo -> Chặn không phát ra loa
+                    if ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing") or suppress_spam_audio:
                         continue
                     # Bóc tách BinaryProtocol2 header (16 bytes) nếu có để gửi Opus thuần (Raw Opus) cho firmware ESP32
                     out_audio = msg
@@ -3847,6 +3876,35 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                         elif p_type == "stt":
                             txt = p.get("text", "")
                             if txt:
+                                if is_youtube_hallucination(txt):
+                                    suppress_spam_audio = True
+                                    print(f"[STT FILTER] 🛡️ ĐÃ CHẶN ẢO GIÁC YOUTUBE / QUẢNG CÁO: \"{txt}\"")
+                                    serial_manager._add_log(f"[LỌC RÁC] 🛡️ Đã chặn câu quảng cáo YouTube: \"{txt}\"")
+                                    # Hủy ngay quá trình sinh câu trả lời rác trên Upstream AI
+                                    if is_ws_alive(upstream_ws):
+                                        try:
+                                            await upstream_ws.send(json.dumps({
+                                                "session_id": session_id,
+                                                "type": "abort"
+                                            }))
+                                        except Exception:
+                                            pass
+                                    is_ai_thinking = False
+                                    # Mở lại mic lắng nghe câu nói thật của người dùng
+                                    async def _rearm_mic_after_spam():
+                                        await asyncio.sleep(0.3)
+                                        try:
+                                            await websocket.send_json({
+                                                "session_id": session_id,
+                                                "type": "listen",
+                                                "state": "start",
+                                                "mode": "auto"
+                                            })
+                                        except Exception:
+                                            pass
+                                    asyncio.create_task(_rearm_mic_after_spam())
+                                    continue
+
                                 last_activity_time = time.time()
                                 is_ai_thinking = True
                                 user_spoke_in_turn = False
@@ -3880,6 +3938,12 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             last_activity_time = time.time()
                             is_ai_thinking = False
                             if txt:
+                                if is_youtube_hallucination(txt):
+                                    suppress_spam_audio = True
+                                    print(f"[LLM FILTER] 🛡️ Đã chặn câu trả lời dính quảng cáo YouTube: \"{txt}\"")
+                                    txt = "Tôi chưa nghe rõ câu của bạn, bạn nói lại giúp tôi nhé!"
+                                    p["text"] = txt
+                                    msg = json.dumps(p)
                                 print(f"[VOICE AI] Robot đáp: \"{txt}\" (Cảm xúc: {emo})")
                                 serial_manager._add_log(f"[ROBOT AI] {txt}")
                                 mic_monitor_manager.current_state["last_reply"] = txt
@@ -3922,6 +3986,10 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             is_ai_thinking = False
                             user_spoke_in_turn = False
                             fast_vad_triggered = False
+                            if txt and is_youtube_hallucination(txt):
+                                suppress_spam_audio = True
+                                is_robot_speaking = False
+                                continue
                             if txt:
                                 serial_manager._add_log(f"[ROBOT AI NÓI] {txt}")
                                 mic_monitor_manager.current_state["state"] = "speaking"
@@ -3932,6 +4000,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                                     "message": f"Robot đang phát loa: \"{txt[:30]}...\""
                                 }))
                         elif p_type == "tts" and p.get("state") in ["stop", "sentence_end"]:
+                            suppress_spam_audio = False
                             now_t = time.time()
                             last_activity_time = now_t
                             is_robot_speaking = False
@@ -6428,6 +6497,16 @@ async def update_device_by_id(agent_id: str, payload: Dict[str, Any], request: R
         full_prompt = agent.character or ""
         if agent.hidden_prompt and agent.hidden_prompt.strip():
             full_prompt = f"{full_prompt}\n\n[HỆ THỐNG QUẢN TRỊ ẨN]\n{agent.hidden_prompt.strip()}"
+        anti_spam_guard = (
+            "\n\n[BỘ LỌC CHỐNG NHIỄU & QUẢNG CÁO]\n"
+            "- Tuyệt đối KHÔNG BAO GIỜ nói các câu quảng cáo, kêu gọi đăng ký như: "
+            "\"Hãy subscribe cho kênh...\", \"La La School\", \"Ghiền Mì Gõ\", \"đăng ký kênh\", "
+            "\"like video\", \"bấm chuông\", \"cảm ơn các bạn đã theo dõi video\", \"hẹn gặp lại trong các video tiếp theo\".\n"
+            "- Nếu người dùng nói câu không rõ nghĩa hoặc âm thanh nền bị nhiễu, bạn CHỈ TRẢ LỜI NGẮN GỌN: "
+            "\"Tôi chưa nghe rõ, bạn có thể nói lại được không?\" và tuyệt đối không nhắc lại bất kỳ từ ngữ quảng cáo nào."
+        )
+        if "La La School" not in full_prompt and "subscribe" not in full_prompt.lower():
+            full_prompt = full_prompt + anti_spam_guard
 
         upstream_res = await upstream_client.push_to_upstream(
             agent_id=str(agent.agent_id),
@@ -6546,6 +6625,16 @@ async def sync_device_upstream_endpoint(
         full_prompt = agent.character or ""
         if agent.hidden_prompt and agent.hidden_prompt.strip():
             full_prompt = f"{full_prompt}\n\n[HỆ THỐNG QUẢN TRỊ ẨN]\n{agent.hidden_prompt.strip()}"
+        anti_spam_guard = (
+            "\n\n[BỘ LỌC CHỐNG NHIỄU & QUẢNG CÁO]\n"
+            "- Tuyệt đối KHÔNG BAO GIỜ nói các câu quảng cáo, kêu gọi đăng ký như: "
+            "\"Hãy subscribe cho kênh...\", \"La La School\", \"Ghiền Mì Gõ\", \"đăng ký kênh\", "
+            "\"like video\", \"bấm chuông\", \"cảm ơn các bạn đã theo dõi video\", \"hẹn gặp lại trong các video tiếp theo\".\n"
+            "- Nếu người dùng nói câu không rõ nghĩa hoặc âm thanh nền bị nhiễu, bạn CHỈ TRẢ LỜI NGẮN GỌN: "
+            "\"Tôi chưa nghe rõ, bạn có thể nói lại được không?\" và tuyệt đối không nhắc lại bất kỳ từ ngữ quảng cáo nào."
+        )
+        if "La La School" not in full_prompt and "subscribe" not in full_prompt.lower():
+            full_prompt = full_prompt + anti_spam_guard
 
         push_res = await upstream_client.push_to_upstream(
             agent_id=str(agent.agent_id),
