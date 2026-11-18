@@ -1920,7 +1920,10 @@ body {
             <span style="font-size: 11px; color: #94a3b8;">Để trống nếu dùng TK mặc định</span>
           </div>
           <div style="display: flex; gap: 8px;">
-            <input type="password" id="quickAddToken" placeholder="Dán Token nếu robot thuộc tài khoản xiaozhi.me khác..." style="flex: 1; padding: 9px 12px; border-radius: 8px; background: #061224; border: 1px solid #334155; color: white; font-size: 12px; box-sizing: border-box;">
+            <div style="position: relative; flex: 1; display: flex; align-items: center;">
+              <input type="text" id="quickAddToken" name="quick_token_no_save" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" placeholder="Dán Token nếu robot thuộc tài khoản xiaozhi.me khác..." style="width: 100%; padding: 9px 34px 9px 12px; border-radius: 8px; background: #061224; border: 1px solid #334155; color: white; font-size: 12px; box-sizing: border-box; -webkit-text-security: disc; font-family: monospace;">
+              <span onclick="toggleTokenMask('quickAddToken', this)" style="position: absolute; right: 10px; cursor: pointer; font-size: 13px; color: #94a3b8;" title="Hiện / Ẩn Token">👁️</span>
+            </div>
             <button type="button" onclick="inspectXiaozhiAccountForQuickAdd()" style="background: linear-gradient(135deg, #0284c7, #2563eb); border: none; color: white; padding: 9px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 4px;">
               🔍 Quét Robot
             </button>
@@ -3653,7 +3656,10 @@ Ví dụ:
             <div style="margin-top: 10px; border-top: 1px dashed rgba(71,85,105,0.5); padding-top: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
                 <div style="font-size: 12px; color: #cbd5e1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                     <span>🔑 Upstream REST Token (Đồng bộ cấu hình Prompt/Voice):</span>
-                    <input type="password" id="currentRobotTokenInput" autocomplete="new-password" placeholder="Token tài khoản xiaozhi.me..." style="background: #0f172a; border: 1px solid #334155; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; width: 220px;">
+                    <div style="position: relative; display: inline-flex; align-items: center;">
+                        <input type="text" id="currentRobotTokenInput" name="xz_token_no_credential_save" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" placeholder="Token tài khoản xiaozhi.me..." style="background: #0f172a; border: 1px solid #334155; color: white; padding: 4px 28px 4px 10px; border-radius: 6px; font-size: 12px; width: 220px; -webkit-text-security: disc; font-family: monospace;">
+                        <span onclick="toggleTokenMask('currentRobotTokenInput', this)" style="position: absolute; right: 8px; cursor: pointer; font-size: 13px; color: #94a3b8;" title="Hiện / Ẩn Token">👁️</span>
+                    </div>
                     <button type="button" onclick="saveCurrentRobotToken()" style="background: #334155; border: none; color: #e2e8f0; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;">Lưu Token</button>
                     <button type="button" onclick="inspectCurrentRobotToken()" style="background: #0284c7; border: none; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 600;" title="Kiểm tra Token và xem các robot trên tài khoản xiaozhi.me">🔍 Kiểm tra Token</button>
                 </div>
@@ -3691,7 +3697,10 @@ Ví dụ:
                 <label id="apiKeyLabel" style="font-size: 13px; color: #cbd5e1; display: block; margin-bottom: 6px;">
                     🔑 <strong>Google Gemini API Key</strong> (Tùy chọn):
                 </label>
-                <input type="password" id="customApiKey" autocomplete="new-password" placeholder="Dán Gemini API Key (Lấy tại aistudio.google.com)" style="width: 100%; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box;">
+                <div style="position: relative; display: flex; align-items: center;">
+                    <input type="text" id="customApiKey" name="custom_api_key_no_save" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" placeholder="Dán Gemini API Key (Lấy tại aistudio.google.com)" style="width: 100%; padding:10px 36px 10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box; -webkit-text-security: disc; font-family: monospace;">
+                    <span onclick="toggleTokenMask('customApiKey', this)" style="position: absolute; right: 12px; cursor: pointer; font-size: 15px; color: #64748b;" title="Hiện / Ẩn API Key">👁️</span>
+                </div>
                 <div style="font-size: 11.5px; color: #94a3b8; margin-top: 6px;">
                     💡 <em>Để trống để dùng API Key cấu hình sẵn trên server Render / file .env.</em>
                 </div>
@@ -4245,6 +4254,18 @@ Ví dụ:
       } else {
         input.type = "password";
         if (iconEl) iconEl.innerText = "👁️";
+      }
+    }
+
+    function toggleTokenMask(inputId, iconEl) {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      if (input.style.webkitTextSecurity === "none") {
+        input.style.webkitTextSecurity = "disc";
+        if (iconEl) iconEl.innerText = "👁️";
+      } else {
+        input.style.webkitTextSecurity = "none";
+        if (iconEl) iconEl.innerText = "🙈";
       }
     }
 
