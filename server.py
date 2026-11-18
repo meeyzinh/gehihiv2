@@ -1392,8 +1392,20 @@ class RobotConnectionManager:
         if count > 0:
             print(f"[WS] ✓ Đã làm mới {count} kênh Upstream AI để nhận Prompt mới!")
 
+    async def abort_upstream_ai(self):
+        """Gửi tín hiệu abort lên toàn bộ kết nối Upstream AI để hủy phản hồi khi có lệnh cục bộ"""
+        for ws in list(self.active_upstream_sockets):
+            try:
+                if ws and getattr(ws, "close_code", None) is None:
+                    await ws.send(json.dumps({"type": "abort"}))
+            except Exception:
+                pass
+
     async def send_wake_up(self, device_id: Optional[str] = None) -> int:
         """Đánh thức Robot, mở mắt OLED và bật mic lắng nghe ngay lập tức"""
+        if ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing"):
+            stop_active_music()
+            serial_manager._add_log("[NHẠC] ⏹ Đã dừng phát nhạc để chuyển sang lắng nghe!")
         targets = []
         dev_key = device_id.lower().strip() if device_id else None
         if dev_key and dev_key in self.active_connections and self.active_connections[dev_key]:
@@ -2407,6 +2419,23 @@ POPULAR_CHILDREN_SONGS = [
     }
 ]
 
+# Danh sách bài hát chất lượng cao xoay vòng khi người dùng ra lệnh "Chuyển bài mới" / "Đổi bài khác" / "Bài tiếp theo"
+POPULAR_HIT_ROTATION = [
+    "Bống Bống Bang Bang 365 Daband",
+    "Chú Voi Con Ở Bản Đôn thiếu nhi vui nhộn",
+    "Cắt Đôi Nỗi Sầu Tăng Duy Tân",
+    "Một Con Vịt Xòe Ra Hai Cái Cánh",
+    "See Tình Hoàng Thùy Linh",
+    "Con Heo Đất ca nhạc thiếu nhi",
+    "Nấu Ăn Cho Em Đen Vâu",
+    "Kìa Con Bướm Vàng thiếu nhi",
+    "Ngày Đầu Tiên Đức Phúc",
+    "Tập Thể Dục Buổi Sáng thiếu nhi",
+    "Bắc Bling Hòa Minzy",
+    "Cả Nhà Thương Nhau thiếu nhi",
+    "Rửa Mặt Như Mèo thiếu nhi"
+]
+
 ACTIVE_MUSIC_STATE: Dict[str, Any] = {
     "session_id": 0,
     "is_playing": False,
@@ -2418,7 +2447,8 @@ ACTIVE_MUSIC_STATE: Dict[str, Any] = {
     "all_procs": set(),
     "last_trigger_query": "",
     "last_trigger_time": 0.0,
-    "last_trigger_source": ""
+    "last_trigger_source": "",
+    "rotation_idx": 0
 }
 
 current_english_lesson: Dict[str, Any] = {
@@ -3352,27 +3382,104 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
     # 0.1 Kiểm tra LỆNH DỪNG/TẮT NHẠC YOUTUBE
     stop_music_keywords = [
         "dừng nhạc", "dung nhac", "tắt nhạc", "tat nhac",
-        "ngừng nhạc", "ngung nhac", "stop music", "dừng bài hát",
-        "dung bai hat", "dừng bài", "dung bai", "tat bai hat",
-        "tắt bài hát", "tắt bài", "tat bai", "dừng phát", "dung phat",
-        "thôi phát nhạc", "stop song",
-        "ngưng nhạc", "ngung nhac",
-        "thôi đừng hát", "thôi hát", "thoi hat",
-        "dừng nghe", "dung nghe", "tắt loa", "tat loa", "ngưng hát", "ngung hat",
-        "tắt nhạc cho tôi đi", "tat nhac cho toi di", "tắt nhạc đi", "tat nhac di",
-        "dừng nhạc đi", "dung nhac di", "tắt bài đi", "tat bai di",
-        "không nghe nhạc nữa", "khong nghe nhac nua", "thôi không nghe nữa", "thoi khong nghe nua"
+        "ngừng nhạc", "ngung nhac", "ngưng nhạc", "ngung nhac",
+        "dừng bài hát", "dung bai hat", "dừng bài", "dung bai",
+        "tắt bài hát", "tat bai hat", "tắt bài", "tat bai",
+        "dừng bài này", "dung bai nay", "tắt bài này", "tat bai nay",
+        "ngừng bài hát", "ngung bai hat", "ngừng bài", "ngung bai",
+        "ngưng bài hát", "ngung bai hat", "ngưng bài", "ngung bai",
+        "dừng phát nhạc", "dung phat nhac", "dừng phát", "dung phat",
+        "thôi phát nhạc", "thoi phat nhac", "thôi phát", "thoi phat",
+        "thôi đừng hát nữa", "thoi dung hat nua", "thôi đừng hát", "thoi dung hat",
+        "thôi không hát nữa", "thoi khong hat nua", "thôi không hát", "thoi khong hat",
+        "không hát nữa", "khong hat nua", "đừng hát nữa", "dung hat nua",
+        "không nghe nhạc nữa", "khong nghe nhac nua", "thôi không nghe nữa", "thoi khong nghe nua",
+        "không nghe nữa", "khong nghe nua", "thôi không nghe", "thoi khong nghe",
+        "tắt nhạc đi", "tat nhac di", "dừng nhạc đi", "dung nhac di", "tắt bài đi", "tat bai di",
+        "dừng bài đi", "dung bai di", "tắt loa", "tat loa", "stop music", "stop song"
     ]
     is_active_music = bool(ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing") or ACTIVE_MUSIC_STATE.get("proc"))
     words = t_norm.split()
-    quick_stop_words = ["dừng", "dung", "tắt", "tat", "ngừng", "ngung", "thôi", "thoi", "stop", "im", "pause", "ngưng", "ngung"]
+    quick_stop_words = ["dừng", "dung", "tắt", "tat", "ngừng", "ngung", "thôi", "thoi", "stop", "im", "pause", "ngưng"]
     if (is_active_music and any(w in words or w in t_norm for w in quick_stop_words)) or any(kw in t_norm for kw in stop_music_keywords):
         stop_active_music()
-        await robot_ws_manager.send_oled_emotion("neutral", text="Da tat nhac")
-        serial_manager._add_log("[KHẨU LỆNH] ⏹ Đã dừng phát nhạc theo giọng nói!")
+        await robot_ws_manager.abort_upstream_ai()
+        for ws in list(robot_ws_manager.all_robots):
+            try:
+                await ws.send_json({"type": "tts", "state": "stop"})
+            except Exception:
+                pass
+        await robot_ws_manager.send_oled_emotion("neutral", text="Da dung nhac")
+        serial_manager._add_log("[KHẨU LỆNH] ⏹ Đã dừng phát bài hát theo lệnh giọng nói của bạn!")
+        asyncio.create_task(play_tts_to_robots("Đã dừng phát nhạc rồi bạn nhé!", voice="vi-VN-HoaiMyNeural", emotion="happy"))
         return True
 
-    # 0.2 Kiểm tra LỆNH PHÁT NHẠC / MỞ NHẠC YOUTUBE
+    # 0.2 Kiểm tra LỆNH CHUYỂN BÀI MỚI / ĐỔI BÀI KHÁC / BÀI TIẾP THEO
+    raw_next_prefixes = [
+        "chuyển sang bài hát", "chuyen sang bai hat",
+        "chuyển sang bài", "chuyen sang bai",
+        "chuyển qua bài", "chuyen qua bai",
+        "chuyển đến bài", "chuyen den bai",
+        "chuyển về bài", "chuyen ve bai",
+        "chuyển bài mới", "chuyen bai moi",
+        "chuyển bài khác", "chuyen bai khac",
+        "chuyển bài tiếp theo", "chuyen bai tiep theo",
+        "chuyển bài hát", "chuyen bai hat",
+        "chuyển bài", "chuyen bai",
+        "đổi sang bài hát", "doi sang bai hat",
+        "đổi sang bài", "doi sang bai",
+        "đổi qua bài", "doi qua bai",
+        "đổi thành bài", "doi thanh bai",
+        "đổi bài mới", "doi bai moi",
+        "đổi bài khác", "doi bai khac",
+        "đổi bài tiếp theo", "doi bai tiep theo",
+        "đổi bài hát", "doi bai hat",
+        "đổi bài", "doi bai",
+        "bài tiếp theo", "bai tiep theo",
+        "bài sau", "bai sau",
+        "bài kế tiếp", "bai ke tiep",
+        "qua bài mới", "qua bai moi",
+        "qua bài khác", "qua bai khac",
+        "qua bài tiếp theo", "qua bai tiep theo",
+        "qua bài", "qua bai",
+        "bài khác đi", "bai khac di",
+        "bài khác", "bai khac",
+        "mở bài khác", "mo bai khac",
+        "phát bài khác", "phat bai khac",
+        "hát bài khác", "hat bai khac",
+        "next bài", "next bai",
+        "next song", "next track"
+    ]
+    next_prefixes = sorted(raw_next_prefixes, key=len, reverse=True)
+    for pfx in next_prefixes:
+        if pfx in t_norm:
+            idx = t_norm.find(pfx) + len(pfx)
+            song_query = t_norm[idx:].strip()
+            for filler in ["cho tôi", "cho toi", "cho bé", "cho be", "đi", "nào", "xem nào", "xem nao", "bài hát", "bai hat", "bài", "bai", "sang", "qua"]:
+                song_query = song_query.replace(filler, "").strip()
+
+            # Dừng ngay bài cũ và hủy LLM phản hồi trùng lặp
+            stop_active_music()
+            await robot_ws_manager.abort_upstream_ai()
+
+            if not song_query:
+                # Nếu người dùng chỉ nói 'chuyển bài mới' / 'đổi bài khác' / 'bài tiếp theo' -> lấy bài kế tiếp trong playlist xoay vòng
+                rot_idx = ACTIVE_MUSIC_STATE.get("rotation_idx", 0)
+                song_query = POPULAR_HIT_ROTATION[rot_idx % len(POPULAR_HIT_ROTATION)]
+                ACTIVE_MUSIC_STATE["rotation_idx"] = rot_idx + 1
+
+            clean_name = song_query.split("-")[0].split("|")[0].strip()[:14]
+            serial_manager._add_log(f"[KHẨU LỆNH] ⏭ Nhận lệnh chuyển bài -> Đang mở: '{song_query}'")
+            await robot_ws_manager.send_oled_emotion("happy", text=f"Doi: {clean_name[:12]}")
+
+            # Đặt last_trigger_time = 0 để không bị chặn bởi deduplication
+            ACTIVE_MUSIC_STATE["last_trigger_time"] = 0.0
+            success = await start_music_playback(song_query, source="voice")
+            if success:
+                serial_manager._add_log(f"[YOUTUBE MUSIC] ▶ Đang phát bài chuyển tiếp: '{clean_name}' theo giọng nói!")
+            return True
+
+    # 0.3 Kiểm tra LỆNH PHÁT NHẠC / MỞ NHẠC YOUTUBE
     raw_prefixes = [
         "hãy phát cho tôi bài hát", "hay phat cho toi bai hat",
         "hãy phát cho tôi vài hát", "hay phat cho toi vai hat",
@@ -3416,6 +3523,7 @@ async def handle_robot_voice_command(txt: str, dev_mac: str):
                 song_query = "nhạc thiếu nhi vui nhộn"
 
             serial_manager._add_log(f"[KHẨU LỆNH] 🎵 Nhận lệnh phát nhạc: '{song_query}'")
+            await robot_ws_manager.abort_upstream_ai()
             success = await start_music_playback(song_query, source="voice")
             if success:
                 clean_name = song_query[:14]
@@ -3931,7 +4039,21 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                                         "text": txt,
                                         "timestamp": datetime.datetime.now().strftime("%H:%M:%S")
                                     }))
-                                asyncio.create_task(handle_robot_voice_command(txt, dev_mac))
+                                async def _dispatch_cmd(v_txt, v_mac):
+                                    cmd_done = await handle_robot_voice_command(v_txt, v_mac)
+                                    if cmd_done:
+                                        nonlocal suppress_spam_audio, is_ai_thinking
+                                        suppress_spam_audio = True
+                                        is_ai_thinking = False
+                                        if is_ws_alive(upstream_ws):
+                                            try:
+                                                await upstream_ws.send(json.dumps({
+                                                    "session_id": session_id,
+                                                    "type": "abort"
+                                                }))
+                                            except Exception:
+                                                pass
+                                asyncio.create_task(_dispatch_cmd(txt, dev_mac))
                         elif p_type == "llm":
                             txt = p.get("text", "")
                             emo = p.get("emotion", "happy")
@@ -4090,15 +4212,46 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             except Exception:
                                 pass
                         continue
-                    elif p_type == "abort":
-                        print(f"[ROBOT WS] ⏹ Robot gửi tín hiệu ABORT (Từ khóa 'Sophia' hoặc phím bấm) -> Ngắt phát nhạc để lắng nghe!")
-                        stop_active_music()
-                        serial_manager._add_log("[ROBOT] ⏹ Nhận lệnh 'Sophia' -> Đã dừng nhạc và chuyển sang lắng nghe bạn.")
+                    is_music_active = bool(ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing") or ACTIVE_MUSIC_STATE.get("proc"))
+
+                    if p_type == "abort":
+                        print(f"[ROBOT WS] ⏹ Robot gửi tín hiệu ABORT (Từ khóa 'Sophia' hoặc phím BOOT) -> Ngắt phát nhạc để lắng nghe!")
+                        if is_music_active:
+                            stop_active_music()
+                            serial_manager._add_log("[ROBOT] ⏹ Nhận lệnh 'Sophia' / Phím BOOT -> Đã dừng nhạc và chuyển sang lắng nghe bạn.")
+                        try:
+                            await websocket.send_json({"type": "tts", "state": "stop", "session_id": session_id})
+                        except Exception:
+                            pass
                         asyncio.create_task(robot_ws_manager.send_oled_emotion("happy", text="Toi nghe day"))
+                        is_listening = True
+                        is_robot_speaking = False
+                        is_ai_thinking = False
+                        user_spoke_in_turn = False
+                        fast_vad_triggered = False
+                        last_mic_audio_time = time.time()
+                        try:
+                            await websocket.send_json({
+                                "session_id": session_id,
+                                "type": "listen",
+                                "state": "start",
+                                "mode": "auto"
+                            })
+                        except Exception:
+                            pass
                     elif p_type == "listen":
                         st = payload.get("state")
                         md = payload.get("mode", "manual")
                         now_l = time.time()
+                        if is_music_active and st in ["detect", "start"]:
+                            print(f"[MUSIC INTERRUPT] ⏹ Phát hiện phím BOOT / Lắng nghe ({st}) khi đang phát nhạc -> NGẮT NHẠC NGAY ĐỂ LẮNG NGHE!")
+                            stop_active_music()
+                            serial_manager._add_log("[NHẠC] ⏹ Nhận phím BOOT / gọi Sophia -> Đã dừng nhạc ngay lập tức để lắng nghe bạn!")
+                            try:
+                                await websocket.send_json({"type": "tts", "state": "stop", "session_id": session_id})
+                            except Exception:
+                                pass
+                            asyncio.create_task(robot_ws_manager.send_oled_emotion("happy", text="Toi nghe day"))
                         if st in ["detect", "start"]:
                             is_listening = True
                             is_robot_speaking = False
@@ -4128,7 +4281,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
 
                 # Chuyển tiếp lệnh text lên Upstream AI
                 # Khi đang phát nhạc: Không chuyển tiếp các sự kiện listen/mic lên Upstream AI để tránh AI phản hồi làm gián đoạn
-                if ACTIVE_MUSIC_STATE.get("is_playing") and p_type != "abort":
+                if ACTIVE_MUSIC_STATE.get("is_playing") and p_type not in ["abort", "listen"]:
                     continue
 
                 if not is_ws_alive(upstream_ws):
