@@ -1537,14 +1537,14 @@ body {
 
       <!-- TAB 1: ĐĂNG NHẬP ROBOT (PIN) -->
       <div id="authLoginTabContent" style="display: block;">
-        <form onsubmit="handleAuthLoginSubmit(event)" style="display: flex; flex-direction: column; gap: 14px; margin: 0;">
+        <form onsubmit="handleAuthLoginSubmit(event)" autocomplete="off" style="display: flex; flex-direction: column; gap: 14px; margin: 0;">
           <div>
             <label style="display: block; font-size: 12.5px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">
               Mã PIN Robot (6 số) hoặc Tên / MAC <span style="color: #ef4444;">*</span>
             </label>
             <div style="position: relative;">
               <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 15px; color: #64748b;">🔢</span>
-              <input id="authLoginUsername" required placeholder="Ví dụ: 927184 hoặc ong-robot" style="width: 100%; padding: 11px 14px 11px 38px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: #061124; color: white; font-size: 14px; font-weight: 600; box-sizing: border-box; outline: none;">
+              <input id="authLoginUsername" autocomplete="off" required placeholder="Ví dụ: 927184 hoặc ong-robot" style="width: 100%; padding: 11px 14px 11px 38px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: #061124; color: white; font-size: 14px; font-weight: 600; box-sizing: border-box; outline: none;">
             </div>
             <div style="font-size: 11.5px; color: #64748b; margin-top: 4px;">
               Nhập mã PIN 6 số hiển thị trên màn hình Robot của bạn
@@ -1560,7 +1560,7 @@ body {
             </div>
             <div style="position: relative;">
               <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 15px; color: #64748b;">🔑</span>
-              <input type="password" id="authLoginPassword" required value="123456" placeholder="Mật khẩu (mặc định 123456)" style="width: 100%; padding: 11px 38px 11px 38px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: #061124; color: white; font-size: 14px; box-sizing: border-box; outline: none;">
+              <input type="password" id="authLoginPassword" autocomplete="new-password" required value="123456" placeholder="Mật khẩu (mặc định 123456)" style="width: 100%; padding: 11px 38px 11px 38px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: #061124; color: white; font-size: 14px; box-sizing: border-box; outline: none;">
               <span onclick="togglePasswordVisibility('authLoginPassword', this)" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; font-size: 15px; color: #94a3b8;" title="Hiện / Ẩn mật khẩu">👁️</span>
             </div>
           </div>
@@ -3653,7 +3653,7 @@ Ví dụ:
             <div style="margin-top: 10px; border-top: 1px dashed rgba(71,85,105,0.5); padding-top: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
                 <div style="font-size: 12px; color: #cbd5e1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                     <span>🔑 Upstream REST Token (Đồng bộ cấu hình Prompt/Voice):</span>
-                    <input type="password" id="currentRobotTokenInput" placeholder="Token tài khoản xiaozhi.me..." style="background: #0f172a; border: 1px solid #334155; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; width: 220px;">
+                    <input type="password" id="currentRobotTokenInput" autocomplete="new-password" placeholder="Token tài khoản xiaozhi.me..." style="background: #0f172a; border: 1px solid #334155; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; width: 220px;">
                     <button type="button" onclick="saveCurrentRobotToken()" style="background: #334155; border: none; color: #e2e8f0; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;">Lưu Token</button>
                     <button type="button" onclick="inspectCurrentRobotToken()" style="background: #0284c7; border: none; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 600;" title="Kiểm tra Token và xem các robot trên tài khoản xiaozhi.me">🔍 Kiểm tra Token</button>
                 </div>
@@ -3681,7 +3681,7 @@ Ví dụ:
 
         <div class="form-group" style="margin-bottom:16px;">
             <label style="display:block; font-size:13.5px; font-weight:600; margin-bottom:6px; color:#e2e8f0;">Tên của robot - mặc định là Sophia - có thể đổi thành tên bất kỳ</label>
-            <input id="xiaozhiAssistantName" maxlength="80" placeholder="Ví dụ: Sophia" value="Robot Sophia" style="width:100%; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box;">
+            <input id="xiaozhiAssistantName" autocomplete="off" maxlength="80" placeholder="Ví dụ: Sophia" value="Robot Sophia" style="width:100%; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box;">
         </div>
 
         <div class="form-group" style="margin-bottom:16px;">
@@ -3691,7 +3691,7 @@ Ví dụ:
                 <label id="apiKeyLabel" style="font-size: 13px; color: #cbd5e1; display: block; margin-bottom: 6px;">
                     🔑 <strong>Google Gemini API Key</strong> (Tùy chọn):
                 </label>
-                <input type="password" id="customApiKey" placeholder="Dán Gemini API Key (Lấy tại aistudio.google.com)" style="width: 100%; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box;">
+                <input type="password" id="customApiKey" autocomplete="new-password" placeholder="Dán Gemini API Key (Lấy tại aistudio.google.com)" style="width: 100%; padding:10px 12px; border-radius:8px; border:none; background:white; color:#0f172a; font-size:14px; box-sizing:border-box;">
                 <div style="font-size: 11.5px; color: #94a3b8; margin-top: 6px;">
                     💡 <em>Để trống để dùng API Key cấu hình sẵn trên server Render / file .env.</em>
                 </div>
@@ -8122,7 +8122,8 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
       if (pktEl) pktEl.innerText = `${packetIdx} gói`;
 
       const durEl = document.getElementById("micDurationVal");
-      if (durEl) durEl.innerText = `${(durationMs / 1000).toFixed(2)} s`;
+      const totalSec = (packetIdx * 0.06).toFixed(1);
+      if (durEl) durEl.innerText = `${totalSec} s`;
 
       const bufEl = document.getElementById("micBufferSize");
       if (bufEl) {
