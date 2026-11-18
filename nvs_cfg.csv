@@ -2,8 +2,8 @@ key,type,encoding,value
 board,namespace,,
 uuid,data,string,19b6bcfe-2425-4f66-8fcf-ffe05679ef8e
 wifi,namespace,,
-ssid,data,string,CMCCS - USER
-password,data,string,CMC@1234!@#$
+ssid,data,string,A Meey Zinh
+password,data,string,12345678
 ota_url,data,string,https://gehihiv2.onrender.com/xiaozhi/ota/
 websocket,namespace,,
 url,data,string,wss://gehihiv2.onrender.com/ws/device

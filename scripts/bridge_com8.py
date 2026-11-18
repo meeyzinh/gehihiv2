@@ -57,7 +57,7 @@ class SerialRenderBridge:
             "sku": "robot-mini-s3",
             "display": "SSD1306 (128x64 OLED)",
             "ip": "10.26.1.173",
-            "wifi_ssid": "CMCCS - USER",
+            "wifi_ssid": "A Meey Zinh",
             "firmware": "Xiaozhi v2.5.3"
         }
         self.loop: asyncio.AbstractEventLoop | None = None

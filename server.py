@@ -1497,7 +1497,7 @@ class SerialBridgeManager:
             "sku": "robot-mini-s3",
             "display": "SSD1306 (128x64 OLED)",
             "ip": "10.26.1.173",
-            "wifi_ssid": "CMCCS - USER",
+            "wifi_ssid": "A Meey Zinh",
             "motor": "Chưa gắn module MX1616 (Bản Breadboard Audio + OLED)",
             "firmware": "Xiaozhi v2.5.3",
             "cloud": "api.tenclass.net:8883"
