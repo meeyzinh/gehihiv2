@@ -97,7 +97,7 @@ CURRENT_UPSTREAM_WS_URL = DEFAULT_UPSTREAM_WS_URL
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 SECRET_KEY = os.getenv("SECRET_KEY", "gmbot-control-plane-secret-key-local-2026")
-ROBOT_INACTIVITY_TIMEOUT = float(os.getenv("ROBOT_INACTIVITY_TIMEOUT", "0.0"))  # 0.0 = Luôn lắng nghe liên tục, không tự động ngủ làm tắt mic
+ROBOT_INACTIVITY_TIMEOUT = float(os.getenv("ROBOT_INACTIVITY_TIMEOUT", "10.0"))  # Mặc định tự động tắt lắng nghe sau 10s im lặng không có tương tác
 MAIN_ASYNC_LOOP: Optional[asyncio.AbstractEventLoop] = None
 
 DB_PATH = os.path.abspath("database.db")
@@ -1330,7 +1330,7 @@ class RobotConnectionManager:
                 print(f"[WS ERR] send_oled_emotion error: {e}")
         return sent_count
 
-    async def send_sleep_command(self, device_id: Optional[str] = None) -> int:
+    async def send_sleep_command(self, device_id: Optional[str] = None, text: str = "Nghi ngoi", emotion: str = "sleepy") -> int:
         """Gửi lệnh chuyển Robot sang chế độ ngủ / Standby (kDeviceStateIdle)"""
         targets = []
         dev_key = device_id.lower().strip() if device_id else None
@@ -1343,12 +1343,12 @@ class RobotConnectionManager:
         for ws in targets:
             sess_id = self.sessions.get(ws) or (self.dev_sessions.get(dev_key) if dev_key else "") or f"sess-{int(time.time())}"
             try:
-                # 1. Đổi biểu cảm OLED sang nhắm mắt ngủ (sleepy)
+                # 1. Đổi biểu cảm OLED sang nhắm mắt ngủ (sleepy) hoặc neutral
                 await ws.send_json({
                     "session_id": sess_id,
                     "type": "llm",
-                    "emotion": "sleepy",
-                    "text": "Da tat robot"
+                    "emotion": emotion,
+                    "text": text
                 })
                 # 2. Dừng lắng nghe mic và đưa firmware về Idle
                 await ws.send_json({
@@ -1365,8 +1365,16 @@ class RobotConnectionManager:
             except Exception as e:
                 print(f"[WS ERR] send_sleep_command error: {e}")
 
+        # Đồng thời báo Upstream AI kết thúc lượt lắng nghe
+        for u_ws in list(self.active_upstream_sockets):
+            try:
+                if u_ws and getattr(u_ws, "close_code", None) is None:
+                    await u_ws.send(json.dumps({"type": "listen", "state": "stop"}))
+            except Exception:
+                pass
+
         # KHÔNG BAO GIỜ đóng kết nối WebSocket! Giữ persistent connection để nhận lệnh phát nhạc, đánh thức và điều khiển 24/7!
-        print(f"[WS] 💤 Robot đã chuyển sang chế độ Standby (Idle), giữ nguyên kết nối WebSocket 24/7.")
+        print(f"[WS] 💤 Robot đã chuyển sang chế độ Standby ({text}), giữ nguyên kết nối WebSocket 24/7.")
 
         # Đồng thời cập nhật trạng thái UI Mic Monitor
         mic_monitor_manager.current_state["state"] = "idle"
@@ -1374,7 +1382,7 @@ class RobotConnectionManager:
             "type": "state_change",
             "state": "idle",
             "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
-            "message": "Robot đã tắt chế độ lắng nghe (Standby - Chờ gọi 'Sophia' để bật lại)"
+            "message": f"Robot đã tắt chế độ lắng nghe (Standby: {text} - Chờ gọi 'Sophia' để bật lại)"
         }))
         return sent_count
 
@@ -3860,11 +3868,11 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
 
     # Task tự động đưa Robot vào chế độ ngủ (Standby) khi không có người tương tác
     async def auto_sleep_watchdog():
-        nonlocal is_listening, last_activity_time, last_mic_audio_time, session_id, is_robot_speaking, is_ai_thinking
+        nonlocal is_listening, last_activity_time, last_mic_audio_time, session_id, is_robot_speaking, is_ai_thinking, user_spoke_in_turn, fast_vad_triggered
         while True:
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(0.5)
             
-            # 1. Nếu auto-sleep bị tắt (timeout <= 0), không bao giờ tự tắt chế độ lắng nghe
+            # 1. Nếu auto-sleep bị người dùng cố ý tắt bằng giá trị <= 0
             if ROBOT_INACTIVITY_TIMEOUT <= 0:
                 last_activity_time = time.time()
                 continue
@@ -3881,15 +3889,17 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                 last_activity_time = now
                 continue
 
-            # 4. Khi đang trong bài học tiếng Anh, cho phép thời gian suy nghĩ 90s; bình thường theo cấu hình (mặc định 30s)
-            current_timeout = 90.0 if current_english_lesson.get("active") else (ROBOT_INACTIVITY_TIMEOUT if ROBOT_INACTIVITY_TIMEOUT > 0 else 30.0)
+            # 4. Khi đang trong bài học tiếng Anh, cho phép thời gian suy nghĩ 60s; bình thường theo cấu hình (mặc định 10s)
+            current_timeout = 60.0 if current_english_lesson.get("active") else ROBOT_INACTIVITY_TIMEOUT
 
             idle_duration = now - last_activity_time
             if is_listening and idle_duration >= current_timeout:
-                print(f"[AUTO SLEEP] 💤 Sau {int(idle_duration)}s không có tương tác trò chuyện -> Chuyển Robot sang chế độ ngủ (Standby)!")
-                serial_manager._add_log(f"[TỰ ĐỘNG NGỦ] 💤 Không có tương tác trong {int(idle_duration)}s -> Robot vào chế độ ngủ (Standby).")
+                print(f"[AUTO SLEEP] 💤 Sau {int(idle_duration)}s không có tương tác -> Tự động tắt chế độ lắng nghe (Standby)!")
+                serial_manager._add_log(f"[TỰ ĐỘNG NGHỈ] 💤 Không có giọng nói trong {int(idle_duration)}s -> Tự động tắt mic, chuyển sang chế độ chờ (Standby).")
                 is_listening = False
-                await robot_ws_manager.send_sleep_command(dev_mac)
+                user_spoke_in_turn = False
+                fast_vad_triggered = False
+                await robot_ws_manager.send_sleep_command(dev_mac, text="Nghi ngoi", emotion="sleepy")
 
     watchdog_task = asyncio.create_task(auto_sleep_watchdog())
 
@@ -4143,12 +4153,14 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                                 serial_manager._add_log("[ROBOT] 💤 Robot đã báo tự tắt và vào chế độ ngủ (Standby). Chờ gọi 'Sophia' để đánh thức.")
                                 async def _do_sleep_after_tts():
                                     await asyncio.sleep(0.6)  # Đợi 600ms để loa phát xong gói âm thanh cuối cùng
-                                    await robot_ws_manager.send_sleep_command(dev_mac)
+                                    await robot_ws_manager.send_sleep_command(dev_mac, text="Da tat robot", emotion="sleepy")
                                 asyncio.create_task(_do_sleep_after_tts())
-                            elif ROBOT_INACTIVITY_TIMEOUT <= 0:
+                            else:
                                 # Sau khi robot nói xong: Tự động mở lại mic để tiếp tục lắng nghe câu thoại tiếp theo
                                 async def _rearm_listening():
                                     await asyncio.sleep(0.4)
+                                    nonlocal last_activity_time
+                                    last_activity_time = time.time()
                                     try:
                                         await websocket.send_json({
                                             "session_id": session_id,
@@ -4230,6 +4242,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                         user_spoke_in_turn = False
                         fast_vad_triggered = False
                         last_mic_audio_time = time.time()
+                        last_activity_time = time.time()
                         try:
                             await websocket.send_json({
                                 "session_id": session_id,
@@ -4259,8 +4272,10 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             user_spoke_in_turn = False
                             fast_vad_triggered = False
                             last_mic_audio_time = now_l
+                            last_activity_time = now_l
                         elif st in ["stop"]:
                             # Người dùng ngưng nói, chuyển quyền cho AI suy nghĩ và trả lời
+                            is_listening = False
                             is_ai_thinking = True
                             user_spoke_in_turn = False
                             fast_vad_triggered = False
@@ -4375,7 +4390,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                     speech_dur = now_b - speech_start_time
                     silence_dur = now_b - last_voice_time
                     silence_thresh = 1.3 if current_english_lesson.get("active") else 0.9
-                    if speech_dur >= 0.4 and silence_dur >= silence_thresh:
+                    if speech_dur >= 0.35 and silence_dur >= silence_thresh:
                         fast_vad_triggered = True
                         user_spoke_in_turn = False
                         is_ai_thinking = True
@@ -4398,6 +4413,9 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             await websocket.send_json(stop_payload)
                         except Exception:
                             pass
+                    elif silence_dur >= 1.5 and speech_dur < 0.35:
+                        # Tiếng ồn ngắn (click chuột, quạt, va chạm) không phải giọng nói -> reset
+                        user_spoke_in_turn = False
 
                         # C. ĐỔI BIỂU CẢM OLED ROBOT SANG "ĐANG SUY NGHĨ" (mắt neutral)
                         try:
