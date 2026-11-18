@@ -96,7 +96,7 @@ CURRENT_UPSTREAM_WS_URL = DEFAULT_UPSTREAM_WS_URL
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 SECRET_KEY = os.getenv("SECRET_KEY", "gmbot-control-plane-secret-key-local-2026")
-ROBOT_INACTIVITY_TIMEOUT = float(os.getenv("ROBOT_INACTIVITY_TIMEOUT", "30.0"))
+ROBOT_INACTIVITY_TIMEOUT = float(os.getenv("ROBOT_INACTIVITY_TIMEOUT", "0.0"))  # 0.0 = Luôn lắng nghe liên tục, không tự động ngủ làm tắt mic
 MAIN_ASYNC_LOOP: Optional[asyncio.AbstractEventLoop] = None
 
 DB_PATH = os.path.abspath("database.db")
@@ -1387,8 +1387,8 @@ class RobotConnectionManager:
         if count > 0:
             print(f"[WS] ✓ Đã làm mới {count} kênh Upstream AI để nhận Prompt mới!")
 
-    async def send_wake_up(self, device_id: Optional[str] = None):
-        """Đánh thức Robot và bật mic lắng nghe cho bài học mới"""
+    async def send_wake_up(self, device_id: Optional[str] = None) -> int:
+        """Đánh thức Robot, mở mắt OLED và bật mic lắng nghe ngay lập tức"""
         targets = []
         dev_key = device_id.lower().strip() if device_id else None
         if dev_key and dev_key in self.active_connections and self.active_connections[dev_key]:
@@ -1396,16 +1396,28 @@ class RobotConnectionManager:
         else:
             targets = self.all_robots
 
+        sent_count = 0
         for ws in list(targets):
             sess_id = self.sessions.get(ws) or (self.dev_sessions.get(dev_key) if dev_key else "") or f"sess-{int(time.time())}"
             try:
+                # 1. Đổi biểu cảm OLED sang mắt mở vui vẻ (happy)
+                await ws.send_json({
+                    "session_id": sess_id,
+                    "type": "llm",
+                    "emotion": "happy",
+                    "text": "Toi nghe day"
+                })
+                # 2. Bật mic ghi âm lắng nghe người dùng ngay lập tức (start)
                 await ws.send_json({
                     "session_id": sess_id,
                     "type": "listen",
-                    "state": "detect"
+                    "state": "start",
+                    "mode": "auto"
                 })
+                sent_count += 1
             except Exception:
                 pass
+        return sent_count
 
     async def send_mcp_call(self, tool_name: str, args: Dict[str, Any], device_id: Optional[str] = None) -> int:
         """Gửi lệnh gọi MCP xuống robot (đèn LED, âm lượng, reboot)"""
@@ -3711,6 +3723,10 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
     is_listening = True
     is_robot_speaking = False
     is_ai_thinking = False
+    user_spoke_in_turn = False
+    speech_start_time = 0.0
+    last_voice_time = 0.0
+    fast_vad_triggered = False
 
     # Task tự động đưa Robot vào chế độ ngủ (Standby) khi không có người tương tác
     async def auto_sleep_watchdog():
@@ -3773,7 +3789,7 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
     should_sleep_after_tts = False
 
     async def forward_upstream_to_robot():
-        nonlocal upstream_ws, should_sleep_after_tts, is_listening, is_robot_speaking, is_ai_thinking, last_activity_time
+        nonlocal upstream_ws, should_sleep_after_tts, is_listening, is_robot_speaking, is_ai_thinking, last_activity_time, user_spoke_in_turn, fast_vad_triggered
         while True:
             if not is_ws_alive(upstream_ws):
                 await asyncio.sleep(1)
@@ -3815,6 +3831,8 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             if txt:
                                 last_activity_time = time.time()
                                 is_ai_thinking = True
+                                user_spoke_in_turn = False
+                                fast_vad_triggered = False
                                 print(f"[VOICE ASR] Người dùng nói: \"{txt}\"")
                                 serial_manager._add_log(f"[GIỌNG NÓI - BẠN] {txt}")
                                 mic_monitor_manager.current_state["last_text"] = txt
@@ -3884,6 +3902,8 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             last_activity_time = time.time()
                             is_robot_speaking = True
                             is_ai_thinking = False
+                            user_spoke_in_turn = False
+                            fast_vad_triggered = False
                             if txt:
                                 serial_manager._add_log(f"[ROBOT AI NÓI] {txt}")
                                 mic_monitor_manager.current_state["state"] = "speaking"
@@ -3898,6 +3918,8 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             last_activity_time = now_t
                             is_robot_speaking = False
                             is_listening = True
+                            user_spoke_in_turn = False
+                            fast_vad_triggered = False
                             mic_monitor_manager.current_state["state"] = "idle"
                             asyncio.create_task(mic_monitor_manager.broadcast({
                                 "type": "state_change",
@@ -3925,11 +3947,12 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                 print(f"[VOICE PROXY] Kênh Upstream tạm ngắt: {err}")
                 upstream_ws = None
                 now_err = time.time()
-                # Nếu Upstream ngắt kết nối do không có hoạt động trong hơn 25 giây -> Đưa robot vào Standby (không break task!)
+                # Nếu Upstream ngắt kết nối do không có hoạt động trong hơn 25 giây -> Chỉ đưa robot vào Standby khi ROBOT_INACTIVITY_TIMEOUT > 0
                 if (now_err - last_activity_time >= 25.0) and not (ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing")):
-                    print(f"[AUTO SLEEP] 💤 Kênh Upstream đã ngắt do nhàn rỗi ({int(now_err - last_activity_time)}s) -> Chuyển Robot vào Standby!")
-                    serial_manager._add_log("[ROBOT] 💤 Robot tạm chuyển sang chế độ Standby.")
-                    await robot_ws_manager.send_sleep_command(dev_mac)
+                    if ROBOT_INACTIVITY_TIMEOUT > 0:
+                        print(f"[AUTO SLEEP] 💤 Kênh Upstream đã ngắt do nhàn rỗi ({int(now_err - last_activity_time)}s) -> Chuyển Robot vào Standby!")
+                        serial_manager._add_log("[ROBOT] 💤 Robot tạm chuyển sang chế độ Standby.")
+                        await robot_ws_manager.send_sleep_command(dev_mac)
                 await asyncio.sleep(1)
 
     upstream_task = asyncio.create_task(forward_upstream_to_robot())
@@ -3971,10 +3994,14 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                             is_listening = True
                             is_robot_speaking = False
                             is_ai_thinking = False
+                            user_spoke_in_turn = False
+                            fast_vad_triggered = False
                             last_mic_audio_time = now_l
                         elif st in ["stop"]:
                             # Người dùng ngưng nói, chuyển quyền cho AI suy nghĩ và trả lời
                             is_ai_thinking = True
+                            user_spoke_in_turn = False
+                            fast_vad_triggered = False
                         print(f"[ROBOT MIC] Lắng nghe {st} (chế độ: {md})")
                         serial_manager._add_log(f"[MIC ROBOT] Đang lắng nghe giọng nói ({st})...")
                         st_ui = "recording" if st == "start" else ("processing" if st in ["stop", "detect"] else "idle")
@@ -4041,6 +4068,37 @@ async def websocket_robot_endpoint(websocket: WebSocket, device_id: Optional[str
                 # Chỉ khi người dùng gọi "Sophia" (phần cứng WakeNet gửi 'abort') hoặc bấm nút, robot mới dừng nhạc để lắng nghe.
                 if ACTIVE_MUSIC_STATE.get("is_playing") or ACTIVE_MUSIC_STATE.get("is_preparing"):
                     continue
+
+                # Fast VAD (Voice Activity Detection): Phát hiện người dùng nói và chốt câu ngay sau khi im lặng
+                if peak_val > 3500 and not is_robot_speaking:
+                    if not user_spoke_in_turn:
+                        user_spoke_in_turn = True
+                        speech_start_time = now_b
+                        fast_vad_triggered = False
+                    last_voice_time = now_b
+                    last_activity_time = now_b
+
+                # Nếu người dùng đã nói ít nhất 0.5s và im lặng >= 1.2s -> Chủ động gửi listen: stop chốt câu tới Upstream AI
+                if user_spoke_in_turn and not fast_vad_triggered and not is_robot_speaking and not is_ai_thinking:
+                    speech_dur = now_b - speech_start_time
+                    silence_dur = now_b - last_voice_time
+                    if speech_dur >= 0.5 and silence_dur >= 1.2:
+                        fast_vad_triggered = True
+                        user_spoke_in_turn = False
+                        is_ai_thinking = True
+                        last_activity_time = now_b
+                        if is_ws_alive(upstream_ws):
+                            try:
+                                await upstream_ws.send(json.dumps({
+                                    "session_id": session_id,
+                                    "type": "listen",
+                                    "state": "stop"
+                                }))
+                                print(f"[FAST VAD] ⚡ Đã chốt câu nói sau {speech_dur:.1f}s (khoảng lặng {silence_dur:.1f}s) -> AI phản hồi tức thì!")
+                                serial_manager._add_log(f"[FAST VAD] ⚡ Đã chốt câu ({speech_dur:.1f}s) -> AI đang trả lời...")
+                                asyncio.create_task(robot_ws_manager.send_oled_emotion("neutral", text="Dang suy nghi..."))
+                            except Exception:
+                                pass
 
                 if not is_ws_alive(upstream_ws):
                     await connect_upstream_ai()
@@ -4508,6 +4566,24 @@ async def robot_status(device_id: Optional[str] = None):
         "mcp_connected": getattr(globals().get("xiaozhi_mcp_bridge"), "is_connected", False),
         "connected_macs": connected_macs if online else [],
         "device_id": device_id
+    }
+
+
+@app.post("/api/robot/wake")
+@app.post("/api/devices/wake")
+async def api_robot_wake(payload: Optional[Dict[str, Any]] = None):
+    """
+    API chủ động đánh thức Robot, mở mắt OLED và bật mic lắng nghe ngay lập tức.
+    """
+    dev_id = payload.get("device_id") if isinstance(payload, dict) else None
+    stop_active_music()
+    sent_count = await robot_ws_manager.send_wake_up(dev_id)
+    serial_manager._add_log(f"[API WAKE] 🎙️ Đã nhận lệnh đánh thức Robot ({dev_id or 'all'}). Đã gửi tới {sent_count} robot.")
+    return {
+        "status": "ok",
+        "success": True,
+        "message": "Đã đánh thức Robot thành công! Robot đang mở mắt và bật mic lắng nghe bạn nói.",
+        "sent_count": sent_count
     }
 
 

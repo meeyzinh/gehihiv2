@@ -2040,6 +2040,12 @@ body {
         </div>
       </div>
       <div style="display: flex; align-items: center; gap: 8px;">
+        <button onclick="wakeUpCurrentRobot()" style="background: linear-gradient(135deg, #10b981, #059669); border: 1px solid #34d399; color: white; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 8px rgba(16,185,129,0.35);" title="Đánh thức Robot mở mắt và bật mic lắng nghe ngay">
+          <span>🎙️</span> <span>Lắng Nghe</span>
+        </button>
+        <button onclick="sleepCurrentRobot()" style="background: #1e293b; border: 1px solid #475569; color: #cbd5e1; padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;" title="Cho robot nhắm mắt đi ngủ tiết kiệm pin">
+          <span>💤</span> <span>Đi Ngủ</span>
+        </button>
         <a id="topbarAdminBtn" href="/admin" style="display: none; background: linear-gradient(135deg, #d97706, #f59e0b); border: 1px solid #f59e0b; color: white; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; text-decoration: none; align-items: center; gap: 6px; box-shadow: 0 2px 10px rgba(217,119,6,0.35);" title="Mở trang Quản trị danh sách thiết bị riêng biệt dành cho Admin">
           <span>👑</span> <span>Quản Trị Admin ↗</span>
         </a>
@@ -3626,6 +3632,12 @@ Ví dụ:
                     </div>
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" onclick="wakeUpCurrentRobot()" class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; padding: 8px 14px; border-radius: 8px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(16,185,129,0.4);" title="Đánh thức Robot mở mắt và bật mic lắng nghe ngay">
+                        <span>🎙️</span> Bật Lắng Nghe
+                    </button>
+                    <button type="button" onclick="sleepCurrentRobot()" class="btn" style="background: #1e293b; color: #cbd5e1; border: 1px solid #475569; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;" title="Cho robot nhắm mắt đi ngủ tiết kiệm pin">
+                        <span>💤</span> Đi Ngủ
+                    </button>
                     <button type="button" onclick="syncCurrentRobotToXiaozhi('push')" class="btn" style="background: linear-gradient(135deg, #2563eb, #3b82f6); color: white; border: none; padding: 8px 14px; border-radius: 8px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(37,99,235,0.4);" title="Gửi cấu hình hiện tại của Robot lên xiaozhi.me">
                         <span>⬆</span> Đồng bộ lên xiaozhi.me
                     </button>
@@ -6112,6 +6124,46 @@ Bạn là Sophia, trợ lý robot AI thông minh, thân thiện, kiên nhẫn v�
             badge.style.color = "#f87171";
             badge.innerText = "🔴 Lỗi đồng bộ";
           }
+        }
+      } catch (err) {
+        showToast(`❌ Lỗi kết nối: ${err.message}`, false);
+      }
+    }
+
+    async function wakeUpCurrentRobot() {
+      const targetId = activeDeviceId || "1";
+      showToast("🎙️ Đang đánh thức Robot và bật mic lắng nghe...");
+      try {
+        const res = await fetch("/api/robot/wake", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ device_id: targetId })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast("✅ Đã đánh thức Robot! Mắt OLED mở và mic đang lắng nghe bạn.");
+        } else {
+          showToast(`❌ ${data.message || 'Không thể đánh thức Robot'}`, false);
+        }
+      } catch (err) {
+        showToast(`❌ Lỗi kết nối: ${err.message}`, false);
+      }
+    }
+
+    async function sleepCurrentRobot() {
+      const targetId = activeDeviceId || "1";
+      showToast("💤 Đang chuyển Robot sang chế độ ngủ (Standby)...");
+      try {
+        const res = await fetch("/api/robot/sleep", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ device_id: targetId })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast("💤 Robot đã vào chế độ ngủ tiết kiệm pin.");
+        } else {
+          showToast(`❌ ${data.message || 'Không thể gửi lệnh ngủ'}`, false);
         }
       } catch (err) {
         showToast(`❌ Lỗi kết nối: ${err.message}`, false);
